@@ -66,7 +66,7 @@ optional Ordnerzugriff per File System Access API (nur Chromium), Embed-API per 
 | S1 | Vite + TS + CodeMirror 6 mit Python-Modus und den vorhandenen Hints: Bundle-Größe, Start | App-Shell (ohne Pyodide) ≤ 2 MB gzip |
 | S2 | **Language Service im Browser:** Kandidaten: (a) nur miniworlds-Tools + `ast`, (b) ruff-WASM für Lint/Format, (c) ty- oder Pyrefly-WASM, (d) jedi in einem zweiten Pyodide-Worker | Completion/Hover/Diagnose auf miniworlds-Code gut genug, Latenz < 200 ms, Zusatzspeicher akzeptabel. ty-WASM: das Playground ist WASM, eine wiederverwendbare Bibliothek habe ich nicht gefunden → ggf. selbst bauen. |
 | S3 | **Pyodide im Worker** mit pygame-ce: Canvas/OffscreenCanvas, FPS. Der Pyodide-Pfad lief schon einmal mit 4,9 FPS (behoben). Pyglet verlangt Main-Thread, bei pygame-ce ungeprüft. | 60 FPS mit offenem Editor, oder Beschluss „Main-Thread bleibt“ |
-| S4 | Speicher: OPFS-Projekte, Kopie ins Emscripten-FS beim Start vs. `mountNativeFS` | Mehrdatei-Projekt startet in < 2 s |
+| S4 | Speicher: OPFS-Projekte, Kopie ins Emscripten-FS beim Start vs. `mountNativeFS` | Mehrdatei-Projekt startet in < 2 s (**erfüllt**, siehe unten) |
 | S5 | `micropip` + Versionsliste von PyPI, Offline-Cache der Wheels | Version wählen, Update-Warnung, Offline-Start |
 | S6 | Safari/Firefox/Chromebook: OPFS, Service Worker, Speicherquote | Liste der Einschränkungen |
 
@@ -157,10 +157,49 @@ Entscheidungen:
 - **Offline-Verfügbarkeit** pro Version anzeigen (im Cache oder nicht); die Shell wird beim Service-Worker-`install` vorab gecacht (im Spike über einen zweiten Besuch simuliert).
 - **CDN-Abhängigkeit:** Pyodide kommt von jsDelivr. Schulnetze können das sperren; Selbst-Hosting der ~16 MB unter der eigenen Origin ist eine einfache Absicherung und wird für das Release vorgesehen (Variante: miniworlds-Wheels spiegeln).
 
+### Ergebnisse S4: Projekt ins Emscripten-FS (2026-11-17)
+
+Aufbau: `spikes/s4/` (`worker.js`, `index.html`, `run.py`, `serve.py`). Synthetische Projekte in OPFS, Pyodide im Worker (warm gebootet);
+gemessen wird vom Run-Klick bis „alle Klassen importiert“. Playwright-Chromium und -Firefox 148. WebKit lässt sich auf diesem Rechner nicht starten
+(fehlende Host-Bibliotheken) und bleibt für S6 auf echten Geräten offen.
+
+Drei Wege: **A** Worker liest OPFS selbst und kopiert ins FS · **B** `pyodide.mountNativeFS` auf ein OPFS-Verzeichnis · **C** Hauptthread liest über die
+`Workspace`-Schnittstelle und schickt `{Pfad: Bytes}` per `postMessage` (Transfer), der Worker schreibt mit `FS.writeFile`.
+
+Gesamtzeit bis zum importierten Projekt (ms, Chromium / Firefox):
+
+| Projekt | Größe | A (kalt) | B | C |
+|---|---|---|---|---|
+| klein: 5 Klassen, 5 Bilder | 0,1 MB, 13 Dateien | 90 / 243 | 36 / 49 | 23 / 18 |
+| typisch: 15 Klassen, 40 Bilder | 1,2 MB, 58 Dateien | 102 / 544 | 59 / 174 | 34 / 74 |
+| groß: 40 Klassen, 200 Bilder | 10 MB, 243 Dateien | 279 / 920 | 234 / 584 | 165 / 222 |
+
+(Reihenfolge im Test: A, A erneut, C, B im selben Worker. Nur **A (kalt)** enthält den ersten, kalten Python-Import des Projekts (70–120 ms Chromium, 235–720 ms Firefox);
+bei B und C waren die Module schon im Interpreter-Cache, ihr Startanteil ist mit 2–17 ms ein Warmwert. Fairer Vergleich: bei B und C den kalten Import dazurechnen.
+Dann liegen alle drei Wege in derselben Größenordnung, C mit Hauptthread-Lesen und Transfer ist kein Geschwindigkeits-, sondern ein Architekturgewinn.)
+
+1. **Das Kriterium (< 2 s) ist mit großem Abstand erfüllt**, auch bei 10 MB und in Firefox (höchstens 0,9 s).
+2. **C wird gewählt, weil es zur Architektur passt (nicht wegen der Geschwindigkeit):** Der Worker braucht keinen eigenen OPFS-Zugriff, die UI bleibt hinter `Workspace` (später auch Remote- oder Tauri-Dateien ohne Änderung am Runner).
+   Dasselbe Nachrichtenformat trägt „Datei geändert“ (inkrementelles Senden: nur Dateien, die sich seit dem letzten Lauf geändert haben).
+3. **B (`mountNativeFS`) funktioniert** (auch Rückschreiben per `syncfs`, 9–45 ms bzw. 27–217 ms), ist aber nicht schneller als A (großes Projekt, Firefox: 343 ms Mount gegenüber 197 ms Kopieren), lädt beim Mounten ohnehin alle Dateien
+   und koppelt den Runner an OPFS-Handles. Es wird nicht verwendet.
+4. **Rückweg:** Vom Projekt geänderte, neue oder gelöschte Dateien (z. B. „Welt speichern“) werden über ein Manifest (`Pfad → mtime:Größe`) vor und nach dem Lauf verglichen
+   (0,6–2 ms) und als Nachricht an den Hauptthread geschickt, der sie über `Workspace.fs` schreibt. Ein Vergleich nur über den Zeitstempel (ohne Vorher-Manifest) war falsch: alle Dateien sahen „neu“ aus.
+5. **Erneuter Lauf im selben Worker** sieht Änderungen (11 ms Chromium, 21 ms Firefox), wenn vorher alle Module aus dem Projektordner aus `sys.modules` entfernt und
+   `importlib.invalidate_caches()` aufgerufen werden. Ohne das bleiben alte Klassen aktiv, auch nach einem Projektwechsel. Der warme Worker spart damit die ~2 s Pyodide-Start pro Lauf.
+   Echten Reset (z. B. nach Endlosschleife) gibt es nur durch Worker-Neustart.
+6. **Firefox-Nebenbefund (für S6):** Pyodide-Start im frisch gestarteten Headless-Firefox dauert 6,7–16,5 s statt 1,9–2,2 s in Chromium; OPFS, `createWritable` und Worker-Module laufen.
+   Der HTTP/1.0-Server von `python -m http.server` genügt Firefox nicht (Navigation wird abgebrochen); `spikes/s4/serve.py` spricht HTTP/1.1.
+
+Entscheidungen:
+- **Runner-Protokoll:** `run { files, entry }` und `sync { changed, deleted }`; Standard ist „alle Dateien beim ersten Lauf, danach nur Änderungen“.
+- **Projektordner im FS:** fest `/home/pyodide/project`, vor jedem Lauf Projektmodule aus `sys.modules` entfernen.
+- **Dateien, die Python schreibt,** gelangen über das Manifest-Diff zurück; Binärdaten (Bilder) werden mit Transfer verschickt.
+
 ## 5. Meilensteine
 
 0. Spikes S1–S6, danach Festlegung von Framework und Language-Service.
-1. **Editor-Kern:** Tabs, Dateibaum, CM6, Projektformen, OPFS + ZIP, DE/EN, Suchen/Ersetzen.
+1. **Editor-Kern:** Tabs, Dateibaum, CM6, Projektformen, OPFS + ZIP, DE/EN, Suchen/Ersetzen. **Umgesetzt (2026-11-17)**, siehe „Stand Meilenstein 1“.
 2. **Run + Konsole + Pakete:** Pyodide-Runner, Fehler → Code-Sprung, `micropip`-Dialog, Versionswahl + Update-Warnung.
 3. **Greenfoot-Ansicht** als Panel (Port von `gf-host`, `gf-uml`, `gf-assist`, `gf-images`, `gf-journal`);
    das bestehende `test/e2e.py` läuft weiter.
@@ -168,6 +207,24 @@ Entscheidungen:
 5. **Release:** PWA, Hosting (statisch), CI mit Tests, Moodle-iframe; der Editor ersetzt die `miniworlds-ide`-Startseite
    (Deployment unter miniworlds.opencoding.de); danach Migration des alten Greenfoot-Clients.
 6. **Später:** Desktop-Hülle (Tauri), Remote-Dateiablage für Klassen, Debugger, Plugin-API.
+
+### Stand Meilenstein 1 (2026-11-17)
+
+Umgesetzt und getestet (54 Vitest-Tests, `test/smoke.py` in Chromium und Firefox; Bundle 175 KB gzip):
+- **Mehrere Projekte** (`ProjectStore`: OPFS, Fallback Speicher mit Warnbanner), Menü: neu, umbenennen, duplizieren, löschen, wechseln, ZIP-Export/-Import. Zuletzt geöffnetes Projekt wird gemerkt.
+- **Projektformen:** `project.toml` (Teilmenge von TOML, `[project]` und `[packages]`) + `classes/<Name>.py`; Einzeldatei-Projekte (`main.py`) bleiben unverändert und bekommen nur ein Badge.
+- **Neue Klasse** (Figur/Welt/normal) legt `classes/<Name>.py` an und trägt den Import in `main.py` ein (idempotent, kennt Docstrings und mehrzeilige Imports); beim Löschen einer Klassendatei verschwindet die Importzeile wieder.
+- **Dateibaum** (Ordner einklappbar, umbenennen/löschen auch für Ordner), **Tabs** mit Ungespeichert-Punkt, Autosave (500 ms), `Session` (testbar, ohne UI-Framework) trägt offene Tabs, Edits und Umbenennen/Löschen.
+- **Suchen/Ersetzen:** im Editor (CM6, eingedeutscht) und **projektweit** (Strg+Umschalt+F; Groß-/Kleinschreibung, ganzes Wort, Regex; Ersetzen nur nach Bestätigung).
+- **Bilder und Binärdateien:** Hochladen per Dialog oder Drag & Drop (Bilder landen in `images/`), Vorschau; keine Bearbeitung im Textfeld.
+- **DE/EN** (Erkennung über Browsersprache, Wahl gemerkt, Tests auf gleiche Schlüssel und Platzhalter), eigene Dialoge statt `window.prompt` (iframes können Modals sperren).
+- ZIP: Wrapper-Ordner und Mac-/Git-Müll werden entfernt, `..`-Pfade, mehr als 5000 Dateien oder 150 MB abgelehnt.
+
+Bewusst noch nicht enthalten:
+- **Klasse umbenennen als Refactoring** (Datei + Klassenname + Imports); umbenennen verschiebt nur die Datei. Später zusammen mit der UML-Ansicht.
+- **Leere Ordner:** nicht darstellbar im Speicher-Fallback; Ordner entstehen über Pfade wie `images/x.png`.
+- Ordnerzugriff per File System Access API und Embed-API (`postMessage`) für Moodle.
+- Version/Update-Anzeige in der Statusleiste (kommt mit Meilenstein 2, `project.toml` hat das Feld `miniworlds` schon).
 
 ## 6. Risiken
 

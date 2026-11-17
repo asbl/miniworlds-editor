@@ -10,6 +10,6 @@ npm run build      # Typecheck + Produktions-Build nach dist/
 npm run size       # Größenbudget der App-Shell prüfen (≤ 2 MB gzip)
 ```
 
-Smoketest im echten Browser: `test/smoke.py` (benötigt Playwright).
+Browsertest des Editor-Kerns: `npm run build && npx vite preview --port 4173`, dann `python test/smoke.py [chromium|firefox]` (benötigt Python mit Playwright).
 
 Lizenz: MIT.
