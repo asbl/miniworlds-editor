@@ -29,11 +29,13 @@ interface Args {
   host: { current: EditorHost | null }
   settings: ProjectSettings
   settingsLoaded: boolean
+  /** `greenfoot` starts the world paused under the ScenarioHost; `program` runs it like a normal program. */
+  mode: 'program' | 'greenfoot'
   refresh: () => Promise<void>
 }
 
 /** Run/stop a project, show where it failed, write back files the program created. */
-export function useProgram({ runner, catalog, fs, session, host, settings, settingsLoaded, refresh }: Args) {
+export function useProgram({ runner, catalog, fs, session, host, settings, settingsLoaded, mode, refresh }: Args) {
   const state = useRunnerState(runner)
   const [launching, setLaunching] = useState(false)
   const config = useRef<RuntimeConfig>({ miniworlds: null, packages: [] })
@@ -93,7 +95,7 @@ export function useProgram({ runner, catalog, fs, session, host, settings, setti
       for (const e of entries) files[e.path] = await fs.readBytes(e.path)
       await catalogReady(catalog)
       config.current = runtimeConfig(settings, catalog)
-      const running = runner.run(files, entry, config.current)
+      const running = runner.run(files, entry, config.current, { scenario: mode === 'greenfoot' })
       runner.canvas.focus()
       const result = await running
       await applyChanges(result)
@@ -108,12 +110,17 @@ export function useProgram({ runner, catalog, fs, session, host, settings, setti
     } finally {
       setLaunching(false)
     }
-  }, [session, launching, fs, catalog, settings, runner, host, applyChanges, jumpTo])
+  }, [session, launching, fs, catalog, settings, runner, host, mode, applyChanges, jumpTo])
 
   const stop = useCallback(async () => {
     const changes = await runner.stop()
     await applyChanges({ ...changes, error: null, stopped: true })
   }, [runner, applyChanges])
+
+  // "launching" only covers the time until the program is actually running; a running program can be restarted.
+  useEffect(() => {
+    if (state.phase === 'running') setLaunching(false)
+  }, [state.phase])
 
   const busy = launching || state.phase === 'running' || state.phase === 'stopping'
   return { run, stop, jumpTo, busy, state }

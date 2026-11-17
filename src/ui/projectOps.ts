@@ -1,5 +1,7 @@
 import { t } from '../i18n'
+import { getLang } from '../i18n'
 import { createProject } from '../project/create'
+import { createFromTemplate, TEMPLATES } from '../templates'
 import { exportZip, importZip, ZipError } from '../project/zip'
 import { copyAll, validateProjectName, type ProjectStore } from '../workspace'
 import { infoDialog, openDialog, confirmDialog } from './dialogs'
@@ -56,6 +58,10 @@ export async function promptNewProject(store: ProjectStore, miniworlds: string |
         options: [
           { value: 'project', label: t('project.kind.project'), hint: t('project.kind.project.hint') },
           { value: 'legacy', label: t('project.kind.legacy'), hint: t('project.kind.legacy.hint') },
+          ...TEMPLATES.map((tpl) => {
+            const text = tpl.text[getLang()] ?? tpl.text.de
+            return { value: `tpl:${tpl.id}`, label: t('project.kind.template', { title: text.title, level: text.level }), hint: text.description }
+          }),
         ],
       },
     ],
@@ -64,7 +70,10 @@ export async function promptNewProject(store: ProjectStore, miniworlds: string |
   })
   if (!values) return null
   const name = validateProjectName(String(values.name))
-  await createStarterProject(store, name, values.kind as 'project' | 'legacy', miniworlds)
+  const choice = String(values.kind)
+  const template = TEMPLATES.find((tpl) => `tpl:${tpl.id}` === choice)
+  if (template) await createFromTemplate((await store.open(name)).fs, { template, lang: getLang(), name, miniworlds })
+  else await createStarterProject(store, name, choice as 'project' | 'legacy', miniworlds)
   return name
 }
 

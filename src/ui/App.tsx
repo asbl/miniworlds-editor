@@ -5,6 +5,7 @@ import { Catalog } from '../packages/catalog'
 import { browserKeyValue } from '../project/settings'
 import { createBrowserRunner } from '../runtime/browser'
 import type { Runner } from '../runtime/runner'
+import { ContextMenuHost } from './ContextMenu'
 import { DialogHost, infoDialog } from './dialogs'
 import { Menu } from './Menu'
 import { ProjectView } from './ProjectView'
@@ -112,6 +113,7 @@ export function App({ store, runner: injected, catalog: injectedCatalog }: { sto
         }}
       />
       <DialogHost />
+      <ContextMenuHost />
     </div>
   )
 }

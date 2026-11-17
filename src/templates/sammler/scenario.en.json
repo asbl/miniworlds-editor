@@ -1,0 +1,12 @@
+{
+ "title": "Collect coins",
+ "level": "Beginner",
+ "description": "Steer the player with the arrow keys or WASD and collect coins. A text counts the points.",
+ "tasks": [
+  "Start with Run and collect all coins (arrow keys or WASD; the world has to be clicked to steer).",
+  "Change the player's speed (self.x += 3).",
+  "Create more coins: change the number in range(6).",
+  "Create a class Gegner that subtracts points when the player touches it.",
+  "Show \"You won!\" when all coins are collected."
+ ]
+}

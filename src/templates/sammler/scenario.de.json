@@ -1,0 +1,12 @@
+{
+ "title": "Münzen sammeln",
+ "level": "Einstieg",
+ "description": "Steuere den Spieler mit den Pfeiltasten oder WASD und sammle Münzen. Ein Text zählt die Punkte.",
+ "tasks": [
+  "Starte mit Run und sammle alle Münzen (Pfeiltasten oder WASD; zum Steuern muss die Welt angeklickt sein).",
+  "Ändere die Geschwindigkeit des Spielers (self.x += 3).",
+  "Erzeuge mehr Münzen: ändere die Zahl in range(6).",
+  "Lege eine Klasse Gegner an, die Punkte abzieht, wenn der Spieler sie berührt.",
+  "Zeige „Gewonnen!“, wenn alle Münzen gesammelt sind."
+ ]
+}

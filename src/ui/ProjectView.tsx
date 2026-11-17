@@ -2,7 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { Workspace, FileEntry } from '../workspace'
 import { renamePath, uniquePath } from '../workspace'
 import { t, useLang } from '../i18n'
-import { addImport, classNameProblem, classPath, classSource, removeImport, CLASS_DIR, type ClassKind } from '../project/classes'
+import { addImport, canSubclass, classNameProblem, classPath, classSource, removeImport, subclassSource, CLASS_DIR, type BaseClass, type ClassKind } from '../project/classes'
+import { ImageDialog } from './ImageDialog'
+import { imageSize, mimeOf } from '../greenfoot/imageLibrary'
+import { classImagePath, fitSize, setClassImage } from '../project/classImage'
+import { classSource as modelClassSource } from '../uml/model'
+import { UmlDiagram } from '../uml/UmlDiagram'
+import { classAtLine, signatures, staleClasses, type Member, type ModelClass } from '../uml/model'
+import { useClassModel } from '../uml/useModel'
+import { openContextMenu } from './ContextMenu'
 import { detectKind, ENTRY_DEFAULT } from '../project/manifest'
 import { isImagePath, isTextPath } from '../project/search'
 import type { Catalog } from '../packages/catalog'
@@ -13,6 +21,10 @@ import { useSettings } from './useSettings'
 import { useCatalog } from './hooks'
 import { PackagesDialog } from './PackagesDialog'
 import { WorldPanel } from './WorldPanel'
+import { useGreenfoot, useGreenfootMeta } from '../greenfoot/useGreenfoot'
+import { engineTier } from '../packages/versions'
+import { useAutoReload } from './useAutoReload'
+import { useAutoReloadSetting, useMode } from './useMode'
 import { BinaryViewer } from './ImageViewer'
 import { FileTree } from './FileTree'
 import { Menu, type MenuItem } from './Menu'
@@ -45,30 +57,100 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
   const { fs } = workspace
   const [entries, setEntries] = useState<FileEntry[]>([])
   const [session, setSession] = useState<Session | null>(null)
-  const [tab, setTab] = useState<'files' | 'search'>('files')
+  const [tab, setTab] = useState<'files' | 'search' | 'classes'>('files')
+  const [details, setDetails] = useState(true)
+  const [cursor, setCursor] = useState<{ path: string; line: number } | null>(null)
+  const [pickedClass, setPickedClass] = useState<string | null>(null)
+  const [loadedSigs, setLoadedSigs] = useState<Record<string, string> | null>(null)
   const [searchSignal, setSearchSignal] = useState(0)
   const [dragging, setDragging] = useState(false)
   const mount = useRef<HTMLDivElement>(null)
+  const metaFlush = useRef<() => Promise<void>>(async () => {})
   const host = useRef<EditorHost | null>(null)
   const upload = useRef<HTMLInputElement>(null)
   const state = useSessionState(session)
   const kind = detectKind(entries)
   const [showPackages, setShowPackages] = useState(false)
+  const [imageFor, setImageFor] = useState<string | null>(null)
+  const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null)
 
   const refresh = useCallback(async () => setEntries(await fs.list()), [fs])
   const { settings, loaded: settingsLoaded, update: updateSettings } = useSettings(fs, kind, projectName, session)
   const { data: versions, status: catalogStatus } = useCatalog(catalog)
-  const program = useProgram({ runner, catalog, fs, session, host, settings, settingsLoaded, refresh })
+  const [mode, setMode] = useMode(projectName)
+  const [autoReload, setAutoReload] = useAutoReloadSetting()
+  // The Greenfoot view needs the ScenarioHost, which exists from miniworlds 4.4.0.15 on.
+  const effectiveVersion = settings.miniworlds ?? versions?.latest ?? null
+  const greenfootSupported = effectiveVersion === null || engineTier(effectiveVersion) === 'full'
+  const view = mode === 'greenfoot' && greenfootSupported ? 'greenfoot' : 'program'
+  const program = useProgram({ runner, catalog, fs, session, host, settings, settingsLoaded, mode: view, refresh })
+  const metaApi = useGreenfootMeta(fs, refresh)
+  metaFlush.current = metaApi.flush
+  const gf = useGreenfoot(runner, metaApi)
+  const reloader = useAutoReload({ enabled: view === 'greenfoot' && autoReload, session, runner, fs, reload: () => void program.run() })
+  const installedVersion = program.state.version
+  const modelSupported = installedVersion ? engineTier(installedVersion) === 'full' : greenfootSupported
+  const classModel = useClassModel({ runner, session, fs, supported: modelSupported, ready: installedVersion !== null && program.state.phase !== 'booting', fileSignal: entries })
+  // "changed since the world was started": remember each class's source when the world becomes ready
+  const modelRef = useRef(classModel)
+  modelRef.current = classModel
+  useEffect(() => {
+    if (gf.state.active && modelRef.current.model) setLoadedSigs(signatures(modelRef.current.model, modelRef.current.files))
+  }, [gf.state.active])
+  const stale = useMemo(() => (classModel.model ? staleClasses(classModel.model, classModel.files, loadedSigs) : new Set<string>()), [classModel.model, classModel.files, loadedSigs])
+  // thumbnails of class images in the diagram
+  useEffect(() => {
+    if (!classModel.model) return
+    const urls: string[] = []
+    let stale = false
+    void (async () => {
+      const out: Record<string, string> = {}
+      for (const c of classModel.model?.classes ?? []) {
+        const path = classImagePath(modelClassSource(c, classModel.files))
+        if (!path || !(await fs.exists(path))) continue
+        const url = URL.createObjectURL(new Blob([(await fs.readBytes(path)) as BlobPart], { type: mimeOf(path) }))
+        urls.push(url)
+        out[c.name] = url
+      }
+      if (!stale) setThumbs(out)
+    })()
+    return () => {
+      stale = true
+      urls.forEach((u) => URL.revokeObjectURL(u))
+    }
+  }, [classModel.model, classModel.files, fs, entries])
+
+  async function applyImage(className: string, path: string) {
+    setImageFor(null)
+    const info = classModel.model?.classes.find((c) => c.name === className)
+    if (!info || !session) return
+    const size = await imageSize(await fs.readBytes(path), path).then((d) => (d ? fitSize(d[0], d[1]) : null))
+    const edit = setClassImage(await session.readText(info.file), info, path, size)
+    if (!edit.ok) return void (await infoDialog(t('dialog.error'), t('image.oneLineSetup', { name: className, path })))
+    await session.writeText(info.file, edit.text)
+    await refresh()
+    classModel.refresh()
+  }
+
+  const cursorClass = classModel.model && cursor ? classAtLine(classModel.model, cursor.path, cursor.line) : null
+  async function switchView(next: 'program' | 'greenfoot') {
+    if (next === mode) return
+    if (program.busy) await program.stop()
+    setMode(next)
+  }
 
   // Editor + session lifecycle (one per project).
   useEffect(() => {
     let sess: Session | null = null
-    const editor = new EditorHost(mount.current as HTMLElement, (path, text) => sess?.edit(path, text), lang)
+    const editor = new EditorHost(mount.current as HTMLElement, (path, text) => sess?.edit(path, text), lang, (path, line) => setCursor({ path, line }))
     host.current = editor
     sess = new Session(fs, editor)
     setSession(sess)
-    registerFlush(() => (sess as Session).saveAll())
+    registerFlush(async () => {
+      await (sess as Session).saveAll()
+      await metaFlush.current()
+    })
     void (async () => {
       await refresh()
       const list = await fs.list()
@@ -115,24 +197,28 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
     }
   }
 
-  async function newClass() {
+  async function newClass(base?: BaseClass) {
     if (kind !== 'project') return void (await infoDialog(t('class.title'), t('class.onlyInProject')))
     const hasMain = await fs.exists(ENTRY_DEFAULT)
     const values = await openDialog({
-      title: t('class.title'),
+      title: base ? t('class.subclassOf', { name: base.name }) : t('class.title'),
       fields: [
         { kind: 'text', key: 'name', label: t('class.name') },
-        {
-          kind: 'select',
-          key: 'kind',
-          label: t('class.kind'),
-          initial: 'actor',
-          options: [
-            { value: 'actor', label: t('class.kind.actor') },
-            { value: 'world', label: t('class.kind.world') },
-            { value: 'plain', label: t('class.kind.plain') },
-          ],
-        },
+        ...(base
+          ? []
+          : [
+              {
+                kind: 'select' as const,
+                key: 'kind',
+                label: t('class.kind'),
+                initial: 'actor',
+                options: [
+                  { value: 'actor', label: t('class.kind.actor') },
+                  { value: 'world', label: t('class.kind.world') },
+                  { value: 'plain', label: t('class.kind.plain') },
+                ],
+              },
+            ]),
         ...(hasMain ? [{ kind: 'checkbox' as const, key: 'import', label: t('class.addImport'), initial: true }] : []),
       ],
       submit: 'dialog.create',
@@ -147,7 +233,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
     if (!values) return
     const name = String(values.name).trim()
     try {
-      await fs.write(classPath(name), classSource(values.kind as ClassKind, name))
+      await fs.write(classPath(name), base ? subclassSource(name, base) : classSource(values.kind as ClassKind, name))
       if (values.import && hasMain) await session?.writeText(ENTRY_DEFAULT, addImport(await (session as Session).readText(ENTRY_DEFAULT), name))
       await refresh()
       await session?.open(classPath(name))
@@ -259,6 +345,41 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
   const showBinary = active !== null && !isTextPath(active)
   const memoryOnly = workspace.kind === 'memory'
 
+  // ---- class diagram ----
+  function baseOf(info: ModelClass | null, name: string): BaseClass | null {
+    if (info) return { name, user: true, kind: info.kind, file: info.file }
+    const lib = classModel.model?.libraries.find((l) => l.name === name)
+    return lib ? { name, user: false, kind: lib.kind } : null
+  }
+
+  function onUmlSelect(info: ModelClass | null, name: string) {
+    setPickedClass(name)
+    if (info) void session?.open(info.file, { line: info.line, column: 0, length: 0 })
+  }
+
+  function onUmlMember(info: ModelClass, _kind: 'attribute' | 'method', member: Member) {
+    setPickedClass(info.name)
+    void session?.open(info.file, { line: member.line, column: 0, length: 0 })
+  }
+
+  function onUmlMenu(event: MouseEvent, info: ModelClass | null, name: string) {
+    const base = baseOf(info, name)
+    const items: Parameters<typeof openContextMenu>[2] = [{ header: name }]
+    if (info?.kind === 'actor') {
+      items.push(
+        gf.state.active
+          ? { text: t('uml.menu.newObject', { name }), run: () => void gf.controller.arm(name) }
+          : { header: t('uml.menu.noWorld') },
+      )
+    }
+    if (info) items.push({ text: t('uml.menu.source'), run: () => onUmlSelect(info, name) })
+    if (info?.kind === 'actor') items.push({ text: t('uml.menu.image'), run: () => setImageFor(name) })
+    if (base && kind === 'project' && canSubclass(base)) {
+      items.push('-', { text: t('uml.menu.subclass', { name }), run: () => void newClass(base) })
+    }
+    if (items.length > 1) openContextMenu(event.clientX, event.clientY, items)
+  }
+
   const addMenu = useMemo<MenuItem[]>(
     () => [
       { label: t('files.newFile'), onSelect: () => void newFile() },
@@ -303,6 +424,26 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
         <button type="button" onClick={() => runner.restart()} title={t('run.restart')} aria-label={t('run.restart')}>
           ↻
         </button>
+        <div class="segmented" role="group" aria-label={t('mode.label')}>
+          <button type="button" aria-pressed={view === 'program'} onClick={() => void switchView('program')}>
+            {t('mode.program')}
+          </button>
+          <button
+            type="button"
+            aria-pressed={view === 'greenfoot'}
+            disabled={!greenfootSupported}
+            title={greenfootSupported ? undefined : t('mode.needsFull')}
+            onClick={() => void switchView('greenfoot')}
+          >
+            {t('mode.greenfoot')}
+          </button>
+        </div>
+        {view === 'greenfoot' && (
+          <label class="inline small">
+            <input type="checkbox" checked={autoReload} onChange={(e) => setAutoReload(e.currentTarget.checked)} />
+            <span>{t('greenfoot.autoReload')}</span>
+          </label>
+        )}
         <span class="spacer" />
         <Menu
           label={`${t('version.label', { version: pinned ?? t('version.newest') })} ▾`}
@@ -330,11 +471,22 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
           </button>
         </div>
       )}
+      {reloader.problem && view === 'greenfoot' && (
+        <div class="notice error" role="alert">
+          <span>{t('greenfoot.syntaxError', { path: reloader.problem.path, line: reloader.problem.line, message: reloader.problem.message })}</span>
+          <button type="button" onClick={() => void program.jumpTo({ path: reloader.problem?.path ?? '', line: reloader.problem?.line ?? 1 })}>
+            {t('console.jump')}
+          </button>
+        </div>
+      )}
       <div class="body">
-      <aside class="sidebar">
+      <aside class={tab === 'classes' ? 'sidebar wide' : 'sidebar'}>
         <div class="sidebar-tabs" role="tablist">
           <button type="button" role="tab" aria-selected={tab === 'files'} onClick={() => setTab('files')}>
             {t('files.title')}
+          </button>
+          <button type="button" role="tab" aria-selected={tab === 'classes'} onClick={() => setTab('classes')}>
+            {t('uml.title')}
           </button>
           <button type="button" role="tab" aria-selected={tab === 'search'} onClick={openSearch} title="Ctrl+Shift+F">
             {t('search.title')}
@@ -342,7 +494,38 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
           {tab === 'files' && <Menu label="+" title={t('files.newFile')} items={addMenu} align="right" />}
         </div>
         {kind === 'legacy' && <p class="badge">{t('project.legacyBadge')}</p>}
-        {tab === 'files' ? (
+        {tab === 'classes' ? (
+          <div class="uml-panel">
+            <div class="uml-tools">
+              <label class="inline small">
+                <input type="checkbox" checked={details} onChange={(e) => setDetails(e.currentTarget.checked)} />
+                <span>{t('uml.details')}</span>
+              </label>
+              <button type="button" disabled={kind !== 'project'} onClick={() => void newClass()}>
+                {t('uml.newClass')}
+              </button>
+            </div>
+            {classModel.status !== 'ready' && <p class="muted small uml-note">{t(`uml.${classModel.status}` as const)}</p>}
+            {classModel.model && classModel.model.errors.length > 0 && (
+              <p class="uml-note small error-text">{t('uml.syntaxFiles', { files: classModel.model.errors.map((e) => e.file).join(', ') })}</p>
+            )}
+            <div class="uml-scroll">
+              {classModel.model && (
+                <UmlDiagram
+                  model={classModel.model}
+                  details={details}
+                  counts={gf.state.byClass}
+                  marks={{ selected: pickedClass, cursor: cursorClass, object: gf.state.selected?.cls ?? null, armed: gf.state.armed?.cls ?? null }}
+                  stale={stale}
+                  images={thumbs}
+                  onSelect={onUmlSelect}
+                  onMember={onUmlMember}
+                  onMenu={onUmlMenu}
+                />
+              )}
+            </div>
+          </div>
+        ) : tab === 'files' ? (
           <FileTree
             entries={entries}
             active={active}
@@ -392,7 +575,20 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
           <span>{state.dirty.size > 0 ? t('status.saving') : t('status.saved')}</span>
         </div>
       </main>
-      <WorldPanel runner={runner} onJump={(loc) => void program.jumpTo(loc)} />
+      <WorldPanel
+        runner={runner}
+        onJump={(loc) => void program.jumpTo(loc)}
+        tasks={{
+          items: metaApi.meta.tasks,
+          done: metaApi.meta.tasksDone,
+          onToggle: (i) => metaApi.setMeta({ ...metaApi.meta, tasksDone: { ...metaApi.meta.tasksDone, [i]: !metaApi.meta.tasksDone[i] } }),
+        }}
+        greenfoot={
+          view === 'greenfoot'
+            ? { controller: gf.controller, state: gf.state, onReset: () => void program.run(), onInsert: (code) => host.current?.insertText(code) }
+            : undefined
+        }
+      />
       </div>
       {memoryOnly && (
         <div class="banner" role="alert">
@@ -400,6 +596,18 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
         </div>
       )}
       {dragging && <div class="drop-hint">{t('files.dropHint')}</div>}
+      {imageFor && (
+        <ImageDialog
+          fs={fs}
+          className={imageFor}
+          current={(() => {
+            const c = classModel.model?.classes.find((x) => x.name === imageFor)
+            return c ? classImagePath(modelClassSource(c, classModel.files)) : null
+          })()}
+          onChoose={(path) => void applyImage(imageFor, path)}
+          onClose={() => setImageFor(null)}
+        />
+      )}
       {showPackages && (
         <PackagesDialog
           packages={settings.packages}

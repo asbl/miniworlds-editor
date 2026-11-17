@@ -217,6 +217,38 @@ describe('Runner', () => {
     expect(workers).toHaveLength(2)
   })
 
+  it('starts a scenario run and reports readiness', async () => {
+    const { runner, workers } = setup()
+    await bootReady(runner, workers)
+    void runner.run({}, 'main.py', config, { scenario: true })
+    await tick()
+    expect(workers[0]?.last('run').scenario).toBe(true)
+    expect(runner.state).toMatchObject({ mode: 'scenario', scenarioReady: false })
+    workers[0]?.emit({ type: 'scenario-ready' })
+    expect(runner.state.scenarioReady).toBe(true)
+    workers[0]?.emit({ type: 'exit', error: null, changed: {}, deleted: [] })
+    expect(runner.state.scenarioReady).toBe(false)
+  })
+
+  it('answers rpc calls by id and fails pending ones when the worker goes away', async () => {
+    const { runner, workers } = setup()
+    await bootReady(runner, workers)
+    const first = runner.rpc('scenario:act', 1)
+    const second = runner.rpc('model', {})
+    await tick()
+    const sent = workers[0]?.sent.filter((m) => m.type === 'rpc') as Extract<ToWorker, { type: 'rpc' }>[]
+    expect(sent.map((m) => m.name)).toEqual(['scenario:act', 'model'])
+    workers[0]?.emit({ type: 'rpc-result', id: sent[1]?.id as number, reply: { ok: true, value: 'M' } })
+    expect(await second).toEqual({ ok: true, value: 'M' })
+    runner.restart()
+    expect(await first).toMatchObject({ ok: false })
+  })
+
+  it('rpc without a worker is an error, not a hang', async () => {
+    const { runner } = setup()
+    expect(await runner.rpc('model', {})).toMatchObject({ ok: false })
+  })
+
   it('forwards input only while a program runs', async () => {
     const { runner, workers } = setup()
     await bootReady(runner, workers)

@@ -28,6 +28,7 @@ export class Session {
   private latest = new Map<string, string>()
   private timers = new Map<string, ReturnType<typeof setTimeout>>()
   private listeners = new Set<() => void>()
+  private editListeners = new Set<() => void>()
 
   constructor(
     readonly fs: Fs,
@@ -50,8 +51,15 @@ export class Session {
     return this.latest.get(path) ?? (await this.fs.read(path))
   }
 
+  /** Notified on every edit in the editor (e.g. for auto-reload). */
+  subscribeEdits(listener: () => void): () => void {
+    this.editListeners.add(listener)
+    return () => void this.editListeners.delete(listener)
+  }
+
   /** Called by the editor on every change. */
   edit(path: string, text: string): void {
+    this.editListeners.forEach((l) => l())
     this.latest.set(path, text)
     if (!this.state.dirty.has(path)) this.set({ dirty: new Set(this.state.dirty).add(path) })
     clearTimeout(this.timers.get(path))
@@ -161,5 +169,6 @@ export class Session {
     this.timers.forEach((t) => clearTimeout(t))
     this.timers.clear()
     this.listeners.clear()
+    this.editListeners.clear()
   }
 }

@@ -1,8 +1,9 @@
+import type { ComponentChildren } from 'preact'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { t, useLang, type MessageKey } from '../i18n'
 
 export type Field =
-  | { kind: 'text'; key: string; label: string; initial?: string }
+  | { kind: 'text'; key: string; label: string; initial?: string; placeholder?: string }
   | { kind: 'radio'; key: string; label: string; initial: string; options: { value: string; label: string; hint?: string }[] }
   | { kind: 'checkbox'; key: string; label: string; initial: boolean }
   | { kind: 'select'; key: string; label: string; initial: string; options: { value: string; label: string }[] }
@@ -18,6 +19,10 @@ export interface DialogSpec {
   danger?: boolean
   /** Hide the cancel button (information only). */
   info?: boolean
+  /** Free content below the message (e.g. a table). */
+  body?: ComponentChildren
+  /** Extra buttons left of Cancel/OK; they do not close the dialog unless `close` is set. */
+  extra?: { label: string; onClick: () => void; close?: boolean }[]
   /** Return an error text to keep the dialog open. */
   validate?: (values: Values) => string | null | Promise<string | null>
 }
@@ -92,12 +97,13 @@ function DialogView({ pending, close }: { pending: Pending; close: () => void })
       <form onSubmit={(e) => void submit(e)}>
         <h2>{spec.title}</h2>
         {spec.message && <p class="dialog-message">{spec.message}</p>}
+        {spec.body}
         {(spec.fields ?? []).map((field) => (
           <div class="field" key={field.key}>
             {field.kind === 'text' && (
               <label>
                 <span>{field.label}</span>
-                <input type="text" value={values[field.key] as string} onInput={(e) => set(field.key, e.currentTarget.value)} />
+                <input type="text" value={values[field.key] as string} placeholder={field.placeholder} autocomplete="off" spellcheck={false} onInput={(e) => set(field.key, e.currentTarget.value)} />
               </label>
             )}
             {field.kind === 'checkbox' && (
@@ -145,6 +151,11 @@ function DialogView({ pending, close }: { pending: Pending; close: () => void })
           </p>
         )}
         <div class="dialog-buttons">
+          {(spec.extra ?? []).map((x) => (
+            <button type="button" key={x.label} onClick={() => (x.onClick(), x.close && finish(null))}>
+              {x.label}
+            </button>
+          ))}
           {!spec.info && (
             <button type="button" onClick={() => finish(null)}>
               {t('dialog.cancel')}

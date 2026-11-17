@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { MemoryFs, renamePath, uniquePath } from '../workspace'
-import { addImport, classNameProblem, classPath, classSource, importLine, removeImport } from './classes'
+import { addImport, canSubclass, subclassSource, classNameProblem, classPath, classSource, importLine, removeImport } from './classes'
 import { createProject } from './create'
 import { detectKind, parseManifest, serializeManifest } from './manifest'
 import { compileQuery, BadPatternError, replaceInProject, replaceText, searchProject, searchText } from './search'
@@ -88,6 +88,21 @@ describe('class names and imports', () => {
   })
   it('removes the import again', () => {
     expect(removeImport('import a\nfrom classes.B import B\nx = 1\n', 'B')).toBe('import a\nx = 1\n')
+  })
+})
+
+describe('subclasses', () => {
+  it('imports a user base from classes/', () => {
+    const base = { name: 'Krabbe', user: true, kind: 'actor', file: 'classes/Krabbe.py' } as const
+    expect(canSubclass(base)).toBe(true)
+    expect(subclassSource('Hai', base)).toBe('from classes.Krabbe import Krabbe\n\n\nclass Hai(Krabbe):\n    pass\n')
+  })
+  it('a base in main.py cannot be imported; miniworlds bases use the template of their kind', () => {
+    expect(canSubclass({ name: 'K', user: true, kind: 'actor', file: 'main.py' })).toBe(false)
+    expect(canSubclass({ name: 'Circle', user: false, kind: 'actor' })).toBe(true)
+    expect(canSubclass({ name: 'Timer', user: false, kind: 'other' })).toBe(false)
+    expect(subclassSource('X', { name: 'Circle', user: false, kind: 'actor' })).toContain('class X(mw.Circle):')
+    expect(subclassSource('W', { name: 'World', user: false, kind: 'world' })).toContain('class W(mw.World):')
   })
 })
 

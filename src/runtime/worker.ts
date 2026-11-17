@@ -94,7 +94,9 @@ function collectChanges(): FileChanges & { transfer: Transferable[] } {
 // Python → JS notifications (see runner.py)
 scope._mw_notify = (kind: string, payload: string) => {
   const value = JSON.parse(payload) as string | null
-  if (kind === 'notice') {
+  if (kind === 'scenario-ready') {
+    post({ type: 'scenario-ready' })
+  } else if (kind === 'notice') {
     post({ type: 'notice', code: value as 'silent-audio' })
   } else if (kind === 'exit') {
     const { transfer, ...changes } = collectChanges()
@@ -154,7 +156,7 @@ async function run(message: Extract<ToWorker, { type: 'run' }>) {
   }
   baseline = snapshot()
   try {
-    await py.runPythonAsync(`import mw_runner\nawait mw_runner.run(${JSON.stringify(message.entry)})`)
+    await py.runPythonAsync(`import mw_runner\nawait mw_runner.run(${JSON.stringify(message.entry)}, ${message.scenario ? 'True' : 'False'})`)
   } catch (error) {
     // Failures outside the program (the runner itself); the program's own errors arrive via 'exit'.
     const { transfer, ...changes } = collectChanges()
@@ -200,6 +202,9 @@ scopeSelf.onmessage = async ({ data }: MessageEvent<ToWorker>) => {
       break
     case 'install':
       await install(data.requirement)
+      break
+    case 'rpc':
+      post({ type: 'rpc-result', id: data.id, reply: JSON.parse(runner.rpc(data.name, JSON.stringify(data.args)) as string) })
       break
     case 'input':
       if (runner) runner.post_input(JSON.stringify(data.event))

@@ -1,0 +1,12 @@
+{
+ "title": "Pong",
+ "level": "Mittel",
+ "description": "Ein Ball springt durch das Feld und wird vom Schläger zurückgeschlagen. Der Schläger wird mit W/S oder Pfeil hoch/runter bewegt.",
+ "tasks": [
+  "Starte mit Run und halte den Ball im Spiel.",
+  "Mache den Ball schneller, wenn er den Schläger trifft.",
+  "Zähle die Treffer in einem Text oben im Feld.",
+  "Setze den Ball zurück, wenn er links aus dem Feld geht.",
+  "Füge einen zweiten Schläger auf der rechten Seite hinzu."
+ ]
+}

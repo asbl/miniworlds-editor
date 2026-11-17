@@ -12,6 +12,7 @@ import js
 
 ROOT = "/project"
 _tasks = []
+_host = None  # ScenarioHost while a Greenfoot-style run is active
 _mouse = {"pos": (0, 0), "buttons": (False, False, False)}
 
 
@@ -139,33 +140,97 @@ def _on_done(_task):
         _notify("exit", None if exc is None else format_exception(exc))
 
 
-async def run(entry):
-    """Execute the entry file. `world.run()` schedules the main loop as a task; its end is reported via 'exit'."""
-    global _tasks, _audio_notice_sent
+async def run(entry, scenario=False):
+    """Execute the entry file. `world.run()` schedules the main loop as a task; its end is reported via 'exit'.
+
+    With `scenario=True` a ScenarioHost is installed first: the world starts paused and answers `rpc("scenario:…")`
+    commands (act, run, place, inspect, …), see miniworlds.tools.scenario_host.
+    """
+    global _tasks, _audio_notice_sent, _host
     _tasks = []
+    _host = None
     _audio_notice_sent = False  # one hint per run
     _purge_modules()
     me = asyncio.current_task()
     before = set(asyncio.all_tasks())
+    ready = None
+    host = None
+    if scenario:
+        from miniworlds.base import runtime_host
+        from miniworlds.tools.scenario_host import ScenarioHost
+
+        ready = asyncio.get_running_loop().create_future()
+        host = ScenarioHost(on_ready=lambda h: ready.done() or ready.set_result(True))
+        runtime_host.install(host)
     # Scripts that call asyncio.run() inside the already running loop would crash; schedule instead.
     asyncio.run = lambda coro, **kw: asyncio.ensure_future(coro)
     os.chdir(ROOT)
     if ROOT not in sys.path:
         sys.path.insert(0, ROOT)
+    namespace = {}
     try:
         # absolute path: tracebacks then say "/project/main.py", which the editor turns into a link
-        runpy.run_path(entry if entry.startswith("/") else f"{ROOT}/{entry}", run_name="__main__")
+        namespace = runpy.run_path(entry if entry.startswith("/") else f"{ROOT}/{entry}", run_name="__main__")
     except SystemExit:
         pass
     except BaseException as exc:  # noqa: BLE001 - the pupil's program may raise anything
+        _release_host()
         _notify("exit", format_exception(exc))
         return
     _tasks = [t for t in asyncio.all_tasks() if t is not me and t not in before]
     if not _tasks:
-        _notify("exit", None)
+        _release_host()
+        _notify("exit", "Das Programm ruft world.run() nicht auf. / The program never calls world.run()." if scenario else None)
         return
     for task in _tasks:
         task.add_done_callback(_on_done)
+    if scenario:
+        host.bind_program(namespace, ROOT)
+        done, _pending = await asyncio.wait([ready] + _tasks, timeout=30, return_when=asyncio.FIRST_COMPLETED)
+        if ready not in done:
+            # the main loop ended or failed before the world was ready; _on_done reports an error, otherwise say why
+            if all(t.done() for t in _tasks):
+                return
+            _release_host()
+            _notify("exit", "Die Welt konnte nicht gestartet werden. / The world could not be started.")
+            return
+        _host = host
+        _notify("scenario-ready")
+
+
+def _release_host():
+    global _host
+    _host = None
+    try:
+        from miniworlds.base import runtime_host
+
+        runtime_host.install(None)
+    except Exception:
+        pass
+
+
+def rpc(name, args_json="[]"):
+    """Requests from the UI; always answers JSON {"ok": …, "value"|"error": …}."""
+    try:
+        args = json.loads(args_json)
+        if name.startswith("scenario:"):
+            if _host is None:
+                return json.dumps({"ok": False, "error": "Das Programm läuft nicht."})
+            return _host.dispatch(name[len("scenario:"):], args_json)
+        if name == "model":
+            from miniworlds.tools import class_model
+
+            return json.dumps({"ok": True, "value": class_model.analyze(args[0])})
+        if name == "check":
+            for path, source in args[0].items():
+                try:
+                    compile(source, path, "exec")
+                except SyntaxError as e:
+                    return json.dumps({"ok": True, "value": {"path": path, "line": e.lineno or 1, "message": e.msg}})
+            return json.dumps({"ok": True, "value": None})
+        raise ValueError(f"Unknown request: {name}")
+    except Exception as error:  # reported to the UI, never fatal
+        return json.dumps({"ok": False, "error": f"{type(error).__name__}: {error}"})
 
 
 async def stop():
@@ -202,6 +267,7 @@ async def stop():
     except Exception:
         pass
     _tasks = []
+    _release_host()
     _mouse["buttons"] = (False, False, False)
     _purge_modules()
 

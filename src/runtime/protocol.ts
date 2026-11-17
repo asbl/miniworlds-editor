@@ -6,6 +6,9 @@ export type InputEvent =
   | { kind: 'mousemove'; x: number; y: number; buttons: number }
   | { kind: 'wheel'; dx: number; dy: number }
 
+/** `{ok, value}` or `{ok: false, error}`: same shape as miniworlds' ScenarioHost.dispatch. */
+export type RpcReply<T = unknown> = { ok: true; value: T } | { ok: false; error: string }
+
 export type BootStep = 'pyodide' | 'packages' | 'miniworlds' | 'extra'
 
 export type ToWorker =
@@ -17,10 +20,13 @@ export type ToWorker =
       miniworlds: string | null
       packages: string[]
     }
-  | { type: 'run'; files: Record<string, ArrayBuffer>; entry: string }
+  /** `scenario`: Greenfoot-style run, the world starts paused and answers `scenario:*` requests. */
+  | { type: 'run'; files: Record<string, ArrayBuffer>; entry: string; scenario: boolean }
   | { type: 'stop' }
   | { type: 'input'; event: InputEvent }
   | { type: 'install'; requirement: string }
+  /** Request/reply: scenario commands ("scenario:act") and static analysis ("model", "check"). */
+  | { type: 'rpc'; id: number; name: string; args: unknown[] }
 
 /** Files the program created, changed or deleted while it ran. */
 export interface FileChanges {
@@ -39,3 +45,6 @@ export type FromWorker =
   | ({ type: 'exit'; error: string | null } & FileChanges)
   | ({ type: 'stopped' } & FileChanges)
   | { type: 'installed'; requirement: string; ok: boolean; error?: string }
+  /** Scenario mode: the world exists and is paused, commands are accepted. */
+  | { type: 'scenario-ready' }
+  | { type: 'rpc-result'; id: number; reply: RpcReply }

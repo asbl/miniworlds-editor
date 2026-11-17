@@ -1,6 +1,6 @@
 import { t } from '../i18n'
 import { STOP_TIMEOUT_MS } from './config'
-import type { BootStep, FileChanges, FromWorker, InputEvent, ToWorker } from './protocol'
+import type { BootStep, FileChanges, FromWorker, InputEvent, RpcReply, ToWorker } from './protocol'
 
 export type Phase = 'idle' | 'booting' | 'ready' | 'running' | 'stopping'
 
@@ -43,6 +43,10 @@ export interface RunnerState {
   lines: readonly ConsoleLine[]
   /** Increments whenever `canvas` is replaced. */
   canvasGeneration: number
+  /** How the current/last program was started. */
+  mode: 'program' | 'scenario' | null
+  /** Scenario mode only: the world exists (paused) and answers commands. */
+  scenarioReady: boolean
 }
 
 export interface RunResult extends FileChanges {
@@ -66,7 +70,7 @@ interface Waiter<T> {
  * Single program at a time. UI-framework free; components subscribe to `state`.
  */
 export class Runner<C extends CanvasLike = HTMLCanvasElement> {
-  state: RunnerState = { phase: 'idle', bootStep: null, version: null, lines: [], canvasGeneration: 0 }
+  state: RunnerState = { phase: 'idle', bootStep: null, version: null, lines: [], canvasGeneration: 0, mode: null, scenarioReady: false }
   canvas: C
 
   private worker: WorkerLike | null = null
@@ -74,6 +78,8 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
   private boot: { key: string; promise: Promise<void>; waiter: Waiter<void> } | null = null
   private runWaiter: Waiter<RunResult> | null = null
   private stopWaiter: Waiter<FileChanges> | null = null
+  private rpcWaiters = new Map<number, (reply: RpcReply) => void>()
+  private nextRpc = 1
   private installWaiters = new Map<string, Waiter<{ ok: boolean; error?: string }>>()
   private stopTimer: ReturnType<typeof setTimeout> | null = null
   private listeners = new Set<() => void>()
@@ -96,6 +102,11 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
   private log(kind: ConsoleLine['kind'], text: string): void {
     const lines = [...this.state.lines, { id: this.nextLine++, kind, text }]
     this.set({ lines: lines.length > MAX_LINES ? lines.slice(-MAX_LINES) : lines })
+  }
+
+  /** A line from the editor itself (not from the program), e.g. "start setup restored". */
+  note(text: string, kind: ConsoleLine['kind'] = 'system'): void {
+    this.log(kind, text)
   }
 
   clearConsole(): void {
@@ -151,7 +162,9 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
     this.stopWaiter = null
     for (const waiter of this.installWaiters.values()) waiter.resolve({ ok: false, error: reason })
     this.installWaiters.clear()
-    this.set({ phase: 'idle', bootStep: null, version: null })
+    for (const resolve of this.rpcWaiters.values()) resolve({ ok: false, error: reason })
+    this.rpcWaiters.clear()
+    this.set({ phase: 'idle', bootStep: null, version: null, scenarioReady: false })
   }
 
   private onCrash(worker: WorkerLike, text: string): void {
@@ -190,7 +203,7 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
         const { error, changed, deleted } = message
         if (error) this.log('stderr', error)
         this.log('system', t(error ? 'run.crashed' : 'run.finished'))
-        this.set({ phase: 'ready' })
+        this.set({ phase: 'ready', scenarioReady: false })
         this.runWaiter?.resolve({ error, changed, deleted, stopped: false })
         this.runWaiter = null
         break
@@ -198,13 +211,22 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
       case 'stopped':
         if (this.stopTimer) clearTimeout(this.stopTimer)
         this.stopTimer = null
-        this.set({ phase: 'ready' })
+        this.set({ phase: 'ready', scenarioReady: false })
         this.log('system', t('run.stopped'))
         this.runWaiter?.resolve({ changed: message.changed, deleted: message.deleted, error: null, stopped: true })
         this.runWaiter = null
         this.stopWaiter?.resolve({ changed: message.changed, deleted: message.deleted })
         this.stopWaiter = null
         break
+      case 'scenario-ready':
+        this.set({ scenarioReady: true })
+        break
+      case 'rpc-result': {
+        const resolve = this.rpcWaiters.get(message.id)
+        this.rpcWaiters.delete(message.id)
+        resolve?.(message.reply)
+        break
+      }
       case 'installed': {
         const waiter = this.installWaiters.get(message.requirement)
         this.installWaiters.delete(message.requirement)
@@ -215,7 +237,7 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
   }
 
   /** Runs `entry` with the given project files. Resolves when the program ends (or is stopped). */
-  async run(files: Record<string, Uint8Array>, entry: string, config: RuntimeConfig): Promise<RunResult> {
+  async run(files: Record<string, Uint8Array>, entry: string, config: RuntimeConfig, options: { scenario?: boolean } = {}): Promise<RunResult> {
     if (this.state.phase === 'running' || this.state.phase === 'stopping') await this.stop()
     await this.ensureBooted(config)
     const worker = this.worker
@@ -228,9 +250,9 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
       transfer.push(copy)
     }
     const result = new Promise<RunResult>((resolve, reject) => (this.runWaiter = { resolve, reject }))
-    this.set({ phase: 'running' })
+    this.set({ phase: 'running', mode: options.scenario ? 'scenario' : 'program', scenarioReady: false })
     this.log('system', t('run.started'))
-    worker.postMessage({ type: 'run', files: buffers, entry }, transfer)
+    worker.postMessage({ type: 'run', files: buffers, entry, scenario: options.scenario ?? false }, transfer)
     return result
   }
 
@@ -275,6 +297,20 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
       this.bootedKey = configKey({ ...config, packages: [...config.packages, requirement] })
     }
     return result
+  }
+
+  /**
+   * Request/reply to the worker: `scenario:<command>` (Greenfoot-style control, needs a scenario run) or a static
+   * analysis (`model`, `check`). Waits for a boot in progress; with no worker at all the reply is an error.
+   */
+  async rpc<T = unknown>(name: string, ...args: unknown[]): Promise<RpcReply<T>> {
+    if (this.boot) await this.boot.promise.catch(() => {})
+    const worker = this.worker
+    if (!worker || this.state.phase === 'booting') return { ok: false, error: t('run.state.idle') }
+    const id = this.nextRpc++
+    const reply = new Promise<RpcReply>((resolve) => this.rpcWaiters.set(id, resolve))
+    worker.postMessage({ type: 'rpc', id, name, args })
+    return reply as Promise<RpcReply<T>>
   }
 
   sendInput(event: InputEvent): void {

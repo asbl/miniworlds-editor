@@ -103,3 +103,24 @@ export function removeImport(source: string, name: string): string {
     .filter((l) => l.trim() !== line)
     .join('\n')
 }
+
+/** A base class chosen in the diagram: one of the pupil's classes, or a miniworlds class. */
+export interface BaseClass {
+  name: string
+  user: boolean
+  /** From the class model: what the class derives from in miniworlds. */
+  kind: 'actor' | 'world' | 'other'
+  /** Where a user class lives. */
+  file?: string
+}
+
+/** A subclass can import its base only from classes/ (main.py imports the classes, not the other way round). */
+export const canSubclass = (base: BaseClass): boolean => (base.user ? (base.file ?? '').startsWith(`${CLASS_DIR}/`) : base.kind !== 'other')
+
+/** Source for "new subclass of X". A miniworlds base starts from the matching template (a Circle-based actor, a world). */
+export function subclassSource(name: string, base: BaseClass): string {
+  if (base.user && (base.file ?? '').startsWith(`${CLASS_DIR}/`)) {
+    return `${importLine(base.name)}\n\n\nclass ${name}(${base.name}):\n    pass\n`
+  }
+  return classSource(base.kind === 'world' ? 'world' : base.kind === 'actor' ? 'actor' : 'plain', name)
+}

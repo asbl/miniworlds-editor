@@ -64,6 +64,8 @@ export class EditorHost implements Surface {
     parent: HTMLElement,
     private onChange: (path: string, text: string) => void,
     private lang: Lang,
+    /** Cursor moved or text changed: file and 1-based line of the main selection. */
+    private onCursor: (path: string, line: number) => void = () => {},
   ) {
     this.view = new EditorView({ parent, state: EditorState.create({ doc: '', extensions: [this.language.of(this.phrases())] }) })
   }
@@ -87,6 +89,9 @@ export class EditorHost implements Surface {
           if (update.docChanged && this.current === path) {
             this.onChange(path, update.state.doc.toString())
           }
+          if ((update.selectionSet || update.docChanged) && this.current === path) {
+            this.onCursor(path, update.state.doc.lineAt(update.state.selection.main.head).number)
+          }
         }),
       ],
     })
@@ -96,6 +101,7 @@ export class EditorHost implements Surface {
     if (this.current) this.states.set(this.current, this.view.state)
     this.current = path
     this.view.setState(this.states.get(path) ?? this.createState(path, text))
+    this.onCursor(path, this.view.state.doc.lineAt(this.view.state.selection.main.head).number)
     this.view.focus()
   }
 
@@ -117,6 +123,12 @@ export class EditorHost implements Surface {
     const from = Math.min(row.from + column, row.to)
     const to = Math.min(from + length, row.to)
     this.view.dispatch({ selection: EditorSelection.single(from, to), effects: EditorView.scrollIntoView(from, { y: 'center' }) })
+    this.view.focus()
+  }
+
+  /** Insert text at the cursor (or replace the selection) of the file shown. */
+  insertText(text: string): void {
+    this.view.dispatch(this.view.state.replaceSelection(text))
     this.view.focus()
   }
 

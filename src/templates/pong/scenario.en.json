@@ -1,0 +1,12 @@
+{
+ "title": "Pong",
+ "level": "Intermediate",
+ "description": "A ball bounces through the field and is hit back by the paddle. Move the paddle with W/S or the up/down arrows.",
+ "tasks": [
+  "Start with Run and keep the ball in play.",
+  "Make the ball faster when it hits the paddle.",
+  "Count the hits in a text at the top of the field.",
+  "Reset the ball when it leaves the field on the left.",
+  "Add a second paddle on the right side."
+ ]
+}

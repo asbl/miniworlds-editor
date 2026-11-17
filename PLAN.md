@@ -201,8 +201,7 @@ Entscheidungen:
 0. Spikes S1–S6, danach Festlegung von Framework und Language-Service.
 1. **Editor-Kern:** Tabs, Dateibaum, CM6, Projektformen, OPFS + ZIP, DE/EN, Suchen/Ersetzen. **Umgesetzt (2026-11-17)**, siehe „Stand Meilenstein 1“.
 2. **Run + Konsole + Pakete:** Pyodide-Runner, Fehler → Code-Sprung, `micropip`-Dialog, Versionswahl + Update-Warnung. **Umgesetzt (2026-11-17)**, siehe „Stand Meilenstein 2“.
-3. **Greenfoot-Ansicht** als Panel (Port von `gf-host`, `gf-uml`, `gf-assist`, `gf-images`, `gf-journal`);
-   das bestehende `test/e2e.py` läuft weiter.
+3. **Greenfoot-Ansicht** als Panel (Port von `gf-host`, `gf-uml`, `gf-assist`, `gf-images`, `gf-journal`); **umgesetzt (2026-11-17)** bis auf `gf-assist` (gehört zu Meilenstein 4), siehe „Stand Meilenstein 3“.
 4. **Language Service** nach Ergebnis von S2.
 5. **Release:** PWA, Hosting (statisch), CI mit Tests, Moodle-iframe; der Editor ersetzt die `miniworlds-ide`-Startseite
    (Deployment unter miniworlds.opencoding.de); danach Migration des alten Greenfoot-Clients.
@@ -252,6 +251,27 @@ Bekannte Lücken:
 - **Windows-Projekte mit anderer Groß-/Kleinschreibung** (`Images/Player.PNG`): der alte Web-Player legt dafür kleingeschriebene Aliase an, hier noch nicht.
 - Schreibt ein hart beendetes Programm Dateien, gehen sie verloren; große Projekte werden bei jedem Lauf komplett übertragen (10 MB: ~0,2 s), inkrementell erst bei Bedarf.
 - Firefox: Pyodide-Start deutlich langsamer als Chromium (S6 mit echten Geräten messen).
+
+### Stand Meilenstein 3 (2026-11-17)
+
+Umgesetzt und getestet (151 Vitest-Tests; Browsertests `test/greenfoot.py` und `test/templates.py` in Chromium und Firefox; App 207 KB gzip):
+- **Ansicht „Greenfoot“** (Umschalter neben „Programm“, pro Projekt gemerkt; braucht miniworlds ≥ 4.4.0.15): Der Runner startet die Welt pausiert unter dem `ScenarioHost`
+  (`run { scenario: true }`), Befehle laufen als Request/Reply zum Worker (`rpc`, typisiert in `ScenarioClient`). Act, Run/Pause, Tempo (1/8×…8×), Reset, Schrittzähler.
+- **Welt-Interaktion** (nur pausiert; läuft die Welt, gehören Maus und Tastatur dem Programm): Figur platzieren (Klasse „bewaffnen“, Shift = mehrfach, Esc = abbrechen; Konstruktor-Werte werden einmal abgefragt),
+  auswählen und ziehen, Rechtsklick → Methoden aufrufen (Argumente nur als Python-Literale), Inspizieren, Löschen, „Neu: Klasse“ an der Klickstelle, „Welt speichern“ (Code kopieren oder in den Editor einfügen).
+- **Startaufstellung** (Journal, Datei `greenfoot.json`, kompatibel zum alten Web-Client): Alles, was vor dem ersten Schritt von Hand passiert, wird nach Reset und Auto-Reload wieder abgespielt; „Als Start merken“, „Aufstellung leeren“,
+  Hinweis bei Änderungen nach dem ersten Schritt.
+- **Auto-Reload:** Nach einer Tipp-Pause (0,9 s) prüft `compile()` im Worker alle Dateien. Ein Syntaxfehler lässt die Welt stehen und zeigt eine Meldung mit Sprung zur Zeile, sonst lädt die Welt neu (Startaufstellung inklusive). Abschaltbar.
+- **Klassendiagramm** (Seitenleiste „Klassen“, `class_model.analyze` im Worker, nur `ast`, Modell lebt auch bei Syntaxfehlern in einer Datei): Kästen mit Attributen und Methoden, Vererbungspfeile bis zu den miniworlds-Klassen (gestrichelt),
+  Zähler lebender Objekte, schraffiert = seit dem Start geändert. Verknüpfungen: Diagramm → Code (Klasse oder Member anklicken), Cursor im Editor → Klasse markiert, ausgewählte Figur → Klasse markiert (orange),
+  Kontextmenü: „Neu X()“, Quelltext, **Bild festlegen** (Bibliothek, Projekt, Upload; schreibt `self.add_costume(...)` und Größe in `on_setup`), **Neue Unterklasse** (Datei in `classes/` plus Import in `main.py`).
+- **Vorlagen mit Aufgaben:** Krabbe, Münzen sammeln und Pong (aus den Szenarien des alten Clients per `scripts/split_scenarios.py` in eine Klasse pro Datei zerlegt, DE und EN); Aufgabenliste mit Haken im Projekt (`greenfoot.json`).
+
+Hinweise und Grenzen:
+- Die Welt sieht nur **Klassen, deren Modul geladen wurde**: `main.py` muss jede Klasse importieren. „Neue Klasse“ und die Vorlagen tun das; bei Hand-Anlage muss man den Import selbst schreiben (ein Hinweis im Diagramm wäre eine Idee).
+- Ein Wechsel der Version setzt die Welt zurück; die Greenfoot-Ansicht ist bei `basic`-Versionen gesperrt (Tooltip erklärt warum).
+- **Noch offen für Funktionsgleichheit mit dem alten Client:** Autovervollständigung und Hinweise (Meilenstein 4), Offline/Service Worker und Einbetten in Moodle per `postMessage` (Meilenstein 5). Danach kann der Client aus `miniworlds-moodle-web-player/greenfoot/` abgelöst werden.
+- „Klasse umbenennen“ als Refactoring fehlt weiterhin (Meilenstein 1 vermerkt).
 
 ## 6. Risiken
 
