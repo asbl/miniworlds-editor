@@ -1,0 +1,58 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>S3 bench</title>
+<style>body{margin:0;background:#222;color:#ddd;font:12px monospace}canvas{background:#000}</style>
+<canvas id="canvas" width="400" height="300" tabindex="0"></canvas>
+<pre id="log"></pre>
+<script type="module">
+  import { boot, runScene } from './runtime.js'
+  const q = new URLSearchParams(location.search)
+  const mode = q.get('mode') ?? 'main'
+  const loadMs = Number(q.get('load') ?? 0) // simulated UI work per 100 ms tick
+  const scene = q.get('scene') ?? 'world'
+  const seconds = Number(q.get('dur') ?? 6)
+  const canvas = document.getElementById('canvas')
+  const logEl = document.getElementById('log')
+  const log = (t) => { logEl.textContent += t + '\n' }
+
+  // UI jank probe: a 16 ms timer; record how late it fires. Optional busy-work simulates CM6 / language service.
+  const lags = []
+  const bootLags = []
+  let measuring = false
+  let last = performance.now()
+  setInterval(() => { const n = performance.now(); (measuring ? lags : bootLags).push(n - last - 16); last = n }, 16)
+  if (loadMs > 0) {
+    setInterval(() => { const end = performance.now() + loadMs; while (performance.now() < end); }, 100)
+  }
+  const finish = (result) => {
+    lags.sort((a, b) => a - b)
+    result.boot_ui_lag_max_ms = +Math.max(0, ...bootLags).toFixed(0)
+    result.mode = mode; result.load_ms = loadMs
+    result.ui_lag_p95_ms = +lags[Math.floor(lags.length * 0.95)]?.toFixed(1)
+    result.ui_lag_max_ms = +lags[lags.length - 1]?.toFixed(1)
+    window.__result = result
+  }
+
+  try {
+    if (mode === 'main') {
+      const pyodide = await boot(canvas, log)
+      measuring = true
+      window.__ready = true
+      finish(await runScene(pyodide, scene, seconds))
+    } else {
+      const worker = new Worker('./worker.js', { type: 'module' })
+      window.__worker = worker
+      worker.onerror = (e) => { window.__result = { error: 'worker error: ' + e.message } }
+      const offscreen = canvas.transferControlToOffscreen()
+      worker.onmessage = (e) => {
+        if (e.data.type === 'log') { log(e.data.text); if (e.data.text.startsWith('boot ')) measuring = true }
+        else if (e.data.type === 'result') finish(e.data.result)
+        else if (e.data.type === 'error') window.__result = { error: e.data.text }
+      }
+      window.__ready = true
+      worker.postMessage({ type: 'run', canvas: offscreen, scene, seconds }, [offscreen])
+    }
+  } catch (error) {
+    window.__result = { error: String(error?.stack ?? error) }
+  }
+</script>
