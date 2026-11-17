@@ -1,0 +1,1 @@
+{"name":"s2-language-service-spike","private":true,"type":"module","dependencies":{"@astral-sh/ruff-wasm-nodejs":"^0.17.5","pyodide":"^0.29.3"}}

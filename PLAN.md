@@ -36,7 +36,7 @@ Browser (PWA)
 │   └─ BrowserBackend: OPFS (Fallback IndexedDB), ZIP-Import/-Export
 ├─ Runtime: Pyodide (gepinnt) + pygame-ce + miniworlds (micropip)
 │   └─ ScenarioHost (JSON-Kommandos: act/run/pause/place/inspect/call/…)
-└─ Language Service (Ort offen, siehe Spike S2)
+└─ Language-Worker (leichtes Pyodide: jedi + miniworlds-Hinweise, siehe S2)
 ```
 
 Regeln:
@@ -103,6 +103,33 @@ Entscheidung: **Worker-Runner als Standard, Main-Thread-Runner als Fallback** (z
 Worker-Support, wird in S6 geprüft). Beide implementieren dasselbe `Runner`-Interface; `ScenarioHost` spricht JSON-Strings
 und passt damit direkt auf `postMessage`. Das Language-Service-Pyodide (falls S2 ein zweites braucht) läuft in einem
 eigenen Worker. Offene Messungen: Speicher eines zweiten Pyodide, Verhalten in Firefox/Safari, echte Grafikhardware.
+
+### Ergebnisse S2: Language Service im Browser (2026-11-17)
+
+Aufbau: `spikes/s2/` (Node mit derselben V8-Engine wie Chromium; Pyodide 0.29.3, miniworlds 4.4.0.15). Keine Browser-
+Messung, Safari/Firefox ungeprüft. Beispielcode mit absichtlichen Anfängerfehlern in `sample.mjs`.
+
+| Kandidat | Größe | Latenz | Befund |
+|---|---|---|---|
+| **miniworlds `code_hints` + `api_index` + `class_model`** | API-Index 48 KB JSON | Hinweise 1,8 ms warm (erstmals 9 ms), Index bauen 14 ms | Findet `self.mov` → „Meintest du `self.move`?“, undefinierten Namen, `def fressen()` ohne `self`, auf Deutsch, zur Version passend. |
+| **jedi 0.19.2 in Pyodide** | 1,6 MB Wheel + 0,1 MB parso; Heap 42 MB (leicht), 61 MB (mit numpy/pygame) | Completion 15–30 ms warm, erstmals 0,5–0,9 s; Signatur/Hover ca. 10 ms | Findet `self.` (187 Treffer), `mw.` (59), eigene Methoden, Präfixe; Signaturen und Docstrings stimmen. **Lücke:** `self.world.` liefert 0 Treffer. Keine Diagnosen. |
+| **ruff-wasm-web 0.17.5** | WASM 9,7 MB roh / 3,6 MB gzip | `check` 0,15 ms p50, 681 Zeilen in 7 ms, Init 36 ms | Findet F821 (undefinierter Name), F401 (ungenutzter Import), F841 (ungenutzte Variable); formatiert korrekt. Findet **nicht** `self.mov` und fehlendes `self`. Meldungen englisch. |
+| **ty / Pyrefly (WASM)** | – | – | Keine npm-Pakete gefunden (404). Nur selbst bauen. Zurückgestellt. |
+| **browser-basedpyright 1.40.2** | 20,7 MB entpackt | nicht gemessen | Echte Typprüfung, aber zu schwer fürs v1-Budget. Zurückgestellt. |
+
+Nachweis „leichter Language-Worker“: Ein zweites Pyodide **ohne** pygame/numpy (nur jedi + miniworlds-Wheel ohne
+Abhängigkeiten, vorberechneter API-Index) führt `code_hints.check` (4 ms) und `class_model.analyze` aus; Heap 24 MB nach dem Start.
+Dafür muss `miniworlds/__init__` (importiert pygame) umgangen werden: im Spike per Stub-Modul in `sys.modules`.
+
+Entscheidung (Schichten, in dieser Reihenfolge einführen):
+1. **miniworlds-Hinweise** (v1-Kern): ms-schnell, deutsch, versionsgenau.
+2. **jedi im eigenen Language-Worker** für Completion/Signatur/Hover. `self.world.` ergänzt der `api_index` (wie in `gf-assist`).
+   Der Worker ist von der Welt getrennt: In S3 riss ein harter Pyodide-Fehler die ganze Instanz mit, das darf die Editor-Hilfen nicht treffen.
+3. **ruff-wasm** später, lazy geladen: Formatieren, „ungenutzt“-Hinweise; die häufigsten Codes ins Deutsche übersetzen.
+4. **Typprüfer** (ty/Pyrefly/basedpyright) erst, wenn ein fertiges WASM-Paket existiert oder das Budget es zulässt.
+
+Anforderungen an miniworlds (Upstream): (a) `miniworlds.tools` ohne pygame importierbar machen (lazy `__init__` oder eigenes
+Paket), statt Stub-Trick; (b) Audio-Fehler abfangen (aus S3); (c) API-Index je Version als Datei veröffentlichen.
 
 ## 5. Meilensteine
 
