@@ -131,6 +131,32 @@ Entscheidung (Schichten, in dieser Reihenfolge einführen):
 Anforderungen an miniworlds (Upstream): (a) `miniworlds.tools` ohne pygame importierbar machen (lazy `__init__` oder eigenes
 Paket), statt Stub-Trick; (b) Audio-Fehler abfangen (aus S3); (c) API-Index je Version als Datei veröffentlichen.
 
+### Ergebnisse S5: Versionen, micropip, Offline (2026-11-17)
+
+Aufbau: `spikes/s2/versions.mjs` (alle Wheels in Pyodide/Node installieren und importieren), `spikes/s5/` (Service Worker,
+Playwright-Test), `src/packages/versions.ts` mit Tests (Versionsliste, Update-Status). Offline im Test wird **im Service Worker**
+simuliert, weil Playwrights Offline-Modus dessen Anfragen nicht erreicht.
+
+1. **PyPI-Metadaten:** `https://pypi.org/pypi/miniworlds/json` ist 100 KB groß (Simple-API 65 KB), CORS `*`, `max-age=900`.
+   Die Schlüssel in `releases` sind **nicht** in Versionsreihenfolge ("4.4.0.9" kommt nach "4.4.0.16"): immer numerisch sortieren.
+   Aktuell 65 Versionen, 60 mit reinem Wheel; Abhängigkeiten: `pygame-ce`, `numpy` (beide in der Pyodide-Distribution).
+2. **Installierbarkeit:** Alle 38 Wheels von **4.0.0.0 bis 4.4.0.16** lassen sich in Pyodide installieren und importieren,
+   alle 22 der 3.x-Reihe nicht (fehlende Pakete wie `easygui`, Syntaxfehler). Es ist nur der Import geprüft, nicht der Weltlauf.
+   Stufen: `full` ab 4.4.0.15 (ScenarioHost, `class_model`, `code_hints`), `basic` 4.0.0.0–4.4.0.14 (läuft, ohne Greenfoot-Ansicht und Hinweise), darunter nicht unterstützt.
+3. **Offline:** Der Service Worker (Pyodide/jsDelivr und Wheels: cache-first; PyPI-Metadaten: network-first mit 3 s Timeout und Cache-Rückfall;
+   eigene Shell: network-first mit Rückfall, Query ignoriert) startet Pyodide und installiert eine zuvor geladene Version ohne Netz.
+   Der Update-Check liefert dann den zuletzt bekannten Stand (kein falscher Alarm, im Code als `unknown` bzw. alter Stand behandelt).
+   Eine **nicht gecachte** Version scheitert mit `AbortError: Failed to fetch`; die UI muss das als „offline nicht verfügbar“ erklären.
+4. **Größe:** Nach dem ersten Start mit zwei miniworlds-Versionen liegen **17 MB** im Cache (16,3 MB jsDelivr, 0,6 MB Wheels, 0,2 MB Metadaten);
+   jede weitere miniworlds-Version kostet rund 0,26 MB. Das ist deutlich weniger als die frühere Schätzung von 20–40 MB.
+5. **Start:** Pyodide + Pakete brauchen auch aus dem Cache 4–5 s (Headless-Chromium); der Worker-Betrieb (S3) hält die UI dabei frei.
+
+Entscheidungen:
+- **Versionswahl:** Liste aus `availableVersions()` (neueste zuerst), `full`-Versionen normal, `basic` mit Hinweis „ohne Greenfoot-Ansicht und Hinweise“.
+- **Update-Warnung:** nur bei `update-available`; offline oder bei PyPI-Fehler schweigen.
+- **Offline-Verfügbarkeit** pro Version anzeigen (im Cache oder nicht); die Shell wird beim Service-Worker-`install` vorab gecacht (im Spike über einen zweiten Besuch simuliert).
+- **CDN-Abhängigkeit:** Pyodide kommt von jsDelivr. Schulnetze können das sperren; Selbst-Hosting der ~16 MB unter der eigenen Origin ist eine einfache Absicherung und wird für das Release vorgesehen (Variante: miniworlds-Wheels spiegeln).
+
 ## 5. Meilensteine
 
 0. Spikes S1–S6, danach Festlegung von Framework und Language-Service.

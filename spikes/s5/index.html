@@ -1,0 +1,50 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>S5 offline</title>
+<pre id="log"></pre>
+<script type="module">
+  const q = new URLSearchParams(location.search)
+  const versions = (q.get('v') ?? '4.4.0.16').split(',')
+  const log = (t) => { document.getElementById('log').textContent += t + '\n' }
+  const out = { versions: {} }
+  try {
+    const reg = await navigator.serviceWorker.register('./sw.js')
+    await navigator.serviceWorker.ready
+    if (!navigator.serviceWorker.controller) { location.reload(); await new Promise(() => {}) }
+    if (q.get('offline')) { navigator.serviceWorker.controller.postMessage('offline'); await new Promise((r) => setTimeout(r, 200)) }
+    const t0 = performance.now()
+    const { loadPyodide } = await import('https://cdn.jsdelivr.net/pyodide/v0.29.3/full/pyodide.mjs')
+    const py = await loadPyodide()
+    await py.loadPackage(['micropip', 'numpy', 'pygame-ce'])
+    out.boot_ms = Math.round(performance.now() - t0)
+    for (const v of versions) {
+      const t = performance.now()
+      py.globals.set('SPEC', `miniworlds==${v}`)
+      try {
+        await py.runPythonAsync('import micropip; await micropip.install(SPEC, reinstall=True)')
+        out.versions[v] = { ok: true, ms: Math.round(performance.now() - t) }
+      } catch (e) {
+        out.versions[v] = { ok: false, error: String(e).split('\n').filter(Boolean).slice(-1)[0].slice(0, 200) }
+      }
+    }
+    // latest-version probe, as the update warning would do it
+    try {
+      const meta = await (await fetch('https://pypi.org/pypi/miniworlds/json')).json()
+      out.latest = meta.info.version
+    } catch (e) { out.latest = null }
+    // what is in the cache?
+    const cache = await caches.open('mw-editor-s5')
+    let total = 0, count = 0
+    const byHost = {}
+    for (const req of await cache.keys()) {
+      const blob = await (await cache.match(req)).blob()
+      total += blob.size; count++
+      const h = new URL(req.url).hostname
+      byHost[h] = (byHost[h] ?? 0) + blob.size
+    }
+    out.cache = { entries: count, total_mb: +(total / 1048576).toFixed(1), by_host_mb: Object.fromEntries(Object.entries(byHost).map(([k, v]) => [k, +(v / 1048576).toFixed(1)])) }
+  } catch (e) {
+    out.error = String(e?.stack ?? e)
+  }
+  window.__result = out
+</script>
