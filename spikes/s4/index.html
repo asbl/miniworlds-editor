@@ -1,0 +1,49 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>S4 OPFS → Emscripten FS</title>
+<pre id="log"></pre>
+<script type="module">
+const out = document.getElementById('log')
+const say = (t) => (out.textContent += t + '\n')
+const q = new URLSearchParams(location.search)
+const spec = { classes: +(q.get('classes') ?? 15), images: +(q.get('images') ?? 40), kb: +(q.get('kb') ?? 30) }
+const worker = new Worker('worker.js', { type: 'module' })
+const wait = (type) => new Promise((resolve, reject) => {
+  const h = ({ data }) => {
+    if (data.type === 'log') return say(data.text)
+    if (data.type === 'error') { worker.removeEventListener('message', h); reject(new Error(data.text)) }
+    if (data.type === type) { worker.removeEventListener('message', h); resolve(data) }
+  }
+  worker.addEventListener('message', h)
+})
+const ask = (msg, type, transfer = []) => { const p = wait(type); worker.postMessage(msg, transfer); return p }
+
+// Main-thread read through an OPFS handle, standing in for Workspace.fs.read
+async function readAll(dir, prefix = '', out = {}) {
+  for await (const [name, handle] of dir.entries()) {
+    if (handle.kind === 'directory') await readAll(handle, `${prefix}${name}/`, out)
+    else out[`${prefix}${name}`] = await (await handle.getFile()).arrayBuffer()
+  }
+  return out
+}
+
+try {
+  const results = { spec, ua: navigator.userAgent }
+  results.boot = (await ask({ type: 'boot' }, 'booted')).ms
+  results.seed = (await ask({ type: 'seed', name: 'bench', spec }, 'seeded')).seedMs
+  results.A = await ask({ type: 'A', name: 'bench' }, 'result')
+  results.A_again = await ask({ type: 'A', name: 'bench' }, 'result')
+  // C: main thread reads OPFS, transfers buffers
+  const t0 = performance.now()
+  const root = await navigator.storage.getDirectory()
+  const files = await readAll(await root.getDirectoryHandle('bench'))
+  const readMs = performance.now() - t0
+  const t1 = performance.now()
+  const res = await ask({ type: 'C', files }, 'result', Object.values(files))
+  results.C = { ...res, mainReadMs: readMs, roundtripMs: performance.now() - t1, totalMs: readMs + (performance.now() - t1) }
+  try { results.B = await ask({ type: 'B', name: 'bench' }, 'result') } catch (e) { results.B = { error: String(e.message).slice(0, 300) } }
+  window.__result = results
+} catch (e) {
+  window.__result = { error: String(e.message ?? e), spec }
+}
+</script>
