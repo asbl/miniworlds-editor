@@ -7,6 +7,9 @@ export interface Surface {
   clear(): void
   forget(path: string): void
   reveal(line: number, column: number, length: number): void
+  /** Mark the failing line of the file currently shown (null clears). */
+  markError(line: number | null): void
+  clearErrors(): void
 }
 
 export interface SessionState {

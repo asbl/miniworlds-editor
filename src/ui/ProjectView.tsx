@@ -5,6 +5,14 @@ import { t, useLang } from '../i18n'
 import { addImport, classNameProblem, classPath, classSource, removeImport, CLASS_DIR, type ClassKind } from '../project/classes'
 import { detectKind, ENTRY_DEFAULT } from '../project/manifest'
 import { isImagePath, isTextPath } from '../project/search'
+import type { Catalog } from '../packages/catalog'
+import { updateStatus } from '../packages/versions'
+import type { Runner } from '../runtime/runner'
+import { runtimeConfig, useProgram } from './useProgram'
+import { useSettings } from './useSettings'
+import { useCatalog } from './hooks'
+import { PackagesDialog } from './PackagesDialog'
+import { WorldPanel } from './WorldPanel'
 import { BinaryViewer } from './ImageViewer'
 import { FileTree } from './FileTree'
 import { Menu, type MenuItem } from './Menu'
@@ -25,11 +33,14 @@ function useSessionState(session: Session | null): SessionState {
 
 interface Props {
   workspace: Workspace
+  projectName: string
+  runner: Runner
+  catalog: Catalog
   /** The parent calls this to flush unsaved edits before export, switching projects, etc. */
   registerFlush: (flush: (() => Promise<void>) | null) => void
 }
 
-export function ProjectView({ workspace, registerFlush }: Props) {
+export function ProjectView({ workspace, projectName, runner, catalog, registerFlush }: Props) {
   const lang = useLang()
   const { fs } = workspace
   const [entries, setEntries] = useState<FileEntry[]>([])
@@ -42,8 +53,13 @@ export function ProjectView({ workspace, registerFlush }: Props) {
   const upload = useRef<HTMLInputElement>(null)
   const state = useSessionState(session)
   const kind = detectKind(entries)
+  const [showPackages, setShowPackages] = useState(false)
+  const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null)
 
   const refresh = useCallback(async () => setEntries(await fs.list()), [fs])
+  const { settings, loaded: settingsLoaded, update: updateSettings } = useSettings(fs, kind, projectName, session)
+  const { data: versions, status: catalogStatus } = useCatalog(catalog)
+  const program = useProgram({ runner, catalog, fs, session, host, settings, settingsLoaded, refresh })
 
   // Editor + session lifecycle (one per project).
   useEffect(() => {
@@ -207,7 +223,10 @@ export function ProjectView({ workspace, registerFlush }: Props) {
 
   function onKeyDown(event: KeyboardEvent) {
     const mod = event.ctrlKey || event.metaKey
-    if (mod && event.key.toLowerCase() === 's') {
+    if (mod && event.key === 'Enter') {
+      event.preventDefault()
+      void (program.busy ? program.stop() : program.run())
+    } else if (mod && event.key.toLowerCase() === 's') {
       event.preventDefault()
       if (state.active) void session?.save(state.active)
     } else if (mod && event.shiftKey && event.key.toLowerCase() === 'f') {
@@ -215,6 +234,26 @@ export function ProjectView({ workspace, registerFlush }: Props) {
       openSearch()
     }
   }
+
+  async function changeVersion(version: string | null) {
+    await program.stop()
+    await updateSettings({ miniworlds: version })
+  }
+
+  const pinned = settings.miniworlds
+  const update = pinned ? updateStatus(pinned, versions?.latest ?? null) : null
+  const versionItems: MenuItem[] = [
+    { label: t('version.newestAuto') + (versions?.latest ? ` (${versions.latest})` : ''), checked: pinned === null, onSelect: () => void changeVersion(null) },
+    ...(pinned && !versions?.versions.some((v) => v.version === pinned)
+      ? [{ label: pinned, checked: true, divider: true, onSelect: () => void changeVersion(pinned) }]
+      : []),
+    ...(versions?.versions ?? []).map((v, i) => ({
+      label: v.tier === 'basic' ? `${v.version} · ${t('version.basic')}` : v.version,
+      checked: pinned === v.version,
+      divider: i === 0,
+      onSelect: () => void changeVersion(v.version),
+    })),
+  ]
 
   const active = state.active
   const showBinary = active !== null && !isTextPath(active)
@@ -251,6 +290,47 @@ export function ProjectView({ workspace, registerFlush }: Props) {
         }
       }}
     >
+      <div class="toolbar" role="toolbar" aria-label={t('run.toolbar')}>
+        {program.busy ? (
+          <button type="button" class="run stop" onClick={() => void program.stop()} disabled={program.state.phase === 'stopping'} title="Ctrl+Enter">
+            ■ {t('run.stop')}
+          </button>
+        ) : (
+          <button type="button" class="run" onClick={() => void program.run()} disabled={!session} title="Ctrl+Enter">
+            ▶ {t('run.run')}
+          </button>
+        )}
+        <button type="button" onClick={() => runner.restart()} title={t('run.restart')} aria-label={t('run.restart')}>
+          ↻
+        </button>
+        <span class="spacer" />
+        <Menu
+          label={`${t('version.label', { version: pinned ?? t('version.newest') })} ▾`}
+          title={t('version.menuTitle')}
+          items={versionItems}
+          align="right"
+        />
+        {catalogStatus === 'offline' && <span class="muted small">{t('version.offline')}</span>}
+        <button type="button" onClick={() => setShowPackages(true)}>
+          {t('packages.button')}
+          {settings.packages.length > 0 ? ` (${settings.packages.length})` : ''}
+        </button>
+      </div>
+      {update?.kind === 'update-available' && dismissedUpdate !== update.latest && (
+        <div class="notice" role="status">
+          <span>
+            {t('version.updateBanner', { latest: update.latest, current: pinned ?? '' })}
+            {update.tier === 'basic' && ` ${t('version.updateFull')}`}
+          </span>
+          <button type="button" class="primary" onClick={() => void changeVersion(update.latest)}>
+            {t('version.update')}
+          </button>
+          <button type="button" onClick={() => setDismissedUpdate(update.latest)}>
+            {t('version.later')}
+          </button>
+        </div>
+      )}
+      <div class="body">
       <aside class="sidebar">
         <div class="sidebar-tabs" role="tablist">
           <button type="button" role="tab" aria-selected={tab === 'files'} onClick={() => setTab('files')}>
@@ -312,12 +392,22 @@ export function ProjectView({ workspace, registerFlush }: Props) {
           <span>{state.dirty.size > 0 ? t('status.saving') : t('status.saved')}</span>
         </div>
       </main>
+      <WorldPanel runner={runner} onJump={(loc) => void program.jumpTo(loc)} />
+      </div>
       {memoryOnly && (
         <div class="banner" role="alert">
           {t('project.memoryWarning')}
         </div>
       )}
       {dragging && <div class="drop-hint">{t('files.dropHint')}</div>}
+      {showPackages && (
+        <PackagesDialog
+          packages={settings.packages}
+          install={(requirement) => runner.install(requirement, runtimeConfig(settings, catalog))}
+          onChange={(packages) => void updateSettings({ packages })}
+          onClose={() => setShowPackages(false)}
+        />
+      )}
     </div>
   )
 }

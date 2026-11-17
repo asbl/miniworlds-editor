@@ -9,6 +9,8 @@ function fakeSurface() {
     clear: () => calls.push('clear'),
     forget: (p) => calls.push(`forget ${p}`),
     reveal: (l, c, n) => calls.push(`reveal ${l}:${c}+${n}`),
+    markError: () => {},
+    clearErrors: () => {},
   }
   return { surface, calls }
 }

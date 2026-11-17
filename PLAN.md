@@ -200,7 +200,7 @@ Entscheidungen:
 
 0. Spikes S1–S6, danach Festlegung von Framework und Language-Service.
 1. **Editor-Kern:** Tabs, Dateibaum, CM6, Projektformen, OPFS + ZIP, DE/EN, Suchen/Ersetzen. **Umgesetzt (2026-11-17)**, siehe „Stand Meilenstein 1“.
-2. **Run + Konsole + Pakete:** Pyodide-Runner, Fehler → Code-Sprung, `micropip`-Dialog, Versionswahl + Update-Warnung.
+2. **Run + Konsole + Pakete:** Pyodide-Runner, Fehler → Code-Sprung, `micropip`-Dialog, Versionswahl + Update-Warnung. **Umgesetzt (2026-11-17)**, siehe „Stand Meilenstein 2“.
 3. **Greenfoot-Ansicht** als Panel (Port von `gf-host`, `gf-uml`, `gf-assist`, `gf-images`, `gf-journal`);
    das bestehende `test/e2e.py` läuft weiter.
 4. **Language Service** nach Ergebnis von S2.
@@ -225,6 +225,33 @@ Bewusst noch nicht enthalten:
 - **Leere Ordner:** nicht darstellbar im Speicher-Fallback; Ordner entstehen über Pfade wie `images/x.png`.
 - Ordnerzugriff per File System Access API und Embed-API (`postMessage`) für Moodle.
 - Version/Update-Anzeige in der Statusleiste (kommt mit Meilenstein 2, `project.toml` hat das Feld `miniworlds` schon).
+
+### Stand Meilenstein 2 (2026-11-17)
+
+Umgesetzt und getestet (88 Vitest-Tests; `test/run.py` mit echtem Pyodide in Chromium und Firefox, `test/smoke.py`; App 188 KB gzip inkl. Worker):
+- **Runner** (`src/runtime/`): Pyodide im Worker (Ergebnis S3) mit OffscreenCanvas; Zustandsmaschine `idle → booting → ready → running → stopping` (`Runner`, mit Fake-Worker getestet);
+  Python-Lebenszyklus in `runner.py` (Projekt anlegen, starten, stoppen, Module entfernen, Eingaben einspeisen), Protokoll in `protocol.ts`.
+  Das Projekt kommt wie in S4 beschlossen per `postMessage` in den Worker (alle Dateien pro Lauf), Änderungen am Dateisystem kommen per Manifest-Diff zurück
+  (beim Programmende und beim Stoppen) und werden über `Workspace` geschrieben.
+- **Start/Stopp:** Strg+Enter. Warmstart des zweiten Laufs 0,2 s, Pyodide wird beim Öffnen eines Projekts im Hintergrund vorgeladen (Boot headless: Chromium 3–10 s, Firefox 24 s mit leerem Cache).
+  Stopp fragt das Programm freundlich (`app.quit()`, Tasks abbrechen, `App.reset()`); antwortet der Worker nach 1,5 s nicht (Endlosschleife), wird er beendet und beim nächsten Start neu geladen.
+- **Konsole:** `print` und Fehler; Tracebacks ohne Runner-Frames, `File "/project/…", line N` ist ein Link. Bei einem Absturz springt der Editor zur Fehlerzeile und markiert sie.
+- **Eingabe:** Tastatur (pygame-Keycodes, `KEYDOWN` + `TEXTINPUT`), Maus (Position auf Canvas-Pixel umgerechnet, Pointer Capture), Mausrad; ein Test prüft Klick, Taste und Pfeiltaste in der echten Welt.
+- **Pakete:** Dialog installiert per `micropip` in die laufende Umgebung (kein Neustart nötig) und speichert in `[packages] requires` der `project.toml`; Fehlschläge werden erklärt.
+- **Versionen:** Versionsmenü (Liste aus PyPI, im Browser zwischengespeichert, offline weiter nutzbar), `basic`-Versionen als „eingeschränkt“ markiert. Neue Projekte pinnen die neueste Version;
+  ältere gepinnte Version → Hinweis „Neue Version verfügbar“ mit Aktualisieren-Knopf. Konfigurationswechsel (Version, Paket entfernt) startet den Worker beim nächsten Lauf neu.
+  Einstellungen stehen in `project.toml`, bei Einzeldatei-Projekten im Browser-Speicher (nicht im ZIP-Export).
+- **Sound:** Ein Worker hat keinen AudioContext; `pygame.mixer` ist dort stumm geschaltet (Sound/Musik laufen ohne Fehler, ein Hinweis erscheint einmal pro Lauf).
+  Ohne diese Attrappen meldet miniworlds irreführend „File … does not exist“.
+- Pyodide-Adresse per `VITE_PYODIDE_BASE` änderbar (Selbst-Hosting).
+
+Bekannte Lücken:
+- **Audio-Ausgabe** (Brücke zum Hauptthread über Web Audio) fehlt.
+- **`input()`** gibt eine erklärende Fehlermeldung; echte Eingabe im Worker bräuchte `SharedArrayBuffer` (COOP/COEP, kollidiert mit dem Einbetten in Moodle) oder ein anderes Verfahren.
+- **Offline/PWA:** Service Worker und Manifest (Prototyp in `spikes/s5`) kommen mit Meilenstein 5; bis dahin braucht der Start Netz.
+- **Windows-Projekte mit anderer Groß-/Kleinschreibung** (`Images/Player.PNG`): der alte Web-Player legt dafür kleingeschriebene Aliase an, hier noch nicht.
+- Schreibt ein hart beendetes Programm Dateien, gehen sie verloren; große Projekte werden bei jedem Lauf komplett übertragen (10 MB: ~0,2 s), inkrementell erst bei Bedarf.
+- Firefox: Pyodide-Start deutlich langsamer als Chromium (S6 mit echten Geräten messen).
 
 ## 6. Risiken
 

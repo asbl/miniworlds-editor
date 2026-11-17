@@ -37,13 +37,13 @@ function starterNames() {
   }
 }
 
-export async function createStarterProject(store: ProjectStore, name: string, kind: 'project' | 'legacy'): Promise<void> {
+export async function createStarterProject(store: ProjectStore, name: string, kind: 'project' | 'legacy', miniworlds: string | null): Promise<void> {
   const { fs } = await store.open(name)
-  await createProject(fs, { kind, name, miniworlds: null, ...starterNames() })
+  await createProject(fs, { kind, name, miniworlds, ...starterNames() })
 }
 
 /** Dialog flow; returns the new project's name or null when cancelled. */
-export async function promptNewProject(store: ProjectStore): Promise<string | null> {
+export async function promptNewProject(store: ProjectStore, miniworlds: string | null): Promise<string | null> {
   const values = await openDialog({
     title: t('project.new'),
     fields: [
@@ -64,7 +64,7 @@ export async function promptNewProject(store: ProjectStore): Promise<string | nu
   })
   if (!values) return null
   const name = validateProjectName(String(values.name))
-  await createStarterProject(store, name, values.kind as 'project' | 'legacy')
+  await createStarterProject(store, name, values.kind as 'project' | 'legacy', miniworlds)
   return name
 }
 

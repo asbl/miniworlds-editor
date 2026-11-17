@@ -1,6 +1,6 @@
 import { basicSetup } from 'codemirror'
-import { EditorView, keymap } from '@codemirror/view'
-import { Compartment, EditorSelection, EditorState } from '@codemirror/state'
+import { Decoration, EditorView, keymap } from '@codemirror/view'
+import { Compartment, EditorSelection, EditorState, StateEffect, StateField, type Extension } from '@codemirror/state'
 import { indentUnit } from '@codemirror/language'
 import { indentWithTab } from '@codemirror/commands'
 import { python } from '@codemirror/lang-python'
@@ -33,6 +33,23 @@ const PHRASES: Record<Lang, Record<string, string>> = {
   },
 }
 
+/** Highlights the line where the program failed; any edit removes the mark. */
+const setErrorLine = StateEffect.define<number | null>()
+const errorLine: Extension = StateField.define({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    if (tr.docChanged) return Decoration.none
+    for (const effect of tr.effects) {
+      if (effect.is(setErrorLine)) {
+        if (effect.value === null || effect.value < 1 || effect.value > tr.state.doc.lines) return Decoration.none
+        return Decoration.set([Decoration.line({ class: 'cm-error-line' }).range(tr.state.doc.line(effect.value).from)])
+      }
+    }
+    return deco
+  },
+  provide: (field) => EditorView.decorations.from(field),
+})
+
 /**
  * One CodeMirror view, one EditorState per open file (keeps undo history and
  * cursor per tab). Imperative on purpose: the UI framework only mounts it.
@@ -61,6 +78,7 @@ export class EditorHost implements Surface {
       extensions: [
         basicSetup,
         python(),
+        errorLine,
         this.language.of(this.phrases()),
         indentUnit.of('    '),
         EditorState.tabSize.of(4),
@@ -100,6 +118,17 @@ export class EditorHost implements Surface {
     const to = Math.min(from + length, row.to)
     this.view.dispatch({ selection: EditorSelection.single(from, to), effects: EditorView.scrollIntoView(from, { y: 'center' }) })
     this.view.focus()
+  }
+
+  /** Mark (or with null clear) the failing line of the file currently shown. */
+  markError(line: number | null): void {
+    this.view.dispatch({ effects: setErrorLine.of(line) })
+  }
+
+  /** Remove the error mark in every open file (called when the program starts again). */
+  clearErrors(): void {
+    for (const [path, state] of this.states) this.states.set(path, state.update({ effects: setErrorLine.of(null) }).state)
+    this.view.dispatch({ effects: setErrorLine.of(null) })
   }
 
   setLang(lang: Lang): void {
