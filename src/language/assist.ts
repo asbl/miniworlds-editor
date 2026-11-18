@@ -1,12 +1,15 @@
 import type { Lang } from '../i18n'
 import { t } from '../i18n'
 import { engineHintToIssue, jediToItems, mergeIssues, ruffToIssues, type CompletionItem, type Issue } from './convert'
+import type { Signature } from './protocol'
 import type { LanguageService } from './service'
 
 /** What the editor asks for; implemented on top of the language service. Every answer may be empty. */
 export interface Assist {
   complete(path: string, source: string, line: number, col: number): Promise<CompletionItem[]>
   hover(path: string, source: string, line: number, col: number): Promise<{ name: string; doc: string } | null>
+  /** The call around the cursor, while typing its arguments. */
+  signature(path: string, source: string, line: number, col: number): Promise<Signature | null>
   /** Problems of one file: miniworlds hints (they know the whole project) plus ruff. */
   lint(path: string, source: string): Promise<Issue[]>
   format(source: string): Promise<string | null>
@@ -31,6 +34,7 @@ export function createAssist({ service, files, lang }: AssistDeps): Assist {
       const h = await service.hover(path, source, line, col)
       return h && h.doc ? { name: h.name, doc: h.doc } : null
     },
+    signature: (path, source, line, col) => (service.dormant ? Promise.resolve(null) : service.signature(path, source, line, col)),
     async lint(path, source) {
       if (service.dormant) return [] // looking at a file is no reason to start the help
       const lines = source.split('\n')

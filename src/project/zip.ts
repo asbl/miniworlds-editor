@@ -6,7 +6,7 @@ import { extensionOf } from './search'
 export const MAX_ZIP_FILES = 5000
 export const MAX_ZIP_BYTES = 150 * 1024 * 1024
 const STORED = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'zip', 'ogg', 'mp3'])
-const JUNK = /(^|\/)(__MACOSX|__pycache__|\.git|\.DS_Store|Thumbs\.db)(\/|$)/
+export const JUNK = /(^|\/)(__MACOSX|__pycache__|\.git|\.DS_Store|Thumbs\.db)(\/|$)/
 
 export async function exportZip(fs: Fs): Promise<Uint8Array> {
   const data: Zippable = {}
@@ -21,7 +21,7 @@ export async function exportZip(fs: Fs): Promise<Uint8Array> {
 export class ZipError extends Error {}
 
 /** If every file sits below one common top folder ("MyProject/…"), returns that prefix. */
-function commonRoot(paths: string[]): string {
+export function commonRoot(paths: string[]): string {
   if (paths.length === 0) return ''
   const first = (paths[0] as string).split('/')
   if (first.length < 2) return ''

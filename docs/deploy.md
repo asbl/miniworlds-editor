@@ -18,7 +18,7 @@ Der Server betreibt jede Seite als eigenen nginx-Container hinter dem gemeinsame
 
 ```
 docker-compose.yml   aus deploy/ (Host `editor.opencoding.de`, Labels wie bei den anderen Seiten)
-nginx.conf           aus deploy/ (MIME-Typen für .mjs/.webmanifest, Cache-Header, frame-ancestors, gzip)
+nginx.conf           aus deploy/ (MIME-Typen für .mjs/.webmanifest, Cache-Header, Content-Security-Policy, gzip)
 html/                Inhalt des Builds, von scripts/deploy.sh hochgeladen
 ```
 
@@ -44,7 +44,8 @@ Rechte: `html/` muss für den Container lesbar sein (das Skript setzt sie).
 | `*.webmanifest` | `application/manifest+json` |
 | `index.html`, `sw.js`, `config.json` | `Cache-Control: no-cache` (Updates sollen sofort gefunden werden) |
 | `assets/*` | dürfen lange gecacht werden (Dateinamen enthalten den Hash) |
-| Einbetten | `Content-Security-Policy: frame-ancestors https://moodle.example.org` begrenzt, wer den Editor einbetten darf |
+| Einbetten | `frame-ancestors` in der Content-Security-Policy begrenzt, wer den Editor einbetten darf |
+| Content-Security-Policy | `deploy/nginx.conf` setzt Skripte und Worker nur vom eigenen Ursprung (plus `'unsafe-eval'`: Pyodide baut beim Laden von pygame-ce Funktionen aus Zeichenketten, `'wasm-unsafe-eval'` allein reicht nicht) und das Netz nur für PyPI (`pypi.org`, `files.pythonhosted.org`). `test/csp.py` startet den selbst gehosteten Editor unter genau dieser Zeile (als echter HTTP-Header, damit auch der Worker daran gebunden ist). Wer Pyodide nicht selbst hostet, sondern vom CDN lädt, muss `https://cdn.jsdelivr.net` in `script-src` und `connect-src` ergänzen. |
 
 ## Laufzeit-Konfiguration: `config.json`
 

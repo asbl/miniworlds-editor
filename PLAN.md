@@ -240,13 +240,13 @@ Umgesetzt und getestet (88 Vitest-Tests; `test/run.py` mit echtem Pyodide in Chr
 - **Versionen:** Versionsmenü (Liste aus PyPI, im Browser zwischengespeichert, offline weiter nutzbar), `basic`-Versionen als „eingeschränkt“ markiert. Neue Projekte pinnen die neueste Version;
   ältere gepinnte Version → Hinweis „Neue Version verfügbar“ mit Aktualisieren-Knopf. Konfigurationswechsel (Version, Paket entfernt) startet den Worker beim nächsten Lauf neu.
   Einstellungen stehen in `project.toml`, bei Einzeldatei-Projekten im Browser-Speicher (nicht im ZIP-Export).
-- **Sound:** Ein Worker hat keinen AudioContext; `pygame.mixer` ist dort stumm geschaltet (Sound/Musik laufen ohne Fehler, ein Hinweis erscheint einmal pro Lauf).
+- **Sound:** Ein Worker hat keinen AudioContext; zuerst war `pygame.mixer` dort stumm geschaltet (Hinweis einmal pro Lauf). Inzwischen spielt die Seite den Ton, siehe „Nächste Schritte nach der Praxisrückmeldung“.
   Ohne diese Attrappen meldet miniworlds irreführend „File … does not exist“.
 - Pyodide-Adresse per `VITE_PYODIDE_BASE` änderbar (Selbst-Hosting).
 
 Bekannte Lücken:
 - **Audio-Ausgabe** (Brücke zum Hauptthread über Web Audio) fehlt.
-- **`input()`** gibt eine erklärende Fehlermeldung; echte Eingabe im Worker bräuchte `SharedArrayBuffer` (COOP/COEP, kollidiert mit dem Einbetten in Moodle) oder ein anderes Verfahren.
+- **`input()`** gab zuerst eine erklärende Fehlermeldung; inzwischen funktioniert es ohne `SharedArrayBuffer`, siehe „Nächste Schritte nach der Praxisrückmeldung“.
 - **Offline/PWA:** Service Worker und Manifest (Prototyp in `spikes/s5`) kommen mit Meilenstein 5; bis dahin braucht der Start Netz.
 - **Windows-Projekte mit anderer Groß-/Kleinschreibung** (`Images/Player.PNG`): der alte Web-Player legt dafür kleingeschriebene Aliase an, hier noch nicht.
 - Schreibt ein hart beendetes Programm Dateien, gehen sie verloren; große Projekte werden bei jedem Lauf komplett übertragen (10 MB: ~0,2 s), inkrementell erst bei Bedarf.
@@ -372,3 +372,35 @@ Rückmeldung aus dem Einsatz: weißer Zeilennummernstreifen im Dark Mode, Klasse
 - **Welt-Panel in drei Zonen statt fünf Blöcken:** Kopfzeile (Zustand · Schritt · Figuren, rechts das Menü „Welt anzeigen“), Welt, eine Steuerzeile (Act, Run/Pause, Reset, Tempo, „Mehr ▾“). Darunter nur noch eine Zeile „Figur hinzufügen: + Figur + Wurm“ (nur wenn es Figuren-Klassen gibt) und die Konsole. Startaufstellung („Als Start merken“, „Aufstellung leeren“, „Welt speichern …“) wohnt im Menü „Mehr“; Hinweise (Klick in die Welt, Änderungen zählen nicht dazu) erscheinen nur, wenn sie gelten.
 - **Welt anzeigen:** im Editor (wie bisher, mit allen Werkzeugen), **Vollbild** (nur die Welt, Esc beendet), **eigenes Fenster** oder **neuer Tab**. Der Canvas wird in die andere Seite verschoben (er gehört dem Worker und zeichnet weiter); schließt man das Fenster, kommt die Welt zurück ins Panel. Ein Neustart des Programms zeichnet im Fenster weiter. Außerhalb des Panels gehört die Maus dem Programm (Platzieren, Auswählen, Kontextmenü gibt es nur im Editor); Act/Run/Reset bedient man im Editorfenster.
 - Grenzen: Pop-up-Blocker und iframes ohne `allowfullscreen` verhindern Fenster bzw. Vollbild; dann erscheint ein Hinweis. In Fenster und Tab fehlt der Auswahlrahmen.
+
+### Nächste Schritte nach der Praxisrückmeldung (2026-11-18)
+
+Umgesetzt und getestet (Vitest 266 Tests; Browser: `test/input.py`, `launch.py`, `sound.py`, `rename.py`, `csp.py`, erweiterte `assist.py`, `embed.py`, `run.py`):
+- **`input()` und `sys.stdin`:** Das Programm blockiert, die Konsole zeigt ein Eingabefeld (Fokus, Prompt als Beschriftung, Echo mit Prompt, auf schmalen Bildschirmen springt die Ansicht zur Konsole). Ohne `SharedArrayBuffer` (das bräuchte COOP/COEP und würde das Einbetten in Moodle verhindern) gibt es zwei Wege: **JSPI** (`pyodide.ffi.run_sync`, Chromium/Chrome/Edge/Chromebooks: Python wird angehalten, der Worker bleibt ansprechbar) und sonst ein **synchroner Request, den der Service Worker offen hält**, bis die Seite die Zeile per POST schickt (Firefox, Safari; getestet in Firefox). „Stopp“ während `input()` beendet das Programm ohne Fehlermeldung. Grenze: Beim allerersten Besuch muss der Service Worker die Seite schon kontrollieren (einmal neu laden); sonst erklärt eine Meldung das. Ob eine Eingabe sehr lange (viele Minuten) warten darf, ist beim Service-Worker-Weg ungetestet.
+- **Aufgaben verteilen und einsammeln:** Links `?template=…` und `?zip=…` (siehe `docs/embed.md`), Rückfrage bei fremden Servern, derselbe Link öffnet das Projekt wieder; im Embed erscheint mit `&submit=1` ein Knopf „Abgeben“, der alle Dateien als `submit`-Nachricht an die Seite schickt.
+- **Fehlermeldungen in einfachen Worten:** `src/runtime/hints.ts` erklärt 40 häufige Fehler (NameError, SyntaxError, AttributeError, TypeError …) auf Deutsch und Englisch als „Tipp“ unter dem Traceback; ohne sichere Regel kein Tipp.
+- **Ton:** Die Seite spielt Sound und Musik mit Web Audio. `pygame.mixer` ist im Worker durch Aufrufe an die Seite ersetzt (Dateien werden einmal übertragen und dort dekodiert; Schleifen, Lautstärke, Pause, Fade-in). Ein Knopf 🔊/🔇 erscheint nur, wenn ein Programm Ton abspielt; die Wahl wird gemerkt; Stopp beendet allen Ton. Grenzen: `get_busy()` rechnet für WAV mit der Länge, bei MP3/OGG gilt ein Stück bis zum Stopp als laufend; `get_pos()` und `set_pos()` fehlen.
+- **Klasse umbenennen** (Menü im Klassendiagramm): Definition, Datei (`classes/Alt.py` → `classes/Neu.py`), Importe und alle Verwendungen, per Python-Parser (Lezer): Strings, Kommentare und Attribute bleiben. Davor wird ein Stand im Verlauf gemerkt, danach die handplatzierten Figuren der Startaufstellung umbenannt. Grenze: `import classes.Alt` und `classes.Alt.Alt` im Code werden nicht vollständig nachgezogen; Dateien, die den Namen aus einem anderen Modul importieren, bleiben unberührt.
+- **Signaturhilfe:** Beim Tippen von `(` und `,` zeigt ein Tooltip die Parameter des Aufrufs (jedi), der aktuelle ist fett; Esc schließt. Im Sparmodus wird die Hilfe dafür nicht geweckt.
+- **„Bericht kopieren“** in der Konsole: Versionen, Dateiliste, Startdatei und letzte Konsolenzeilen als Text für die Lehrkraft; wo die Zwischenablage gesperrt ist, erscheint der Text zum Kopieren von Hand.
+- **Content-Security-Policy** in `deploy/nginx.conf`: Skripte/Worker nur vom eigenen Ursprung, `'unsafe-eval'` (nötig für pygame-ce; `'wasm-unsafe-eval'` allein lässt die Welt nicht starten), Netz nur für PyPI; `test/csp.py` startet den selbst gehosteten Editor genau darunter (Programm mit numpy und `input()`, Vervollständigung, Service Worker) in Chromium und Firefox und prüft, dass ein Inline-Skript nicht läuft.
+- Nicht umgesetzt: Debugging (Haltepunkte, Einzelschritt; Pyodide bietet nur mit großem Aufwand Hooks), Variablenansicht für normale Programme.
+
+### Audit der Änderungen seit fcf4adb (2026-11-18)
+
+Gefunden und behoben:
+- **Run-Knopf unlesbar beim Darüberfahren (hell):** `button:hover` (Spezifität 0,2,1) überschrieb den Hintergrund von `.toolbar .run` (0,2,0), weiß auf hellgrau. Die Hover-Regel steht jetzt unter `:where()`; Knöpfe mit eigenem Hintergrund behalten ihn. Betrifft auch ausgewählte Figuren-Chips.
+- **Stopp-Knopf im Dunkelmodus (Kontrast ~2,6:1):** neue Variablen `--danger-bg`/`--danger-fg` (auch für gefüllte Gefahr-Knöpfe in Dialogen). Zuvor nie mit axe geprüft, weil kein Test ein laufendes Programm hatte.
+- **`package-lock.json` kannte `@lezer/python` nicht:** `npm ci` (CI) wäre fehlgeschlagen.
+- **Audio-Speicher:** dekodierte Töne blieben nach einem Worker-Neustart im Speicher (Schlüssel sind pro Worker verschieden). Der Neustart leert sie jetzt (`reset()`).
+- **`?lang=` im Link** speicherte die Sprache dauerhaft; gilt jetzt nur für den Besuch.
+- Service Worker: unbeantwortete Eingabezeilen werden gedeckelt.
+- axe-Test deckt jetzt Eingabefeld, Mute-Knopf, Fehlertipp, Signatur-Tooltip, Welt- und Mehr-Menü und Einstellungen ab (hell/dunkel).
+
+Geprüft ohne Befund: `input()` in einem Welt-Callback (`on_mouse_left`) in Chromium und Firefox; Welt in Fenster und Vollbild unter der echten CSP auf editor.opencoding.de.
+
+Offen / bewusst nicht geändert:
+- Lange Zeilen: `.cm-scroller` wird von axe als „scrollbarer Bereich nicht fokussierbar“ gemeldet (CodeMirror-Standard, schon vorher). Abhilfe wäre Zeilenumbruch oder ein zusätzlicher Tab-Stopp.
+- Signaturhilfe: Die erste jedi-Anfrage einer Sitzung kann länger als 8 s dauern (v. a. Firefox); dann erscheint der Tooltip erst nach der nächsten Taste.
+- Klasse umbenennen prüft nicht, ob der neue Name schon als Variable im Code vorkommt.
+- Die Seitenleiste „Klassen zuerst“ gilt auch im Embed, sobald die Seite ein Projekt mit `project.toml` lädt.

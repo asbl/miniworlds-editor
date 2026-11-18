@@ -6,6 +6,7 @@ import os
 import runpy
 import shutil
 import sys
+import time
 import traceback
 
 import js
@@ -81,19 +82,298 @@ def _silence_audio(pygame):
     music.get_pos = lambda: -1
 
 
-def setup(has_audio):
+def _read_line(prompt):
+    """Ask the page for a line and wait for it. None: nobody will answer (Stop pressed)."""
+    from pyodide.ffi import can_run_sync, run_sync
+
+    if can_run_sync():  # JSPI (Chromium): Python is suspended, the worker keeps answering messages
+        return run_sync(js._mw_read_line(prompt))
+    if js._mw_sync_input_ready():  # a blocking request that the Service Worker answers
+        return js._mw_read_line_sync(prompt)
+    raise RuntimeError(
+        "input() is not ready in this browser yet: reload the page once and try again. / "
+        "input() ist in diesem Browser noch nicht bereit: Lade die Seite einmal neu und versuche es noch einmal."
+    )
+
+
+def _input(prompt=""):
+    reply = _read_line("" if prompt is None else str(prompt))
+    if not isinstance(reply, str):  # JavaScript's null (jsnull): Stop was pressed while the program waited
+        raise SystemExit(0)  # end quietly
+    return reply
+
+
+class _Stdin:
+    """sys.stdin for programs that read lines with sys.stdin.readline() or iterate over it."""
+
+    encoding = "utf-8"
+
+    def readline(self, size=-1):
+        try:
+            return _input("") + "\n"
+        except EOFError:
+            return ""
+
+    def read(self, size=-1):
+        lines = []
+        while True:
+            line = self.readline()
+            if not line:
+                return "".join(lines)
+            lines.append(line)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        line = self.readline()
+        if not line:
+            raise StopIteration
+        return line
+
+    def isatty(self):
+        return False
+
+    def fileno(self):
+        raise OSError("no file descriptor")
+
+
+_audio_sent = set()
+_audio_ids = iter(range(1, 1 << 30))
+_channels = {}  # id -> end time (monotonic seconds; inf = until stopped)
+
+
+def _send_audio(message, data=None):
+    from pyodide.ffi import to_js
+
+    js._mw_audio(json.dumps(message), None if data is None else to_js(memoryview(data)))
+
+
+def _read_audio(file):
+    import pygame
+
+    try:
+        if hasattr(file, "read"):
+            return file.read()
+        with open(os.fspath(file), "rb") as handle:
+            return handle.read()
+    except (OSError, TypeError) as exc:
+        raise pygame.error(f"Unable to open file {file!r}") from exc
+
+
+def _wav_seconds(data):
+    try:
+        import io
+        import wave
+
+        with wave.open(io.BytesIO(data)) as w:
+            return w.getnframes() / float(w.getframerate())
+    except Exception:  # noqa: BLE001 - other formats: length unknown
+        return 0.0
+
+
+def _load_audio(data):
+    """The page keeps decoded sounds by key; each distinct file travels once."""
+    key = f"{len(data)}-{hash(data) & 0xFFFFFFFF:x}"
+    if key not in _audio_sent:
+        _audio_sent.add(key)
+        _send_audio({"op": "load", "key": key}, data)
+    return key
+
+
+def _ends(length, loops):
+    if loops < 0 or length <= 0:
+        return float("inf")
+    return time.monotonic() + length * (loops + 1)
+
+
+class _Channel:
+    """pygame.mixer.Channel stand-in: the page plays, this object only addresses it."""
+
+    def __init__(self):
+        self.id = next(_audio_ids)
+        self._sound = None
+        self._volume = 1.0
+
+    def play(self, sound, loops=0, maxtime=0, fade_ms=0):
+        self._sound = sound
+        self._volume = sound._volume
+        _channels[self.id] = _ends(sound._length, loops)
+        _send_audio({"op": "play", "key": sound._key, "id": self.id, "loops": loops, "volume": self._volume, "fadeMs": fade_ms})
+
+    def stop(self):
+        _channels.pop(self.id, None)
+        _send_audio({"op": "stop", "id": self.id})
+
+    def pause(self):
+        _send_audio({"op": "pause", "id": self.id})
+
+    def unpause(self):
+        _send_audio({"op": "unpause", "id": self.id})
+
+    def fadeout(self, time):
+        self.stop()
+
+    def set_volume(self, left, right=None):
+        self._volume = left if right is None else (left + right) / 2
+        _send_audio({"op": "volume", "id": self.id, "volume": self._volume})
+
+    def get_volume(self):
+        return self._volume
+
+    def get_busy(self):
+        return _channels.get(self.id, 0) > time.monotonic()
+
+    def get_sound(self):
+        return self._sound
+
+    def get_queue(self):
+        return None
+
+    def queue(self, sound):
+        self.play(sound)
+
+
+class _Sound:
+    """pygame.mixer.Sound stand-in."""
+
+    def __init__(self, file=None, buffer=None, array=None):
+        data = bytes(buffer) if buffer is not None else _read_audio(file)
+        self._key = _load_audio(data)
+        self._length = _wav_seconds(data)
+        self._volume = 1.0
+        self._data = data
+        self._playing = []
+
+    def play(self, loops=0, maxtime=0, fade_ms=0):
+        channel = _Channel()
+        channel.play(self, loops, maxtime, fade_ms)
+        self._playing = [c for c in self._playing if c.get_busy()] + [channel]
+        return channel
+
+    def stop(self):
+        for channel in self._playing:
+            channel.stop()
+        self._playing = []
+
+    def fadeout(self, time):
+        self.stop()
+
+    def set_volume(self, value):
+        self._volume = value
+
+    def get_volume(self):
+        return self._volume
+
+    def get_length(self):
+        return self._length
+
+    def get_num_channels(self):
+        return 0
+
+    def get_raw(self):
+        return self._data
+
+
+class _Music:
+    """pygame.mixer.music stand-in (one stream at a time)."""
+
+    def __init__(self):
+        self._key = None
+        self._length = 0.0
+        self._volume = 1.0
+        self._end = 0.0
+
+    def load(self, filename, namehint=""):
+        data = _read_audio(filename)
+        self._key = _load_audio(data)
+        self._length = _wav_seconds(data)
+
+    def unload(self):
+        self.stop()
+        self._key = None
+
+    def play(self, loops=0, start=0.0, fade_ms=0):
+        import pygame
+
+        if self._key is None:
+            raise pygame.error("music not loaded")
+        self._end = _ends(self._length, loops)
+        _send_audio({"op": "music-play", "key": self._key, "loops": loops, "volume": self._volume, "start": start, "fadeMs": fade_ms})
+
+    def stop(self):
+        self._end = 0.0
+        _send_audio({"op": "music-stop"})
+
+    def pause(self):
+        _send_audio({"op": "music-pause"})
+
+    def unpause(self):
+        _send_audio({"op": "music-unpause"})
+
+    def fadeout(self, time):
+        self.stop()
+
+    def rewind(self):
+        pass
+
+    def set_pos(self, pos):
+        pass
+
+    def get_pos(self):
+        return -1
+
+    def queue(self, filename, namehint="", loops=0):
+        pass
+
+    def set_volume(self, value):
+        self._volume = value
+        _send_audio({"op": "music-volume", "volume": value})
+
+    def get_volume(self):
+        return self._volume
+
+    def get_busy(self):
+        return self._end > time.monotonic()
+
+
+def _remote_audio(pygame):
+    """pygame.mixer for a worker without sound: calls go to the page, which plays them (see audio.ts)."""
+    mixer = pygame.mixer
+    for name in ("init", "quit", "set_reserved", "set_num_channels", "pre_init"):
+        setattr(mixer, name, lambda *a, **k: None)
+    mixer.get_init = lambda: (22050, -16, 2)
+    mixer.get_num_channels = lambda: 64
+    mixer.get_busy = lambda: any(end > time.monotonic() for end in _channels.values())
+    mixer.Sound = _Sound
+    mixer.Channel = lambda *a, **k: _Channel()
+    mixer.find_channel = lambda *a, **k: _Channel()
+    mixer.stop = lambda: _send_audio({"op": "stop-all"})
+    mixer.fadeout = lambda time: mixer.stop()
+    mixer.pause = lambda: None
+    mixer.unpause = lambda: None
+    mixer.music = _Music()
+
+
+def reset_audio():
+    """A new program starts: sounds of the last one are gone, and the page forgets nothing it still has decoded."""
+    _channels.clear()
+
+
+def setup(has_audio, remote_audio=False):
     """Make pygame usable in a worker: no AudioContext there, and input has to be injected (see PLAN S3)."""
     import pygame
 
     if not has_audio:
-        _silence_audio(pygame)
+        if remote_audio:
+            _remote_audio(pygame)
+        else:
+            _silence_audio(pygame)
     pygame.mouse.get_pos = lambda: _mouse["pos"]
     pygame.mouse.get_pressed = lambda num_buttons=3, **k: _mouse["buttons"][:num_buttons]
 
-    def no_input(prompt=""):
-        raise RuntimeError("input() is not available in the editor yet. / input() gibt es im Editor noch nicht.")
-
-    builtins.input = no_input
+    builtins.input = _input
+    sys.stdin = _Stdin()
 
 
 def reset_project():
@@ -151,6 +431,7 @@ async def run(entry, scenario=False):
     _tasks = []
     _host = None
     _audio_notice_sent = False  # one hint per run
+    reset_audio()
     _purge_modules()
     me = asyncio.current_task()
     before = set(asyncio.all_tasks())
@@ -281,9 +562,16 @@ async def stop():
 
 
 def post_input(event_json):
+    """Forward a browser event to pygame. A program without a window (a plain script) has no event queue: nothing to deliver."""
     import pygame
 
-    e = json.loads(event_json)
+    try:
+        _post_input(pygame, json.loads(event_json))
+    except pygame.error:
+        pass
+
+
+def _post_input(pygame, e):
     kind = e["kind"]
     post = pygame.event.post
     Event = pygame.event.Event

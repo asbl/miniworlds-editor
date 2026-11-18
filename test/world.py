@@ -40,7 +40,7 @@ def pixels(page_or_frame, selector="canvas"):
 
 
 def place(page, label):
-    page.locator(".world-head .menu-button").click()
+    page.locator(".world-head button[aria-haspopup]").click()
     page.locator(".menu-items").get_by_role("menuitemradio", name=label).click()
 
 
@@ -75,6 +75,18 @@ with sync_playwright() as p:
     check("the mouse reaches the program in full screen", eventually(lambda: re.search(r"click: \(\d+, \d+\)", console(page)) is not None, 8000), console(page)[-200:])
     page.evaluate("document.exitFullscreen()")
     check("leaving full screen returns the world to the panel", eventually(lambda: page.evaluate("document.fullscreenElement === null") and page.locator(".world-wrap .world-canvas").count() == 1, 5000))
+
+    # ---- the report for a teacher (clipboard, or a text to copy by hand when the browser refuses)
+    page.get_by_role("button", name="Bericht kopieren").click()
+    def reported():
+        if "Bericht in die Zwischenablage" in console(page):
+            return True
+        box = page.locator("dialog[open] textarea")
+        if box.count() and "miniworlds editor – Bericht" in box.input_value() and "setup done" in box.input_value():
+            page.locator("dialog[open]").get_by_role("button", name="OK").click()
+            return True
+        return False
+    check("the report is copied or shown", eventually(reported, 8000), console(page)[-200:])
 
     # ---- its own window and a new tab
     for label, name in (("In eigenem Fenster", "window"), ("In neuem Tab", "tab")):

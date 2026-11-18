@@ -20,6 +20,7 @@ window.send = m => document.getElementById('f').contentWindow.postMessage({{ app
 
 dist = copy_dist()
 open(os.path.join(dist, "parent.html"), "w").write(PAGE)
+open(os.path.join(dist, "parent-submit.html"), "w").write(PAGE.replace("?embed=1", "?embed=1&submit=1"))
 
 
 def allow(origins):
@@ -81,6 +82,21 @@ with sync_playwright() as p:
     check("world boots in the embed", eventually(lambda: "Ready" in frame.locator(".world-status").inner_text(), 150000))
     frame.locator(".toolbar .run").click()
     check("program runs in the embed", eventually(lambda: "2" in frame.locator(".console-lines").inner_text(), 150000))
+    page.close()
+
+    # ---- the "Hand in" button (only with ?submit=1) sends all files to the page
+    page = browser.new_page()
+    page.goto("http://127.0.0.1:4181/parent-submit.html")
+    frame = page.frame_locator("#f")
+    check("editor announces itself (submit page)", eventually(lambda: messages(page, "ready"), 30000))
+    page.evaluate("send({ type: 'load', id: 's1', lang: 'de', files: { 'main.py': 'print(1)\\n' } })")
+    check("a hand-in button is offered", eventually(lambda: frame.get_by_role("button", name="Abgeben").count() == 1, 20000))
+    frame.get_by_role("button", name="Abgeben").click()
+    check("hand-in sends the files to the page", eventually(lambda: any(m["files"].get("main.py") == "print(1)\n" for m in messages(page, "submit")), 15000), str(messages(page, "submit")))
+    check("the button confirms", eventually(lambda: frame.get_by_role("button", name="Abgegeben").count() == 1, 5000))
+    page.close()
+    page = open_parent(browser)
+    check("no hand-in button without ?submit=1", eventually(lambda: messages(page, "ready"), 30000) and page.frame_locator("#f").get_by_role("button", name="Abgeben").count() == 0 and page.frame_locator("#f").get_by_role("button", name="Hand in").count() == 0)
     page.close()
 
     # ---- opt-in: unlisted, damaged or missing configuration means nobody ----

@@ -95,8 +95,38 @@ async function shell(request) {
   }
 }
 
+/* input() without SharedArrayBuffer: the worker asks for a line with a synchronous GET that stays open until the page
+ * POSTs the line to the same address (or cancels with null). An answer that arrives first is kept for the request. */
+const waitingForLine = new Map()
+const lineBeforeRequest = new Map()
+const lineResponse = (text) => new Response(JSON.stringify({ text }), { headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } })
+
+async function inputLine(request, id) {
+  if (request.method === 'POST') {
+    const { text } = await request.json()
+    const waiting = waitingForLine.get(id)
+    if (waiting) {
+      waitingForLine.delete(id)
+      waiting(lineResponse(text))
+    } else {
+      lineBeforeRequest.set(id, text)
+      // an answer nobody asked for (the program ended first) must not pile up
+      for (const old of [...lineBeforeRequest.keys()].slice(0, Math.max(0, lineBeforeRequest.size - 20))) lineBeforeRequest.delete(old)
+    }
+    return new Response(null, { status: 204 })
+  }
+  if (lineBeforeRequest.has(id)) {
+    const text = lineBeforeRequest.get(id)
+    lineBeforeRequest.delete(id)
+    return lineResponse(text)
+  }
+  return new Promise((resolve) => waitingForLine.set(id, resolve))
+}
+
 self.addEventListener('fetch', (event) => {
   const { request } = event
+  const stdin = new URL(request.url)
+  if (stdin.href.startsWith(abs('__mw_stdin__/'))) return event.respondWith(inputLine(request, stdin.pathname.split('/').pop()))
   if (request.method !== 'GET' || request.headers.has('range')) return
   const url = new URL(request.url)
   if (url.origin === scope.origin) {

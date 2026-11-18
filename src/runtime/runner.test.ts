@@ -23,7 +23,7 @@ class FakeWorker implements WorkerLike {
 
 const tick = () => Promise.resolve().then(() => Promise.resolve())
 
-function setup() {
+function setup(extra: Partial<ConstructorParameters<typeof Runner<CanvasLike>>[0]> = {}) {
   const workers: FakeWorker[] = []
   let canvases = 0
   const runner = new Runner<CanvasLike>({
@@ -34,6 +34,7 @@ function setup() {
       return w
     },
     createCanvas: () => (canvases++, { transferControlToOffscreen: () => ({}) as OffscreenCanvas }),
+    ...extra,
   })
   return { runner, workers, canvasCount: () => canvases }
 }
@@ -161,6 +162,14 @@ describe('Runner', () => {
     expect(runner.state.lines.at(-1)?.text).toContain('AbortError')
   })
 
+  it('explains a boot that the security policy blocked', async () => {
+    const { runner, workers } = setup()
+    const boot = runner.ensureBooted(config)
+    workers[0]?.emit({ type: 'boot-error', text: 'ImportError: dynamic module does not define module export function (PyInit_base)', hint: 'blocked' })
+    await expect(boot).rejects.toThrow()
+    expect(runner.state.lines.some((line) => line.text.includes('Strg+Umschalt+R') || line.text.includes('Ctrl+Shift+R'))).toBe(true)
+  })
+
   it('cancelling during boot terminates the worker', async () => {
     const { runner, workers } = setup()
     const boot = runner.ensureBooted(config)
@@ -278,5 +287,55 @@ describe('Runner', () => {
     expect(seen).toHaveBeenCalled()
     expect(runner.state.lines).toHaveLength(2000)
     expect(runner.state.lines.at(-1)?.text).toBe('2099')
+  })
+
+  describe('input()', () => {
+    it('shows the request, sends the answer to the worker and echoes it', async () => {
+      const { runner, workers } = setup()
+      await bootReady(runner, workers)
+      void runner.run({}, 'main.py', config)
+      await tick()
+      workers[0]!.emit({ type: 'input-request', id: 'a-1', prompt: 'Name: ', via: 'worker' })
+      expect(runner.state.input).toEqual({ id: 'a-1', prompt: 'Name: ', via: 'worker' })
+      runner.answerInput('Ada')
+      expect(workers[0]!.last('input-reply')).toEqual({ type: 'input-reply', id: 'a-1', text: 'Ada' })
+      expect(runner.state.input).toBeNull()
+      expect(runner.state.lines.at(-1)).toMatchObject({ kind: 'input', text: 'Name: Ada' })
+    })
+
+    it('hands the line to the Service Worker when the worker blocks on it', async () => {
+      const replies: unknown[][] = []
+      const { runner, workers } = setup({ inputBase: 'https://example.test/__mw_stdin__/', replyToServiceWorker: (...a) => void replies.push(a) })
+      await bootReady(runner, workers)
+      void runner.run({}, 'main.py', config)
+      await tick()
+      workers[0]!.emit({ type: 'input-request', id: 'b-2', prompt: '', via: 'service-worker' })
+      runner.answerInput('x')
+      expect(replies).toEqual([['https://example.test/__mw_stdin__/', 'b-2', 'x']])
+      expect(workers[0]!.sent.some((m) => m.type === 'input-reply')).toBe(false)
+    })
+
+    it('lets a waiting program go before it stops', async () => {
+      const { runner, workers } = setup()
+      await bootReady(runner, workers)
+      void runner.run({}, 'main.py', config)
+      await tick()
+      workers[0]!.emit({ type: 'input-request', id: 'c-3', prompt: '?', via: 'worker' })
+      void runner.stop()
+      const types = workers[0]!.sent.map((m) => m.type)
+      expect(types.indexOf('input-reply')).toBeLessThan(types.indexOf('stop'))
+      expect(workers[0]!.last('input-reply').text).toBeNull()
+      expect(runner.state.lines.some((l) => l.kind === 'input')).toBe(false)
+    })
+
+    it('forgets the request when the program ends', async () => {
+      const { runner, workers } = setup()
+      await bootReady(runner, workers)
+      void runner.run({}, 'main.py', config)
+      await tick()
+      workers[0]!.emit({ type: 'input-request', id: 'd-4', prompt: '', via: 'worker' })
+      workers[0]!.emit({ type: 'exit', error: null, changed: {}, deleted: [] })
+      expect(runner.state.input).toBeNull()
+    })
   })
 })

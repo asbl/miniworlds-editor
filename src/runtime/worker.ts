@@ -105,10 +105,57 @@ scope._mw_notify = (kind: string, payload: string) => {
   }
 }
 
+// input(): the program blocks until the page sends a line. Two ways to block without SharedArrayBuffer (which would need
+// cross-origin isolation and so break embedding): JSPI (Chromium) suspends Python while the worker stays responsive;
+// elsewhere a synchronous request that the Service Worker holds open until the page posts the line.
+let inputBase: string | null = null
+let inputSeq = 0
+const inputWaiters = new Map<string, (text: string | null) => void>()
+const nextInputId = () => `${Math.random().toString(36).slice(2, 8)}-${++inputSeq}`
+
+scope._mw_read_line = (prompt: string) =>
+  new Promise<string | null>((resolve) => {
+    const id = nextInputId()
+    inputWaiters.set(id, resolve)
+    post({ type: 'input-request', id, prompt, via: 'worker' })
+  })
+
+scope._mw_sync_input_ready = () => inputBase !== null && !!(navigator as Navigator).serviceWorker?.controller
+
+scope._mw_read_line_sync = (prompt: string): string | null => {
+  const id = nextInputId()
+  post({ type: 'input-request', id, prompt, via: 'service-worker' })
+  try {
+    const request = new XMLHttpRequest()
+    request.open('GET', `${inputBase}${id}`, false)
+    request.send()
+    if (request.status !== 200) return null
+    return (JSON.parse(request.responseText) as { text: string | null }).text
+  } catch {
+    return null
+  }
+}
+
+/** Sound: the page plays it (see audio.ts). `data` is the file's bytes, sent only the first time. */
+scope._mw_audio = (json: string, data?: Uint8Array | null) => {
+  const message = JSON.parse(json) as Record<string, unknown>
+  if (data) {
+    const copy = data.slice().buffer as ArrayBuffer
+    post({ type: 'audio', ...message, data: copy } as FromWorker, [copy])
+  } else post({ type: 'audio', ...message } as FromWorker)
+}
+
+/** The page cancelled (Stop): every waiting `input()` ends. */
+function cancelInputs() {
+  for (const resolve of inputWaiters.values()) resolve(null)
+  inputWaiters.clear()
+}
+
 const progress = (step: BootStep) => post({ type: 'progress', step })
 
 async function boot(message: Extract<ToWorker, { type: 'boot' }>): Promise<string> {
   const { canvas, pyodideBase, miniworlds, packages } = message
+  inputBase = message.inputBase
   scope.__canvas = canvas
   // SDL treats the canvas like an HTMLCanvasElement: give the OffscreenCanvas the bits it touches.
   Object.assign(canvas, { style: {}, getBoundingClientRect: () => ({ left: 0, top: 0, width: canvas.width, height: canvas.height }), focus: () => {} })
@@ -119,6 +166,7 @@ async function boot(message: Extract<ToWorker, { type: 'boot' }>): Promise<strin
   }
   const py = await loadPyodide({ indexURL: pyodideBase })
   pyodide = py
+  // an AudioContext in the worker (not in today's browsers) would let SDL play by itself; otherwise the page plays, if it can
   const hasAudio = typeof (self as unknown as { AudioContext?: unknown }).AudioContext !== 'undefined'
   py.runPython(
     `import os\nos.environ["SDL_EMSCRIPTEN_KEYBOARD_ELEMENT"] = "#canvas"\n` + (hasAudio ? '' : `os.environ["SDL_AUDIODRIVER"] = "dummy"\n`),
@@ -138,7 +186,7 @@ async function boot(message: Extract<ToWorker, { type: 'boot' }>): Promise<strin
   py.FS.writeFile('/home/pyodide/mw_runner.py', new TextEncoder().encode(runnerSource))
   py.runPython(`import sys\nif "/home/pyodide" not in sys.path: sys.path.insert(0, "/home/pyodide")`)
   runner = py.pyimport('mw_runner')
-  runner.setup(hasAudio)
+  runner.setup(hasAudio, message.audio)
   // Only the program's output belongs in the console, not Pyodide's loading messages or the pygame banner.
   py.setStdout({ batched: (text) => post({ type: 'out', stream: 'stdout', text }) })
   py.setStderr({ batched: (text) => post({ type: 'out', stream: 'stderr', text }) })
@@ -192,13 +240,20 @@ scopeSelf.onmessage = async ({ data }: MessageEvent<ToWorker>) => {
       try {
         post({ type: 'ready', version: await boot(data) })
       } catch (error) {
-        post({ type: 'boot-error', text: String((error as Error)?.stack ?? error) })
+        const text = String((error as Error)?.stack ?? error)
+        // a policy that forbids eval shows up as pygame failing to load ("does not define module export function (PyInit_…)")
+        post({ type: 'boot-error', text, hint: /PyInit_|unsafe-eval|Content Security Policy|call to eval\(\)/i.test(text) ? 'blocked' : undefined })
       }
       break
     case 'run':
       await run(data)
       break
+    case 'input-reply':
+      inputWaiters.get(data.id)?.(data.text)
+      inputWaiters.delete(data.id)
+      break
     case 'stop':
+      cancelInputs()
       await stop()
       break
     case 'install':

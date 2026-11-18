@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { Workspace, FileEntry } from '../workspace'
 import { renamePath, uniquePath } from '../workspace'
 import { t, useLang } from '../i18n'
+import { buildReport } from './report'
+import { renameClass } from '../project/renameClass'
 import { addImport, canSubclass, classNameProblem, classPath, classSource, removeImport, subclassSource, CLASS_DIR, type BaseClass, type ClassKind } from '../project/classes'
 import { useLanguage } from '../language/useLanguage'
 import type { LanguageService } from '../language/service'
@@ -118,6 +120,10 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   const gf = useMiniworlds(runner, metaApi)
   const reloader = useAutoReload({ enabled: view === 'miniworlds' && autoReload, session, runner, fs, reload: () => void program.run() })
   const installedVersion = program.state.version
+  const waitingForInput = program.state.input !== null
+  useEffect(() => {
+    if (waitingForInput) setPane('world') // the program asks for a line: the console is where to type it
+  }, [waitingForInput])
   const modelSupported = installedVersion ? engineTier(installedVersion) === 'full' : miniworldsSupported
   const classModel = useClassModel({ runner, session, fs, supported: modelSupported, ready: installedVersion !== null && program.state.phase !== 'booting', fileSignal: entries })
   const languageState = useLanguage({
@@ -324,6 +330,73 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
     }
   }
 
+  /** Renames a class everywhere: definition, uses, imports, its file, and the start setup of the world. */
+  async function renameClassDialog(info: ModelClass) {
+    if (kind !== 'project') return void (await infoDialog(t('class.title'), t('class.onlyInProject')))
+    const values = await openDialog({
+      title: t('class.renameTitle', { name: info.name }),
+      message: t('class.renameHint'),
+      fields: [{ kind: 'text', key: 'name', label: t('class.name'), initial: info.name }],
+      submit: 'dialog.rename',
+      validate: async (v) => {
+        const name = String(v.name).trim()
+        if (name === info.name) return null
+        const problem = classNameProblem(name)
+        if (problem === 'invalid') return t('class.invalid')
+        if (problem === 'reserved') return t('class.reserved', { name })
+        const exists = classModel.model?.classes.some((c) => c.name === name) || (await fs.exists(classPath(name)))
+        return exists ? t('class.exists', { name }) : null
+      },
+    })
+    const name = values ? String(values.name).trim() : info.name
+    if (!values || name === info.name) return
+    try {
+      await session?.saveAll()
+      await historyApi.record('before-rename')
+      const texts: Record<string, string> = {}
+      for (const entry of await fs.list()) if (entry.kind === 'file' && entry.path.endsWith('.py')) texts[entry.path] = await fs.read(entry.path)
+      const result = renameClass(texts, info.name, name)
+      for (const [path, text] of Object.entries(result.texts)) await (session ? session.writeText(path, text) : fs.write(path, text))
+      if (result.move) {
+        await renamePath(fs, result.move.from, result.move.to)
+        await session?.moved(result.move.from, result.move.to)
+      }
+      // objects placed in the world by hand are remembered by class name
+      const meta = metaApi.metaRef.current
+      if (meta.journal.some((op) => 'cls' in op && op.cls === info.name)) {
+        metaApi.setMeta({ ...meta, journal: meta.journal.map((op) => ('cls' in op && op.cls === info.name ? { ...op, cls: name } : op)) })
+      }
+      setPickedClass(name)
+      await refresh()
+      runner.note(t('class.renamed', { count: result.count, files: Object.keys(result.texts).length }))
+    } catch (error) {
+      await report(error)
+    }
+  }
+
+  /** A text the pupil can send to a teacher: versions, files, the start file and the console. */
+  async function copyReport() {
+    const entryPath = ENTRY_DEFAULT
+    const text = buildReport({
+      time: new Date(),
+      lang,
+      userAgent: navigator.userAgent,
+      engine: runner.state.version,
+      pinned: settings.miniworlds ?? null,
+      packages: settings.packages,
+      files: entries.filter((e) => e.kind === 'file').map((e) => e.path),
+      entry: (await fs.exists(entryPath)) ? { path: entryPath, text: await (session ? session.readText(entryPath) : fs.read(entryPath)) } : null,
+      lines: runner.state.lines,
+    })
+    try {
+      await navigator.clipboard.writeText(text)
+      runner.note(t('console.reportCopied'))
+    } catch {
+      // clipboard blocked (iframe, insecure context): show the text to copy by hand
+      await openDialog({ title: t('console.reportTitleDialog'), message: t('console.reportManual'), body: <textarea class="report-text" readOnly rows={14} value={text} onFocus={(e) => e.currentTarget.select()} />, info: true })
+    }
+  }
+
   async function deleteEntry(path: string) {
     if (!(await confirmDialog(t('files.delete'), t('files.deleteConfirm', { path })))) return
     await historyApi.record('before-delete')
@@ -490,6 +563,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
       )
     }
     if (info) items.push({ text: t('uml.menu.source'), run: () => onUmlSelect(info, name) })
+    if (info && kind === 'project') items.push({ text: t('class.rename'), run: () => void renameClassDialog(info) })
     if (info?.kind === 'actor') items.push({ text: t('uml.menu.image'), run: () => setImageFor(name) })
     if (base && kind === 'project' && canSubclass(base)) {
       items.push('-', { text: t('uml.menu.subclass', { name }), run: () => void newClass(base) })
@@ -764,6 +838,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
       </div>
       <WorldPanel
         name={projectName}
+        onReport={() => void copyReport()}
         runner={runner}
         onJump={(loc) => {
           setPane('editor') // a link in the console: show the line it points to

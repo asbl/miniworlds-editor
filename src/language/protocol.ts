@@ -5,6 +5,12 @@ export interface JediItem {
   type: string
   doc: string
 }
+/** The call being typed: `move(distance=1)`, `index` is the parameter under the cursor (null: none). */
+export interface Signature {
+  name: string
+  params: string[]
+  index: number | null
+}
 export interface Hover {
   name: string
   type: string
@@ -34,7 +40,7 @@ export type ToLanguage =
   | { type: 'boot'; pyodideBase: string; miniworlds: string | null }
   | { type: 'api'; index: string }
   | { type: 'sync'; files: Record<string, string> }
-  | { type: 'req'; id: number; name: 'complete' | 'hover' | 'hints' | 'lint' | 'format'; args: unknown[] }
+  | { type: 'req'; id: number; name: 'complete' | 'hover' | 'signature' | 'hints' | 'lint' | 'format'; args: unknown[] }
 
 export type FromLanguage =
   /** `hints`: this engine version has code_hints; `ruff`: lint and format are available. */

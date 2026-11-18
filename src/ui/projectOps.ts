@@ -3,6 +3,8 @@ import { getLang } from '../i18n'
 import { createProject } from '../project/create'
 import { createFromTemplate, TEMPLATES } from '../templates'
 import { exportZip, importZip, ZipError } from '../project/zip'
+import { FolderError, importFolder, type FolderSource } from '../project/folder'
+import { detectKind } from '../project/manifest'
 import { copyAll, validateProjectName, type ProjectStore } from '../workspace'
 import { infoDialog, openDialog, confirmDialog } from './dialogs'
 
@@ -144,4 +146,43 @@ export async function importProjectZip(store: ProjectStore, file: File): Promise
     await infoDialog(t('dialog.error'), t('project.importFailed', { reason }))
     return null
   }
+}
+
+/**
+ * Creates a project from a folder (picked or dropped), named like the folder; returns its name, or null on failure
+ * (the user was informed). Stays silent on success, except for a hint when the folder does not look like a program.
+ */
+export async function importProjectFolder(store: ProjectStore, source: Promise<FolderSource> | FolderSource): Promise<string | null> {
+  let name: string | null = null
+  try {
+    const folder = await source
+    name = await uniqueProjectName(store, (folder.name ?? t('project.untitled')).replace(/[\\/:*?"<>|]/g, '_'))
+    const { fs } = await store.open(name)
+    await importFolder(fs, folder)
+    if (detectKind(await fs.list()) === 'other') await infoDialog(t('project.importNoMainTitle'), t('project.importNoMain', { name }))
+    return name
+  } catch (error) {
+    if (name) await store.remove(name).catch(() => {})
+    const reason = error instanceof FolderError ? t(`project.importReason.${error.code}`) : error instanceof Error ? error.message : String(error)
+    await infoDialog(t('dialog.error'), t('project.importFolderFailed', { reason }))
+    return null
+  }
+}
+
+/** Several dropped folders: one project each; returns the first one made, which is the one to show. */
+export async function importProjectFolders(store: ProjectStore, sources: Promise<FolderSource[]>): Promise<string | null> {
+  let list: FolderSource[]
+  try {
+    list = await sources
+  } catch (error) {
+    const reason = error instanceof FolderError ? t(`project.importReason.${error.code}`) : error instanceof Error ? error.message : String(error)
+    await infoDialog(t('dialog.error'), t('project.importFolderFailed', { reason }))
+    return null
+  }
+  let first: string | null = null
+  for (const source of list) {
+    const made = await importProjectFolder(store, source)
+    first ??= made
+  }
+  return first
 }

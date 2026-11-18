@@ -153,6 +153,11 @@ with sync_playwright() as p:
     check("failing line is marked", eventually(lambda: page.locator(".cm-error-line").count() == 1, 5000))
     check("error mark is on line 3", "ValueError" in page.locator(".cm-error-line").inner_text())
     check("status after crash", eventually(lambda: "Bereit" in status(page), 5000))
+    check("an error without a known explanation gets no hint", page.locator(".line.hint").count() == 0)
+    set_main(page, "import miniworlds as mw\nprint(figur)\n")
+    run(page)
+    check("a known error comes with a hint in plain words", eventually(lambda: page.locator(".line.hint").count() == 1 and "Tipp:" in page.locator(".line.hint").inner_text() and "„figur“" in page.locator(".line.hint").inner_text(), 20000), console(page)[-300:])
+    check("the status after it", eventually(lambda: "Bereit" in status(page), 5000))
 
     # --- error inside a class file: jump there via the console link
     set_main(page, "from classes.Figur import Figur\nimport miniworlds as mw\nw = mw.World(200, 100)\nFigur((10, 10))\nw.run()\n")
@@ -175,19 +180,22 @@ with sync_playwright() as p:
     check("script finishes", eventually(lambda: "Programm beendet" in console(page), 20000), console(page)[-200:])
     check("file written by the program shows up", eventually(lambda: "notiz.txt" in page.locator(".tree").inner_text(), 5000))
 
-    # --- sound: no AudioContext in a worker, the program must still run (silently) and the user is told
+    # --- sound: the page plays it (details in test/sound.py); the program must run without errors
     set_main(page, SOUND)
     run(page)
     check("sound calls do not crash the program", eventually(lambda: "sound ok" in console(page) and "music ok" in console(page), 20000), console(page)[-300:])
-    check("user is told that sound is silent", "Sound" in console(page).split("sound ok")[-1] or "Sound" in console(page))
+    check("sound is no longer reported as silent", "benutzt Sound" not in console(page))
     check("world keeps running with sound", "Läuft" in status(page))
     page.click(".toolbar .run.stop")
     eventually(lambda: "Bereit" in status(page), 10000)
 
-    # --- input() gives a clear message
-    set_main(page, 'name = input("Name? ")\n')
+    # --- input() waits for a line in the console (details in test/input.py)
+    set_main(page, 'name = input("Name? ")\nprint("hi", name)\n')
     run(page)
-    check("input() explained", eventually(lambda: "input() gibt es im Editor noch nicht" in console(page), 20000), console(page)[-200:])
+    check("input() asks in the console", eventually(lambda: page.locator(".console-input input").count() == 1, 20000), console(page)[-200:])
+    page.keyboard.type("Ada")
+    page.keyboard.press("Enter")
+    check("input() continues with the answer", eventually(lambda: "hi Ada" in console(page), 8000), console(page)[-200:])
 
     # --- endless loop: soft stop impossible, worker is terminated and recovers
     set_main(page, "while True:\n    pass\n")
