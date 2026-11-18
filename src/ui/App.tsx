@@ -19,14 +19,20 @@ import { createFromTemplate, TEMPLATES } from '../templates'
 import { loadPreferences, savePreferences, type Preferences } from './preferences'
 import { LoadingBanner } from './LoadingBanner'
 import { Menu } from './Menu'
+import { FIRST_REMINDER_MS, loadBackupRecord, saveBackupRecord, shouldRemind } from './backup'
+import { hasSeenWelcome, markWelcomeSeen } from './welcome/firstRun'
+import { ImportGuide, Welcome, type ImportActions } from './welcome/Welcome'
 import { ProjectView } from './ProjectView'
 import { collectShareContext, type ShareContext } from '../share/collect'
 import { ShareDialog } from '../share/ShareDialog'
 import {
   createStarterProject,
+  createTemplateProject,
   duplicateProject,
   exportProjectZip,
   importProjectFolder,
+  importProjectDropped,
+  importProjectFiles,
   importProjectFolders,
   importProjectZip,
   lastProject,
@@ -58,7 +64,33 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
   const folderInput = useRef<HTMLInputElement>(null)
   const [update, setUpdate] = useState<PwaHandle | null>(null)
   const [sharing, setSharing] = useState<ShareContext | null>(null)
+  const filesInput = useRef<HTMLInputElement>(null)
+  /** The card for a first visit, or the import hints (from the menu). */
+  const [overlay, setOverlay] = useState<'welcome' | 'import' | null>(null)
+  /** The project made for a first visit; replaced when the visitor picks a template or imports a program. */
+  const firstProject = useRef<string | null>(null)
+  /** `hint`: the reminder that the project lives only on this device; `done`: the backup that was just made. */
+  const [backupNote, setBackupNote] = useState<'hint' | 'done' | null>(null)
   useEffect(() => registerServiceWorker((handle) => setUpdate(handle)), [])
+
+  // after a while of work in a project that was never backed up (or not for a week): say where the project lives
+  useEffect(() => {
+    if (!name || workspace?.kind === 'memory' || !shouldRemind(loadBackupRecord(), Date.now())) return
+    const timer = setTimeout(() => setBackupNote((now) => now ?? 'hint'), FIRST_REMINDER_MS)
+    return () => clearTimeout(timer)
+  }, [name, workspace])
+
+  async function backup() {
+    await flush.current?.()
+    await exportProjectZip(store, current)
+    saveBackupRecord(Date.now())
+    setBackupNote('done')
+  }
+  useEffect(() => {
+    if (backupNote !== 'done') return
+    const timer = setTimeout(() => setBackupNote(null), 6000)
+    return () => clearTimeout(timer)
+  }, [backupNote])
 
   /** New projects pin the newest known engine version (so the update warning can work later). Offline: unpinned. */
   async function newestVersion(): Promise<string | null> {
@@ -74,6 +106,20 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     setProjects(list.includes(next) ? list : await store.list())
     setWorkspace(ws)
     setName(next)
+    closeOverlay()
+  }
+
+  function closeOverlay() {
+    setOverlay(null)
+  }
+
+  /** The untouched project of a first visit makes room for what the visitor chose instead (a template, an import). */
+  async function dropStarter(keep: string) {
+    const unused = firstProject.current
+    firstProject.current = null
+    if (!unused || unused === keep) return
+    await store.remove(unused).catch(() => {})
+    setProjects(await store.list())
   }
 
   /** A link that opens a task (`?template=`, `?zip=`): the project is made once, the same link later opens it again. */
@@ -120,14 +166,35 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
       if (wanted && list.includes(wanted)) await show(wanted)
       else if (list[0]) await show(list[0])
       else {
-        const starter = t('project.untitled')
-        await createStarterProject(store, starter, 'project', await newestVersion())
-        await show(starter)
+        const first = t('project.untitled')
+        await createStarterProject(store, first, 'project', await newestVersion())
+        await show(first)
+        // somebody who has never been here: say what to do first (not for a link that brings its own task)
+        if (!launch && !hasSeenWelcome()) {
+          firstProject.current = first
+          markWelcomeSeen()
+          setOverlay('welcome')
+        }
       }
       if (launch) await openLaunch(launch).catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store])
+
+  /** A new project from an import or a template: show it, and let it replace the untouched project of a first visit. */
+  async function showMade(made: string | null) {
+    if (!made) return
+    await flush.current?.()
+    await show(made)
+    await dropStarter(made)
+  }
+
+  const importActions: ImportActions = {
+    pickFolder: () => folderInput.current?.click(),
+    pickZip: () => zipInput.current?.click(),
+    pickFiles: () => filesInput.current?.click(),
+    dropFiles: (files) => void guarded(async () => showMade(await importProjectDropped(store, files)))(),
+  }
 
   const guarded = (action: () => Promise<void>) => () =>
     void action().catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
@@ -154,6 +221,9 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     { label: t('project.exportZip'), onSelect: guarded(async () => { await flush.current?.(); await exportProjectZip(store, current) }) },
     { label: t('project.importFolder'), onSelect: () => folderInput.current?.click() },
     { label: t('project.importZip'), onSelect: () => zipInput.current?.click() },
+    { label: t('project.importFiles'), onSelect: () => filesInput.current?.click() },
+    { label: t('project.importHelp'), onSelect: () => setOverlay('import') },
+    { label: t('welcome.reopen'), onSelect: () => setOverlay('welcome') },
     ...projects.map((p, i) => ({ label: p, checked: p === name, divider: i === 0, onSelect: guarded(() => show(p)) })),
   ]
 
@@ -186,16 +256,30 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
       onDropCapture={(e) => {
         // a dropped folder becomes a new project (each one of several folders, too); plain files fall through to the open project
         const folders = droppedFolders(e.dataTransfer)
-        if (!folders) return
-        e.preventDefault()
-        e.stopPropagation()
-        guarded(async () => { await flush.current?.(); const n = await importProjectFolders(store, folders); if (n) await show(n) })()
+        if (folders) {
+          e.preventDefault()
+          e.stopPropagation()
+          guarded(async () => showMade(await importProjectFolders(store, folders)))()
+          return
+        }
+        // a dropped ZIP is a project, not a file to put into the open one
+        const files = Array.from(e.dataTransfer?.files ?? [])
+        if (files.length > 0 && files.every((f) => /\.zip$/i.test(f.name))) {
+          e.preventDefault()
+          e.stopPropagation()
+          guarded(async () => showMade(await importProjectDropped(store, files)))()
+        }
       }}
     >
       <header class="topbar">
         <h1 class="brand">{t('app.title')}</h1>
         {name && <Menu label={`${t('project.menu')}: ${name} ▾`} items={projectItems} />}
         <span class="spacer" />
+        {name && (
+          <button type="button" class="backup-button" title={t('backup.title')} onClick={guarded(backup)}>
+            {t('backup.button')}
+          </button>
+        )}
         {config.links.length > 0 && (
           <Menu
             label={`${t('links.menu')} ▾`}
@@ -213,6 +297,21 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
           items={LANGS.map((l) => ({ label: LANG_NAMES[l], checked: l === lang, onSelect: () => setLang(l) }))}
         />
       </header>
+      {backupNote && (
+        <div class="notice" role="status">
+          <span>{backupNote === 'done' ? t('backup.done', { name: current }) : t('backup.hint')}</span>
+          {backupNote === 'hint' && (
+            <>
+              <button type="button" class="primary" onClick={guarded(backup)}>
+                {t('backup.hint.now')}
+              </button>
+              <button type="button" onClick={() => (saveBackupRecord(Date.now()), setBackupNote(null))}>
+                {t('backup.hint.later')}
+              </button>
+            </>
+          )}
+        </div>
+      )}
       {update && (
         <div class="notice" role="status" aria-label={t('pwa.reload')}>
           <span>{t(update.kind === 'waiting' ? 'pwa.update' : 'pwa.stale')}</span>
@@ -233,10 +332,33 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
         onChange={(e) => {
           const file = e.currentTarget.files?.[0]
           e.currentTarget.value = ''
-          if (file) guarded(async () => { await flush.current?.(); const n = await importProjectZip(store, file); if (n) await show(n) })()
+          if (file) guarded(async () => showMade(await importProjectZip(store, file)))()
         }}
       />
       {sharing && <ShareDialog context={sharing} onClose={() => setSharing(null)} />}
+      <input
+        ref={filesInput}
+        type="file"
+        multiple
+        accept=".py,.png,.jpg,.jpeg,.gif,.webp,.svg,.wav,.mp3,.ogg,.txt,.json,.csv"
+        hidden
+        onChange={(e) => {
+          const list = Array.from(e.currentTarget.files ?? [])
+          e.currentTarget.value = ''
+          if (list.length > 0) guarded(async () => showMade(await importProjectFiles(store, list)))()
+        }}
+      />
+      {overlay === 'welcome' && (
+        <Welcome
+          actions={importActions}
+          onStart={() => {
+            firstProject.current = null // the visitor keeps it, so nothing may replace it later
+            closeOverlay()
+          }}
+          onTemplate={(id) => void guarded(async () => showMade(await createTemplateProject(store, id, await newestVersion())))()}
+        />
+      )}
+      {overlay === 'import' && <ImportGuide actions={importActions} onClose={closeOverlay} />}
       <input
         ref={folderInput}
         type="file"
@@ -248,7 +370,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
           const list = e.currentTarget.files
           const source = list && list.length > 0 ? fromFileList(list) : null
           e.currentTarget.value = ''
-          if (source) guarded(async () => { await flush.current?.(); const n = await importProjectFolder(store, source); if (n) await show(n) })()
+          if (source) guarded(async () => showMade(await importProjectFolder(store, source)))()
         }}
       />
       <LoadingBanner runner={runner} language={language} onReload={() => void (flush.current?.() ?? Promise.resolve()).then(() => location.reload())} />

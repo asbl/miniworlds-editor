@@ -1,5 +1,6 @@
 import type { de } from './de'
 import { studentEn } from './student.en'
+import { welcomeEn } from './welcome.en'
 
 export const en: Record<keyof typeof de, string> = {
   'app.title': 'miniworlds editor',
@@ -353,10 +354,11 @@ export const en: Record<keyof typeof de, string> = {
   'dialog.create': 'Create',
   'dialog.delete': 'Delete',
 
-  'status.storage.opfs': 'Storage: persistent in the browser',
+  'status.storage.opfs': 'Stored only on this device',
   'status.storage.memory': 'Storage: memory only',
   'status.saved': 'Saved',
   'status.saving': 'Saving …',
 
   ...studentEn,
+  ...welcomeEn,
 }

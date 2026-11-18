@@ -63,7 +63,7 @@ const RULES: Rule[] = [
   { test: /^KeyError: (.+)/, hint: (m) => ({ de: `Im Dictionary gibt es den Schlüssel ${m[1]} nicht. Tippfehler? Mit „in“ kannst du vorher prüfen.`, en: `The dictionary has no key ${m[1]}. A typo? Check first with "in".` }) },
   { test: /^ZeroDivisionError/, hint: () => ({ de: 'Durch 0 kann man nicht teilen. Prüfe, ob der Teiler 0 werden kann.', en: 'You cannot divide by 0. Check whether the divisor can become 0.' }) },
   { test: /^RecursionError/, hint: () => ({ de: 'Eine Funktion ruft sich immer wieder selbst auf, ohne anzuhalten. Es fehlt eine Bedingung, die die Wiederholung beendet.', en: 'A function keeps calling itself without stopping. A condition that ends the repetition is missing.' }) },
-  { test: /^FileNotFoundError: .*'([^']+)'/, hint: (m) => ({ de: `Die Datei ${q(m[1])} gibt es nicht. Der Pfad gilt vom Projektordner aus; Groß- und Kleinschreibung zählt. Bilder gehören in den Ordner images.`, en: `The file ${qe(m[1])} does not exist. The path starts at the project folder; capital letters matter. Images belong in the images folder.` }) },
+  { test: /^FileNotFoundError: [^']*'([^']+)'/, hint: (m) => ({ de: `Die Datei ${q(m[1])} gibt es nicht. Der Pfad gilt vom Projektordner aus; Groß- und Kleinschreibung zählt. Bilder gehören in den Ordner images.`, en: `The file ${qe(m[1])} does not exist. The path starts at the project folder; capital letters matter. Images belong in the images folder.` }) },
   { test: /^EOFError/, hint: () => ({ de: 'Das Programm wollte eine Eingabe lesen, bekam aber keine mehr.', en: 'The program wanted to read input but there was none left.' }) },
 ]
 

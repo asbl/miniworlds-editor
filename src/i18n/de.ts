@@ -1,4 +1,5 @@
 import { studentDe } from './student.de'
+import { welcomeDe } from './welcome.de'
 /** Deutsche Texte. Der Schlüsselsatz hier ist maßgeblich; `en.ts` muss denselben Satz haben (Typ + Test). */
 export const de = {
   'app.title': 'miniworlds-Editor',
@@ -352,10 +353,11 @@ export const de = {
   'dialog.create': 'Anlegen',
   'dialog.delete': 'Löschen',
 
-  'status.storage.opfs': 'Speicher: dauerhaft im Browser',
+  'status.storage.opfs': 'Nur auf diesem Gerät gespeichert',
   'status.storage.memory': 'Speicher: nur im Arbeitsspeicher',
   'status.saved': 'Gespeichert',
   'status.saving': 'Speichert …',
 
   ...studentDe,
+  ...welcomeDe,
 } as const

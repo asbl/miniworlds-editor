@@ -8,7 +8,8 @@ import type { Fs } from '../workspace'
 import { createAssist } from './assist'
 import type { LanguageService, LanguageState } from './service'
 
-const FALLBACK_BOOT_MS = 6000
+/** The editor help is a second Python: it starts after the world, and only on its own if the world is very slow to come up. */
+const FALLBACK_BOOT_MS = 60_000
 const SYNC_DELAY_MS = 300
 const IDLE_SLEEP_MS = 5 * 60 * 1000
 
@@ -36,9 +37,20 @@ export function useLanguage({ language, runner, fs, session, host, installedVers
   // 1. boot: right after the world worker (they would compete for the network), but not much later if that one is slow
   useEffect(() => {
     if (installedVersion !== null) return void language.prepare(installedVersion)
+    // two Pythons starting together make both slow (CPU and network) – exactly when a pupil waits for the first Run.
+    // So: wait for the world, unless its start failed (then nothing is left to compete with) or takes very long.
+    let booting = runner.state.phase === 'booting'
+    const worldGaveUp = () => {
+      if (runner.state.phase === 'booting') booting = true
+      else if (booting && runner.state.phase === 'idle') language.prepare(configuredVersion)
+    }
+    const unsubscribe = runner.subscribe(worldGaveUp)
     const timer = setTimeout(() => language.prepare(configuredVersion), FALLBACK_BOOT_MS)
-    return () => clearTimeout(timer)
-  }, [language, installedVersion, configuredVersion])
+    return () => {
+      unsubscribe()
+      clearTimeout(timer)
+    }
+  }, [language, runner, installedVersion, configuredVersion])
 
   // network back after a start without it: the Python part (CDN, PyPI) is loaded now
   useEffect(() => {

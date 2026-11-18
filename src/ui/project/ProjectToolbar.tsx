@@ -67,7 +67,12 @@ export function ProjectToolbar(p: Props) {
   return (
     <section class="project-bar" aria-label={t('a11y.project', { name: p.projectName })}>
       <div class="toolbar" role="toolbar" aria-label={t('run.toolbar')}>
-        {program.busy ? (
+        {program.busy && program.state.phase === 'booting' ? (
+          // "Run" was pressed before Python was ready: it starts by itself; stopping now would throw the start-up away
+          <button type="button" class="run queued" disabled title={t('run.queued.title')}>
+            {t('run.queued')}
+          </button>
+        ) : program.busy ? (
           <button type="button" class="run stop" onClick={() => void program.stop()} disabled={program.state.phase === 'stopping'} title="Ctrl+Enter">
             ■ {t('run.stop')}
           </button>

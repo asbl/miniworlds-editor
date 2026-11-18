@@ -24,3 +24,25 @@ export function loadingView(runner: Pick<RunnerState, 'phase' | 'version'>, lang
   const status = world === 'failed' ? 'failed' : world !== 'ready' || help === 'loading' ? 'loading' : 'done'
   return { status, world, help }
 }
+
+export interface BootProgress {
+  /** 1-based step shown to the pupil, and how many there are. */
+  step: number
+  total: number
+  /** Share of the bar to fill: Python itself is by far the heaviest step. */
+  percent: number
+  what: 'pyodide' | 'packages' | 'miniworlds' | 'extra'
+}
+
+const BOOT_STEPS: Record<BootProgress['what'], { step: number; percent: number }> = {
+  pyodide: { step: 1, percent: 15 },
+  packages: { step: 2, percent: 60 },
+  miniworlds: { step: 3, percent: 85 },
+  extra: { step: 3, percent: 92 },
+}
+
+/** Where start-up is, in a form that can be shown as "step 2 of 3" and a bar. No step yet (still waiting for the version list) counts as the first. */
+export function bootProgress(step: BootProgress['what'] | null): BootProgress {
+  const what = step ?? 'pyodide'
+  return { ...BOOT_STEPS[what], total: 3, what }
+}

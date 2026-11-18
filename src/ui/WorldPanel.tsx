@@ -9,6 +9,7 @@ import { Inspector } from '../miniworlds/Inspector'
 import { attachInput, canvasPoint } from '../runtime/input'
 import type { Runner } from '../runtime/runner'
 import type { TraceLocation } from '../runtime/traceback'
+import { BootPlaceholder } from './BootPlaceholder'
 import { Console } from './Console'
 import { openContextMenu } from './ContextMenu'
 import { infoDialog } from './dialogs'
@@ -224,6 +225,7 @@ export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, name =
       <div class="world-stage" ref={stage}>
         <div class="world-wrap" hidden={popup !== null}>
           <div ref={slot} />
+          {state.phase === 'booting' && docked && <BootPlaceholder step={state.bootStep} />}
           {docked && anyGuides(guides) && <GuidesOverlay canvas={runner.canvas} guides={guides} actors={mw?.actorList ?? []} tick={tick} />}
           {sel && (
             <div

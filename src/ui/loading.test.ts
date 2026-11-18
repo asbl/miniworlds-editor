@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { loadingView } from './loading'
+import { bootProgress, loadingView } from './loading'
 
 describe('loadingView', () => {
   it('waits while nothing has started', () => {
@@ -22,5 +22,18 @@ describe('loadingView', () => {
   })
   it('a world that went back to idle after booting has failed', () => {
     expect(loadingView({ phase: 'idle', version: null }, { phase: 'ready' }, true).status).toBe('failed')
+  })
+})
+
+describe('bootProgress', () => {
+  it('counts the steps 1 to 3 and starts at the first before the worker reports anything', () => {
+    expect(bootProgress(null)).toMatchObject({ step: 1, total: 3, what: 'pyodide' })
+    expect(bootProgress('packages').step).toBe(2)
+    expect(bootProgress('miniworlds').step).toBe(3)
+  })
+  it('extra packages are part of the last step and the bar only moves forward', () => {
+    expect(bootProgress('extra').step).toBe(3)
+    const bars = (['pyodide', 'packages', 'miniworlds', 'extra'] as const).map((s) => bootProgress(s).percent)
+    expect([...bars].sort((a, b) => a - b)).toEqual(bars)
   })
 })

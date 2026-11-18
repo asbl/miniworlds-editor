@@ -149,6 +149,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
     const mod = event.ctrlKey || event.metaKey
     if (mod && event.key === 'Enter') {
       event.preventDefault()
+      if (program.busy && program.state.phase === 'booting') return // already queued; stopping would discard the start-up
       void (program.busy ? program.stop() : runProgram())
     } else if (mod && event.key.toLowerCase() === 's') {
       event.preventDefault()

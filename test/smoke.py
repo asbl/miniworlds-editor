@@ -7,6 +7,7 @@ import io, sys, zipfile
 from playwright.sync_api import sync_playwright, expect
 
 URL = "http://localhost:4173/"
+SEEN_WELCOME = "localStorage.setItem('miniworlds-editor.welcomed', '1')"  # the first-visit card is not what this test is about
 BROWSER = sys.argv[1] if len(sys.argv) > 1 else "chromium"
 failures = []
 
@@ -63,6 +64,7 @@ with sync_playwright() as p:
     browser = getattr(p, BROWSER).launch()
     ctx = browser.new_context(accept_downloads=True, locale="de-DE")
     page = ctx.new_page()
+    page.add_init_script(SEEN_WELCOME)
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
@@ -97,7 +99,7 @@ with sync_playwright() as p:
     page.reload()
     page.wait_for_selector(".cm-content")
     check("edit survives reload (OPFS)", editor_has(page, "# persisted"))
-    check("persistent storage reported", "dauerhaft" in page.inner_text(".status"))
+    check("storage reported (and that it is only this device)", "nur auf diesem gerät" in page.inner_text(".status").lower())
 
     # --- new class via dialog: file + import in main.py
     menu(page, "+", "Neue Klasse")

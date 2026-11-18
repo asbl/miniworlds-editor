@@ -5,7 +5,7 @@ Needs `npm run build && npx vite preview --port 4173` and Python with Playwright
 import os, sys
 from playwright.sync_api import sync_playwright
 sys.path.insert(0, os.path.dirname(__file__))
-from support import check, console, eventually, failures, wait_ready
+from support import SEEN_WELCOME, check, console, eventually, failures, wait_ready
 
 URL = "http://localhost:4173/"
 BROWSER = sys.argv[1] if len(sys.argv) > 1 else "chromium"
@@ -13,6 +13,7 @@ BROWSER = sys.argv[1] if len(sys.argv) > 1 else "chromium"
 with sync_playwright() as p:
     browser = getattr(p, BROWSER).launch()
     page = browser.new_page(locale="de-DE")
+    page.add_init_script(SEEN_WELCOME)
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(URL)

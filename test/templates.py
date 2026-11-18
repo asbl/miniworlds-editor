@@ -4,7 +4,7 @@ Needs network, `npm run build && npx vite preview --port 4173`, Python with Play
 """
 import re, sys, time
 from playwright.sync_api import sync_playwright
-FILES_FIRST = "localStorage.setItem('miniworlds-editor.prefs', JSON.stringify({sidebar: 'files'}))"  # the sidebar opens with the class diagram by default
+FILES_FIRST = "localStorage.setItem('miniworlds-editor.prefs', JSON.stringify({sidebar: 'files'})); localStorage.setItem('miniworlds-editor.welcomed', '1')"  # the sidebar opens with the class diagram by default
 
 URL = "http://localhost:4173/"
 BROWSER = sys.argv[1] if len(sys.argv) > 1 else "chromium"

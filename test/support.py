@@ -5,7 +5,9 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 failures = []
 
 # The sidebar opens with the class diagram by default; most tests start from the file tree.
-FILES_FIRST = "localStorage.setItem('miniworlds-editor.prefs', JSON.stringify({sidebar: 'files'}))"
+# The welcome card (first visit) is switched off for tests that are not about it.
+SEEN_WELCOME = "localStorage.setItem('miniworlds-editor.welcomed', '1')"
+FILES_FIRST = "localStorage.setItem('miniworlds-editor.prefs', JSON.stringify({sidebar: 'files'}));" + SEEN_WELCOME
 
 
 def check(name, condition, detail=""):

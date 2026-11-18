@@ -3,8 +3,8 @@ import { getLang } from '../i18n'
 import { createProject } from '../project/create'
 import { createFromTemplate, TEMPLATES } from '../templates'
 import { exportZip, importZip, ZipError } from '../project/zip'
-import { FolderError, importFolder, type FolderSource } from '../project/folder'
-import { detectKind } from '../project/manifest'
+import { FolderError, importFolder, isSkipped, type FolderSource } from '../project/folder'
+import { detectKind, ENTRY_DEFAULT } from '../project/manifest'
 import { copyAll, validateProjectName, type ProjectStore } from '../workspace'
 import { infoDialog, openDialog, confirmDialog } from './dialogs'
 
@@ -38,6 +38,7 @@ function starterNames() {
     actorName: t('starter.actor'),
     worldVar: t('starter.worldVar'),
     actorVar: t('starter.actorVar'),
+    lang: getLang(),
   }
 }
 
@@ -76,6 +77,16 @@ export async function promptNewProject(store: ProjectStore, miniworlds: string |
   const template = TEMPLATES.find((tpl) => `tpl:${tpl.id}` === choice)
   if (template) await createFromTemplate((await store.open(name)).fs, { template, lang: getLang(), name, miniworlds })
   else await createStarterProject(store, name, choice as 'project' | 'legacy', miniworlds)
+  return name
+}
+
+/** A project with the tasks of a template, named after it ("Krabbe frisst Würmer", "… 2"); returns the name. */
+export async function createTemplateProject(store: ProjectStore, templateId: string, miniworlds: string | null): Promise<string> {
+  const template = TEMPLATES.find((tpl) => tpl.id === templateId)
+  if (!template) throw new Error(`unknown template ${templateId}`)
+  const text = template.text[getLang()] ?? template.text.de
+  const name = await uniqueProjectName(store, text.title)
+  await createFromTemplate((await store.open(name)).fs, { template, lang: getLang(), name, miniworlds })
   return name
 }
 
@@ -182,6 +193,56 @@ export async function importProjectFolders(store: ProjectStore, sources: Promise
   let first: string | null = null
   for (const source of list) {
     const made = await importProjectFolder(store, source)
+    first ??= made
+  }
+  return first
+}
+
+/**
+ * Creates a project from loose files (picked, or dropped without a folder): `.py` files, pictures, sounds.
+ * A single Python file becomes `main.py` (the start file); several keep their names. Returns the project's name, or null on
+ * failure (the user was informed).
+ */
+export async function importProjectFiles(store: ProjectStore, files: readonly File[]): Promise<string | null> {
+  const list = files.filter((f) => !isSkipped(f.name))
+  if (list.length === 0) return null
+  const python = list.filter((f) => /\.py$/i.test(f.name))
+  const first = (python[0] ?? list[0]) as File
+  const rename = python.length === 1 && !list.some((f) => f.name === ENTRY_DEFAULT) ? python[0] : undefined
+  let name: string | null = null
+  try {
+    name = await uniqueProjectName(store, first.name.replace(/\.[^.]*$/, '').replace(/[\\/:*?"<>|]/g, '_'))
+    const { fs } = await store.open(name)
+    const source: FolderSource = {
+      name: null,
+      files: list.map((file) => ({
+        path: file === rename ? ENTRY_DEFAULT : file.name,
+        size: file.size,
+        read: async () => new Uint8Array(await file.arrayBuffer()),
+      })),
+    }
+    await importFolder(fs, source)
+    if (detectKind(await fs.list()) === 'other') await infoDialog(t('project.importNoMainTitle'), t('project.importNoMain', { name }))
+    return name
+  } catch (error) {
+    if (name) await store.remove(name).catch(() => {})
+    const reason = error instanceof FolderError ? t(`project.importReason.${error.code}`) : error instanceof Error ? error.message : String(error)
+    await infoDialog(t('dialog.error'), t('project.importFolderFailed', { reason }))
+    return null
+  }
+}
+
+/** Dropped or picked files without a folder: ZIP files become projects of their own, everything else one project. */
+export async function importProjectDropped(store: ProjectStore, files: readonly File[]): Promise<string | null> {
+  const zips = files.filter((f) => /\.zip$/i.test(f.name))
+  const rest = files.filter((f) => !/\.zip$/i.test(f.name))
+  let first: string | null = null
+  for (const zip of zips) {
+    const made = await importProjectZip(store, zip)
+    first ??= made
+  }
+  if (rest.length > 0) {
+    const made = await importProjectFiles(store, rest)
     first ??= made
   }
   return first
