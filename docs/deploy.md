@@ -12,6 +12,30 @@ npm run selfhost       # optional: Pyodide nach dist/pyodide/ legen und config.j
 
 Die Seite läuft in jedem Ordner (alle URLs sind relativ). **HTTPS ist nötig** (Service Worker, OPFS); `http://localhost` genügt zum Ausprobieren.
 
+## Betrieb auf editor.opencoding.de
+
+Der Server betreibt jede Seite als eigenen nginx-Container hinter dem gemeinsamen Traefik (Zertifikat über `alpnresolver`). Für den Editor liegt in `~/projects/editor/` auf dem Server:
+
+```
+docker-compose.yml   aus deploy/ (Host `editor.opencoding.de`, Labels wie bei den anderen Seiten)
+nginx.conf           aus deploy/ (MIME-Typen für .mjs/.webmanifest, Cache-Header, frame-ancestors, gzip)
+html/                Inhalt des Builds, von scripts/deploy.sh hochgeladen
+```
+
+**Update einspielen** (Tests, Build, Größenprüfung, Selbst-Hosting, Upload; der Container muss nicht neu starten):
+
+```bash
+DEPLOY_TARGET=<user>@<server>:/home/<user>/projects/editor DEPLOY_SSH_PORT=<port> scripts/deploy.sh
+python test/live.py https://editor.opencoding.de/ chromium     # Kontrolle der veröffentlichten Seite
+```
+
+**Erstmalig:** Ordner anlegen, `deploy/docker-compose.yml` und `deploy/nginx.conf` hineinkopieren, `docker compose up -d`; das Zertifikat holt Traefik beim ersten Aufruf.
+
+`deploy/config.production.json` wird beim Deploy zur `config.json` (Links zu den anderen IDE-Varianten auf `miniworlds.opencoding.de`, `embedOrigins` = `https://www.opencoding.de`);
+`pyodideBase` ergänzt das Skript. Zugangsdaten und Adressen des Servers stehen nicht im Repository, nur in der Umgebung. Wer einbetten darf, steht zweimal:
+`embedOrigins` (Editor) und `frame-ancestors` in `deploy/nginx.conf` (Server); beide ändern, wenn sich die Moodle-Adresse ändert.
+Rechte: `html/` muss für den Container lesbar sein (das Skript setzt sie).
+
 ## Serverhinweise
 
 | Was | Empfehlung |

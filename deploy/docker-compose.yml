@@ -1,0 +1,24 @@
+# Server side of the editor: a static nginx container behind the shared Traefik (same pattern as the other sites).
+# Put this file, nginx.conf and html/ (the contents of dist/) into one folder, then: docker compose up -d
+services:
+  editor:
+    image: "local/container-security:os-09cb4ce6f0fa92041971"
+    runtime: "php-security-compat"
+    container_name: editor
+    restart: unless-stopped
+    networks:
+      - traefik_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.services.editor.loadbalancer.server.port=80"
+      - "traefik.http.routers.editor.rule=Host(`editor.opencoding.de`)"
+      - "traefik.http.routers.editor.entrypoints=websecure"
+      - "traefik.http.routers.editor.service=editor"
+      - "traefik.http.routers.editor.tls.certresolver=alpnresolver"
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+networks:
+  traefik_default:
+    external: true

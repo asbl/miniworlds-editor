@@ -1,0 +1,10 @@
+{
+  "links": [
+    { "label": "Miniworlds Blocks", "url": "https://miniworlds.opencoding.de/?ide=miniworldsBlocks" },
+    { "label": "Python-IDE", "url": "https://miniworlds.opencoding.de/?ide=python" },
+    { "label": "Python Blocks", "url": "https://miniworlds.opencoding.de/?ide=pythonBlocks" },
+    { "label": "Java-IDE", "url": "https://miniworlds.opencoding.de/?ide=java" },
+    { "label": "Java Blocks", "url": "https://miniworlds.opencoding.de/?ide=javaBlocks" }
+  ],
+  "embedOrigins": ["https://www.opencoding.de"]
+}
