@@ -35,14 +35,14 @@ with sync_playwright() as p:
     # --- 1. error help
     set_main(page, 'import miniworlds as mw\nwelt = mw.World(100, 100)\nprint(welt.widt)\nwelt.run()\n')
     page.click(".toolbar .run")
-    check("the error gets a plain-language hint", eventually(lambda: page.locator(".line.help").count() == 1, 120000), console(page)[-300:])
-    hint = page.locator(".line.help").inner_text()
+    check("the error gets a plain-language hint", eventually(lambda: page.locator(".line.hint").count() == 1, 120000), console(page)[-300:])
+    hint = page.locator(".line.hint").inner_text()
     check("the hint names the likely fix", "width" in hint, hint)
     check("the traceback is still there", "AttributeError" in console(page))
     set_main(page, 'x = 10\nprint(x / 0)\n')
     page.click(".toolbar .run")
-    check("another run adds another hint", eventually(lambda: page.locator(".line.help").count() == 2 and "Null" in page.locator(".line.help").nth(1).inner_text(), 30000), console(page)[-300:])
-    page.locator(".console-head button").click()
+    check("another run adds another hint", eventually(lambda: page.locator(".line.hint").count() == 2 and "Null" in page.locator(".line.hint").nth(1).inner_text(), 30000), console(page)[-300:])
+    page.get_by_role("button", name="Konsole leeren").click()
 
     # --- 2. guide lines and 3. inspector (miniworlds view)
     page.get_by_role("button", name="miniworlds", exact=True).click()

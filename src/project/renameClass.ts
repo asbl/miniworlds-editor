@@ -90,3 +90,32 @@ export function renameClass(texts: Record<string, string>, oldName: string, newN
   const move = from in texts ? { from, to: classPath(newName) } : null
   return { texts: changed, move, count }
 }
+
+/** Python's own names; a class called like one of them would hide it for the whole file. */
+const BUILTINS = new Set(
+  ('abs all any bin bool bytes callable chr dict dir divmod enumerate filter float format frozenset getattr hasattr hash hex id input int ' +
+    'isinstance issubclass iter len list map max min next object oct open ord pow print range repr reversed round set setattr slice sorted ' +
+    'str sum super tuple type vars zip Exception ValueError TypeError KeyError IndexError NameError AttributeError RuntimeError').split(' '),
+)
+
+/** Where a new class name would run into a name that is already in use. */
+export type NameClash = { kind: 'builtin' } | { kind: 'used'; path: string; line: number }
+
+/**
+ * The name a class is about to get may already stand for something else: a variable, a function, a parameter or an import in some
+ * file, or one of Python's built-in names. Then renaming would silently mix two things up, so the dialog refuses it.
+ * Attributes (`self.Name`), strings and comments do not count. `texts` maps the paths of the project's Python files to their content.
+ */
+export function findNameClash(texts: Record<string, string>, newName: string): NameClash | null {
+  if (BUILTINS.has(newName)) return { kind: 'builtin' }
+  for (const [path, source] of Object.entries(texts)) {
+    if (!path.endsWith('.py') || !source.includes(newName)) continue // cheap filter before parsing
+    const cursor = parser.parse(source).cursor()
+    do {
+      if (cursor.name === 'VariableName' && source.slice(cursor.from, cursor.to) === newName) {
+        return { kind: 'used', path, line: source.slice(0, cursor.from).split('\n').length }
+      }
+    } while (cursor.next())
+  }
+  return null
+}

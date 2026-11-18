@@ -1,7 +1,7 @@
 import { t } from '../../i18n'
 import { classNameProblem, classPath } from '../../project/classes'
 import type { ProjectKind } from '../../project/manifest'
-import { renameClass } from '../../project/renameClass'
+import { findNameClash, renameClass } from '../../project/renameClass'
 import type { useMiniworldsMeta } from '../../miniworlds/useMiniworlds'
 import type { useHistory } from '../../history/useHistory'
 import type { Runner } from '../../runtime/runner'
@@ -29,6 +29,10 @@ interface Args {
 export function useRenameClass({ fs, session, kind, runner, classModel, metaApi, historyApi, refresh, onRenamed }: Args) {
   return async function renameClassDialog(info: ModelClass) {
     if (kind !== 'project') return void (await infoDialog(t('class.title'), t('class.onlyInProject')))
+    // what is in the files now (including what was just typed), to see whether the new name is already used for something else
+    await session?.saveAll()
+    const texts: Record<string, string> = {}
+    for (const entry of await fs.list()) if (entry.kind === 'file' && entry.path.endsWith('.py')) texts[entry.path] = await fs.read(entry.path)
     const taken = async (name: string) => (classModel.model?.classes.some((c) => c.name === name) ?? false) || (await fs.exists(classPath(name)))
     const values = await openDialog({
       title: t('class.renameTitle', { name: info.name }),
@@ -41,16 +45,16 @@ export function useRenameClass({ fs, session, kind, runner, classModel, metaApi,
         const problem = classNameProblem(name)
         if (problem === 'invalid') return t('class.invalid')
         if (problem === 'reserved') return t('class.reserved', { name })
-        return (await taken(name)) ? t('class.exists', { name }) : null
+        if (await taken(name)) return t('class.exists', { name })
+        const clash = findNameClash(texts, name)
+        if (clash?.kind === 'builtin') return t('class.builtin', { name })
+        return clash ? t('class.clash', { name, file: clash.path, line: clash.line }) : null
       },
     })
     const name = values ? String(values.name).trim() : info.name
     if (!values || name === info.name) return
     try {
-      await session?.saveAll()
       await historyApi.record('before-rename')
-      const texts: Record<string, string> = {}
-      for (const entry of await fs.list()) if (entry.kind === 'file' && entry.path.endsWith('.py')) texts[entry.path] = await fs.read(entry.path)
       const result = renameClass(texts, info.name, name)
       for (const [path, text] of Object.entries(result.texts)) await (session ? session.writeText(path, text) : fs.write(path, text))
       if (result.move) {
