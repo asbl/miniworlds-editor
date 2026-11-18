@@ -5,7 +5,7 @@ Needs `npm run build && npx vite preview --port 4173` and Python with Playwright
 import json, os, sys
 from playwright.sync_api import sync_playwright
 sys.path.insert(0, os.path.dirname(__file__))
-from support import ROOT, check, eventually, failures
+from support import FILES_FIRST, ROOT, check, eventually, failures
 
 URL = "http://localhost:4173/"
 BROWSER = sys.argv[1] if len(sys.argv) > 1 else "chromium"
@@ -23,6 +23,7 @@ with sync_playwright() as p:
     browser = getattr(p, BROWSER).launch()
     for label, size in (("wide", {"width": 1366, "height": 800}), ("narrow", {"width": 390, "height": 800})):
         page = browser.new_page(viewport=size)
+        page.add_init_script(FILES_FIRST)
         page.goto(URL)
         page.wait_for_selector(".tree, .pane-tabs", timeout=30000)
         page.wait_for_timeout(800)
@@ -48,6 +49,7 @@ with sync_playwright() as p:
     # dark scheme (contrast) and the miniworlds view with a running world (controls, class list)
     for scheme in ("light", "dark"):
         page = browser.new_page(viewport={"width": 1366, "height": 800}, color_scheme=scheme)
+        page.add_init_script(FILES_FIRST)
         page.goto(URL)
         page.wait_for_selector(".tree")
         page.locator(".segmented button", has_text="miniworlds").click()

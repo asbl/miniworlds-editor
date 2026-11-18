@@ -4,6 +4,7 @@ Needs network, `npm run build && npx vite preview --port 4173`, Python with Play
 """
 import re, sys, time
 from playwright.sync_api import sync_playwright
+FILES_FIRST = "localStorage.setItem('miniworlds-editor.prefs', JSON.stringify({sidebar: 'files'}))"  # the sidebar opens with the class diagram by default
 
 URL = "http://localhost:4173/"
 BROWSER = sys.argv[1] if len(sys.argv) > 1 else "chromium"
@@ -48,6 +49,7 @@ with sync_playwright() as p:
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+    page.add_init_script(FILES_FIRST)
     page.goto(URL)
     page.wait_for_selector(".cm-content")
 
@@ -78,7 +80,7 @@ with sync_playwright() as p:
     page.get_by_role("button", name="miniworlds", exact=True).click()
     page.click(".toolbar .run")
     check("template world is ready", eventually(lambda: "Schritt 0" in page.inner_text(".mw-info"), 40000), page.inner_text(".mw-info"))
-    check("both actor classes can be created", all(n in page.inner_text(".mw-class-buttons") for n in ("Neu Krabbe()", "Neu Wurm()")), page.inner_text(".mw-class-buttons"))
+    check("both actor classes can be created", all(n in page.inner_text(".mw-class-buttons") for n in ("+ Krabbe", "+ Wurm")), page.inner_text(".mw-class-buttons"))
 
     # --- set a class image from the diagram's context menu
     page.get_by_role("tab", name="Klassen").click()

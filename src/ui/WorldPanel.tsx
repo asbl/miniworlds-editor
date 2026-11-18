@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { t, useLang } from '../i18n'
 import type { MiniworldsController, MiniworldsState } from '../miniworlds/controller'
 import { MiniworldsControls } from '../miniworlds/MiniworldsPanel'
@@ -9,8 +9,10 @@ import type { Runner } from '../runtime/runner'
 import type { TraceLocation } from '../runtime/traceback'
 import { Console } from './Console'
 import { openContextMenu } from './ContextMenu'
-import { openDialog } from './dialogs'
+import { infoDialog, openDialog } from './dialogs'
 import { useRunnerState } from './hooks'
+import { Menu } from './Menu'
+import { openWorldWindow, type WorldWindow, type WorldWindowKind } from './worldWindow'
 
 export interface MiniworldsProps {
   controller: MiniworldsController
@@ -26,25 +28,95 @@ export interface TasksProps {
   onToggle: (index: number) => void
 }
 
-export function WorldPanel({ runner, onJump, miniworlds, tasks }: { runner: Runner; onJump: (location: TraceLocation) => void; miniworlds?: MiniworldsProps; tasks?: TasksProps }) {
+export function WorldPanel({ runner, onJump, miniworlds, tasks, name = '' }: { runner: Runner; onJump: (location: TraceLocation) => void; miniworlds?: MiniworldsProps; tasks?: TasksProps; name?: string }) {
   useLang()
   const state = useRunnerState(runner)
   const slot = useRef<HTMLDivElement>(null)
+  const stage = useRef<HTMLDivElement>(null)
   const controller = miniworlds?.controller
+  // where the world is shown: in this panel, full screen, or in a window/tab of its own
+  const [popup, setPopup] = useState<WorldWindow | null>(null)
+  const [fullscreen, setFullscreen] = useState(false)
+  const [, redraw] = useState(0)
+  const docked = !popup && !fullscreen
 
   // The canvas element is replaced with every new worker (it can be handed over only once): mount the current one.
   useEffect(() => {
     const canvas = runner.canvas
     canvas.setAttribute('aria-label', t('run.canvasLabel'))
-    slot.current?.replaceChildren(canvas)
-    const detachInput = attachInput(canvas, (event) => runner.sendInput(event), () => !controller?.interactive)
-    const detachTools = controller ? attachWorldTools(canvas, controller, (e, p) => void showMenu(e, p)) : () => {}
+    const target = popup ?? null
+    if (target) {
+      target.stage.replaceChildren(canvas)
+      target.setRatio(canvas.width, canvas.height)
+    } else {
+      slot.current?.replaceChildren(canvas)
+    }
+    // the editor's own tools (place, select, drag, menus) work only in the panel; elsewhere the mouse belongs to the program
+    const detachInput = attachInput(canvas, (event) => runner.sendInput(event), () => !docked || !controller?.interactive)
+    const detachTools = controller && docked ? attachWorldTools(canvas, controller, (e, p) => void showMenu(e, p)) : () => {}
     return () => {
       detachInput()
       detachTools()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [runner, state.canvasGeneration, controller])
+  }, [runner, state.canvasGeneration, controller, popup, docked])
+
+  // keep a window's proportions in step with the program's canvas
+  useEffect(() => popup?.setRatio(runner.canvas.width, runner.canvas.height))
+
+  // the displayed size changes with the window, with full screen and with the sidebar: the selection frame follows
+  useEffect(() => {
+    const canvas = runner.canvas
+    if (typeof ResizeObserver !== 'function' || popup) return
+    const watch = new ResizeObserver(() => redraw((n) => n + 1))
+    watch.observe(canvas)
+    return () => watch.disconnect()
+  }, [runner, state.canvasGeneration, popup])
+
+  useEffect(() => {
+    const change = () => setFullscreen(document.fullscreenElement !== null && document.fullscreenElement === stage.current)
+    document.addEventListener('fullscreenchange', change)
+    return () => document.removeEventListener('fullscreenchange', change)
+  }, [])
+
+  // a window of its own: notice when it is closed (the canvas then comes back), and close it with this page
+  useEffect(() => {
+    if (!popup) return
+    const closed = () => setPopup(null)
+    const timer = setInterval(() => popup.win.closed && closed(), 400)
+    popup.win.addEventListener('pagehide', closed)
+    window.addEventListener('pagehide', popup.close)
+    return () => {
+      clearInterval(timer)
+      try {
+        popup.win.removeEventListener('pagehide', closed)
+      } catch {
+        /* window already gone */
+      }
+      window.removeEventListener('pagehide', popup.close)
+    }
+  }, [popup])
+
+  async function show(where: 'docked' | 'fullscreen' | WorldWindowKind) {
+    if (document.fullscreenElement) await document.exitFullscreen().catch(() => {})
+    if (popup) {
+      popup.close()
+      setPopup(null)
+    }
+    if (where === 'docked') return
+    if (where === 'fullscreen') {
+      try {
+        await stage.current?.requestFullscreen()
+      } catch {
+        await infoDialog(t('world.show'), t('world.fullscreenBlocked'))
+      }
+      return
+    }
+    const next = openWorldWindow(where, runner.canvas, t('world.pageTitle', { name }))
+    if (!next) return void (await infoDialog(t('world.show'), t('world.blocked')))
+    setPopup(next)
+    next.win.focus()
+  }
 
   async function showMenu(event: MouseEvent, point: WorldPoint) {
     if (!controller) return
@@ -101,14 +173,34 @@ export function WorldPanel({ runner, onJump, miniworlds, tasks }: { runner: Runn
   }
 
   const bootText = state.phase === 'booting' ? t(`run.boot.${state.bootStep ?? 'pyodide'}` as const) : null
-  const sel = miniworlds?.state.selected
+  const sel = docked ? miniworlds?.state.selected : null
   const canvas = runner.canvas
   const scale = canvas.width > 0 ? canvas.getBoundingClientRect().width / canvas.width : 1
+  const mw = miniworlds?.state
+  const placeItems = [
+    { label: t('world.dock'), checked: docked, onSelect: () => void show('docked') },
+    { label: t('world.fullscreen'), checked: fullscreen, onSelect: () => void show('fullscreen') },
+    { label: t('world.window'), checked: popup?.kind === 'window', onSelect: () => void show('window') },
+    { label: t('world.tab'), checked: popup?.kind === 'tab', onSelect: () => void show('tab') },
+  ]
 
   return (
-    <section class={miniworlds?.state.armed ? 'world-panel armed' : 'world-panel'} aria-label={t('a11y.world')}>
-      <div class="world-stage">
-        <div class="world-wrap">
+    <section class={mw?.armed ? 'world-panel armed' : 'world-panel'} aria-label={t('a11y.world')}>
+      <div class="world-head">
+        <div class="world-status" role="status">
+          {bootText ?? t(`run.state.${state.phase === 'booting' ? 'idle' : state.phase}` as const)}
+          {mw && !bootText && (
+            <span class="mw-info muted">
+              {' · '}
+              {mw.active ? `${t('miniworlds.frame', { n: mw.frame })} · ${t('miniworlds.actors', { n: mw.actors })}` : t('miniworlds.starting')}
+            </span>
+          )}
+          {state.version && !mw && <span class="muted"> · miniworlds {state.version}</span>}
+        </div>
+        <Menu label="⤢" title={t('world.show')} items={placeItems} align="right" />
+      </div>
+      <div class="world-stage" ref={stage}>
+        <div class="world-wrap" hidden={popup !== null}>
           <div ref={slot} />
           {sel && (
             <div
@@ -122,10 +214,14 @@ export function WorldPanel({ runner, onJump, miniworlds, tasks }: { runner: Runn
             />
           )}
         </div>
-      </div>
-      <div class="world-status" role="status">
-        {bootText ?? t(`run.state.${state.phase === 'booting' ? 'idle' : state.phase}` as const)}
-        {state.version && <span class="muted"> · miniworlds {state.version}</span>}
+        {popup && (
+          <div class="world-popped">
+            <p>{t('world.popped')}</p>
+            <button type="button" onClick={() => void show('docked')}>
+              {t('world.bringBack')}
+            </button>
+          </div>
+        )}
       </div>
       {miniworlds && <MiniworldsControls {...miniworlds} />}
       {tasks && tasks.items.length > 0 && (

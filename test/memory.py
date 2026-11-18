@@ -6,7 +6,7 @@ Prints MB per stage; with MAX_MB=<n> in the environment it fails when the final 
 import os, subprocess, sys, time
 from playwright.sync_api import sync_playwright
 sys.path.insert(0, os.path.dirname(__file__))
-from support import check, console, eventually, failures, set_main, wait_ready
+from support import FILES_FIRST, check, console, eventually, failures, set_main, wait_ready
 
 URL = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:4173/"
 TAG = "playwright_chromiumdev_profile"
@@ -45,6 +45,7 @@ with sync_playwright() as p:
     page.add_init_script("""(() => { const Real = window.Worker; window.__workers = 0;
         window.Worker = function (...a) { window.__workers++; return new Real(...a) } })()""")
     stages["browser only"] = pss_mb()
+    page.add_init_script(FILES_FIRST)
     page.goto(URL)
     page.wait_for_selector(".tree")
     page.wait_for_timeout(500)

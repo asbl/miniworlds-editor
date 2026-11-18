@@ -4,6 +4,9 @@ import atexit, os, shutil, socket, subprocess, sys, tempfile, time
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 failures = []
 
+# The sidebar opens with the class diagram by default; most tests start from the file tree.
+FILES_FIRST = "localStorage.setItem('miniworlds-editor.prefs', JSON.stringify({sidebar: 'files'}))"
+
 
 def check(name, condition, detail=""):
     print(("ok   " if condition else "FAIL ") + name + (f"  [{detail}]" if detail and not condition else ""), flush=True)

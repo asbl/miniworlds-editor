@@ -5,11 +5,23 @@ Usage:  python test/miniworlds.py [chromium|firefox]
 """
 import re, sys, time
 from playwright.sync_api import sync_playwright
+FILES_FIRST = "localStorage.setItem('miniworlds-editor.prefs', JSON.stringify({sidebar: 'files'}))"  # the sidebar opens with the class diagram by default
 
 URL = "http://localhost:4173/"
 BROWSER = sys.argv[1] if len(sys.argv) > 1 else "chromium"
 failures = []
 
+
+
+def more(page, item=None):
+    """The "Mehr" menu under the world: return its text, or click `item`."""
+    page.locator(".gf .menu-button").click()
+    items = page.locator(".menu-items")
+    if item is None:
+        text = items.inner_text()
+        page.keyboard.press("Escape")
+        return text
+    items.get_by_role("menuitem", name=item).click()
 
 def check(name, condition, detail=""):
     print(("ok   " if condition else "FAIL ") + name + (f"  [{detail}]" if detail and not condition else ""), flush=True)
@@ -67,7 +79,7 @@ def menu_click(page, text):
 
 def world_code(page):
     """Open "Welt speichern" and return the generated code (dialog stays open until closed)."""
-    page.get_by_role("button", name="Welt speichern").click()
+    more(page, "Welt speichern")
     page.wait_for_selector("dialog[open] .export-code")
     return page.inner_text("dialog[open] .export-code")
 
@@ -90,6 +102,7 @@ with sync_playwright() as p:
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+    page.add_init_script(FILES_FIRST)
     page.goto(URL)
     page.wait_for_selector(".cm-content")
     check("python boots", eventually(lambda: "Bereit" in page.inner_text(".world-status"), 120000))
@@ -99,7 +112,7 @@ with sync_playwright() as p:
     page.click(".toolbar .run")
     check("world is ready and paused at step 0", eventually(lambda: "Schritt 0" in info(page), 40000), info(page))
     check("starter world has one actor", actors(page) == 1, info(page))
-    check("actor classes offered", "Neu Figur()" in page.inner_text(".mw-class-buttons"))
+    check("actor classes offered", "+ Figur" in page.inner_text(".mw-class-buttons"))
     check("world classes are not offered as actors", "Spielfeld" not in page.inner_text(".mw-class-buttons"))
 
     # --- act / run / pause / speed
@@ -124,12 +137,12 @@ with sync_playwright() as p:
     menu_click(page, "Neu: Figur")
     check("context menu creates an actor", eventually(lambda: actors(page) == 2), info(page))
     check("created actor is selected", eventually(lambda: page.locator(".selection-box").count() == 1))
-    page.locator(".mw-class-buttons button", has_text="Neu Figur()").click()
+    page.locator(".mw-class-buttons button", has_text="+ Figur").click()
     check("arming shows a hint", eventually(lambda: "Klicke in die Welt" in page.inner_text(".gf"), 5000))
     px, py = at(page, 300, 80)
     page.mouse.click(px, py)
     check("click places the armed class", eventually(lambda: actors(page) == 3), info(page))
-    page.locator(".mw-class-buttons button", has_text="Neu Figur()").click()
+    page.locator(".mw-class-buttons button", has_text="+ Figur").click()
     page.wait_for_function("document.querySelector('.gf')?.innerText.includes('Klicke in die Welt')")  # arming is asynchronous
     page.keyboard.down("Shift")
     page.mouse.click(*at(page, 320, 200))
@@ -170,11 +183,11 @@ with sync_playwright() as p:
 
     # --- start setup is remembered and replayed on reset
     check("journal file is written", eventually(lambda: "miniworlds.json" in page.locator(".tree").inner_text(), 5000))
-    check("setup steps counted", re.search(r"Startaufstellung: \d+ Schritte", page.inner_text(".mw-setup")) is not None, page.inner_text(".mw-setup"))
+    check("setup steps counted", re.search(r"Startaufstellung: \d+ Schritte", more(page)) is not None)
     page.get_by_role("button", name="Reset").click()
     check("reset replays the setup", eventually(lambda: "Startaufstellung wiederhergestellt" in console(page), 40000), console(page)[-300:])
     check("same number of actors after reset", eventually(lambda: actors(page) == 4, 10000), info(page))
-    page.get_by_role("button", name="Aufstellung leeren").click()
+    more(page, "Aufstellung leeren")
     check("clearing the setup reloads the plain world", eventually(lambda: actors(page) == 1, 40000), info(page))
     check("journal file is gone when empty", eventually(lambda: "miniworlds.json" not in page.locator(".tree").inner_text(), 5000))
 
@@ -184,14 +197,14 @@ with sync_playwright() as p:
     right_click(page, 50, 50)
     menu_click(page, "Neu: Figur")
     check("late edit is flagged", eventually(lambda: "zählen nicht dazu" in page.inner_text(".mw-setup"), 5000), page.inner_text(".mw-setup"))
-    page.get_by_role("button", name="Als Start merken").click()
-    check("keep-as-start stores the world", eventually(lambda: "Startaufstellung: 3 Schritte" in page.inner_text(".mw-setup"), 5000), page.inner_text(".mw-setup"))
+    more(page, "Als Start merken")
+    check("keep-as-start stores the world", eventually(lambda: "Startaufstellung: 3 Schritte" in more(page), 5000))
 
     # --- insert generated code into the editor
     page.locator(".tree .row-main", has_text="main.py").click()
     page.click(".cm-content")
     page.keyboard.press("Control+End")
-    page.get_by_role("button", name="Welt speichern").click()
+    more(page, "Welt speichern")
     page.wait_for_selector("dialog[open] .export-code")
     page.locator("dialog[open]").get_by_role("button", name="In Editor einfügen").click()
     page.wait_for_selector("dialog[open]", state="detached")
@@ -200,7 +213,7 @@ with sync_playwright() as p:
     # --- auto reload: a syntax error keeps the world, a fix reloads it
     # (the inserted setup code is indented for on_setup and invalid at the end of main.py: put the starter back)
     set_main(page, "from classes.Spielfeld import Spielfeld\nfrom classes.Figur import Figur\n\nwelt = Spielfeld(400, 300)\nfigur = Figur((200, 150))\nwelt.run()\n")
-    page.get_by_role("button", name="Aufstellung leeren").click()
+    more(page, "Aufstellung leeren")
     check("world is back after restoring main.py", eventually(lambda: "Schritt 0" in info(page) and actors(page) == 1, 60000), info(page))
     page.wait_for_timeout(3000)  # let a reload that the restore triggered finish (slower in Firefox)
     check("world settled at step 0", eventually(lambda: "Schritt 0" in info(page) and actors(page) == 1, 40000), info(page))

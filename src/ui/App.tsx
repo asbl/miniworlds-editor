@@ -11,7 +11,8 @@ import { browserKeyValue } from '../project/settings'
 import { createBrowserRunner } from '../runtime/browser'
 import type { Runner } from '../runtime/runner'
 import { ContextMenuHost } from './ContextMenu'
-import { DialogHost, infoDialog } from './dialogs'
+import { DialogHost, infoDialog, openDialog } from './dialogs'
+import { loadPreferences, savePreferences, type Preferences } from './preferences'
 import { Menu } from './Menu'
 import { ProjectView } from './ProjectView'
 import {
@@ -103,6 +104,27 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     ...projects.map((p, i) => ({ label: p, checked: p === name, divider: i === 0, onSelect: guarded(() => show(p)) })),
   ]
 
+  async function openPreferences() {
+    const current = loadPreferences()
+    const values = await openDialog({
+      title: t('prefs.title'),
+      message: t('prefs.hint'),
+      fields: [
+        {
+          kind: 'radio',
+          key: 'sidebar',
+          label: t('prefs.sidebar'),
+          initial: current.sidebar,
+          options: [
+            { value: 'classes', label: t('prefs.sidebar.classes') },
+            { value: 'files', label: t('prefs.sidebar.files') },
+          ],
+        },
+      ],
+    })
+    if (values) savePreferences({ sidebar: values.sidebar as Preferences['sidebar'] })
+  }
+
   return (
     <div class="shell">
       <header class="topbar">
@@ -116,6 +138,9 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
             items={config.links.map((link) => ({ label: `${link.label} ↗`, onSelect: () => void window.open(link.url, '_blank', 'noopener') }))}
           />
         )}
+        <button type="button" class="menu-button" title={t('prefs.button')} aria-label={t('prefs.button')} onClick={() => void openPreferences()}>
+          ⚙
+        </button>
         <Menu
           label={`🌐 ${LANG_NAMES[lang]} ▾`}
           title={t('lang.label')}

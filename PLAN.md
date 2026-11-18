@@ -363,3 +363,12 @@ Ziel: Schüler können zu einem früheren Stand zurück (Code überschrieben, �
 - Die Hilfsfunktionen `diffLines` (kürzester Unterschied über längste gemeinsame Teilfolge, bei riesigen Texten Rückfall auf „ersetzt“) und `History` sind UI-frei; Verlauf funktioniert auch im Speicher-Fallback und im Embed (dann nur bis zum Schließen).
 - Grenzen: Der Verlauf liegt im selben Browser-Speicher wie das Projekt, löscht jemand die Websitedaten, ist beides weg (der ZIP-Export bleibt die Sicherung). Bilder werden nicht versioniert. Kein Zusammenführen von Ständen, nur Zurückholen.
 
+
+### Oberfläche aufgeräumt: Welt-Panel, Einstellungen, Welt in Fenster/Vollbild/Tab (2026-11-18)
+
+Rückmeldung aus dem Einsatz: weißer Zeilennummernstreifen im Dark Mode, Klassendiagramm soll zuerst kommen, rechtes Panel zu unübersichtlich, Welt soll auch groß zu sehen sein.
+- **Zeilennummern:** CodeMirrors eigenes Theme hatte gleiche Spezifität und kam später; die Regeln stehen jetzt unter `.editor .cm-editor …` (Streifen, aktive Zeile, Faltmarke). `test/world.py` prüft die Helligkeit im Dark Mode.
+- **Einstellungen (⚙ oben):** erster Eintrag „Seitenleiste beim Öffnen“ (Klassen oder Dateien), gespeichert im Browser (`src/ui/preferences.ts`, Schlüssel `miniworlds-editor.prefs`). Standard ist **Klassen**; Projekte ohne `miniworlds.json` (Einzeldatei, Importe) zeigen weiter zuerst die Dateien.
+- **Welt-Panel in drei Zonen statt fünf Blöcken:** Kopfzeile (Zustand · Schritt · Figuren, rechts das Menü „Welt anzeigen“), Welt, eine Steuerzeile (Act, Run/Pause, Reset, Tempo, „Mehr ▾“). Darunter nur noch eine Zeile „Figur hinzufügen: + Figur + Wurm“ (nur wenn es Figuren-Klassen gibt) und die Konsole. Startaufstellung („Als Start merken“, „Aufstellung leeren“, „Welt speichern …“) wohnt im Menü „Mehr“; Hinweise (Klick in die Welt, Änderungen zählen nicht dazu) erscheinen nur, wenn sie gelten.
+- **Welt anzeigen:** im Editor (wie bisher, mit allen Werkzeugen), **Vollbild** (nur die Welt, Esc beendet), **eigenes Fenster** oder **neuer Tab**. Der Canvas wird in die andere Seite verschoben (er gehört dem Worker und zeichnet weiter); schließt man das Fenster, kommt die Welt zurück ins Panel. Ein Neustart des Programms zeichnet im Fenster weiter. Außerhalb des Panels gehört die Maus dem Programm (Platzieren, Auswählen, Kontextmenü gibt es nur im Editor); Act/Run/Reset bedient man im Editorfenster.
+- Grenzen: Pop-up-Blocker und iframes ohne `allowfullscreen` verhindern Fenster bzw. Vollbild; dann erscheint ein Hinweis. In Fenster und Tab fehlt der Auswahlrahmen.

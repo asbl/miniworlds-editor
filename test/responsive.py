@@ -5,7 +5,7 @@ Needs `npm run build && npx vite preview --port 4173` and Python with Playwright
 import os, sys
 from playwright.sync_api import sync_playwright
 sys.path.insert(0, os.path.dirname(__file__))
-from support import check, console, eventually, failures, wait_ready
+from support import FILES_FIRST, check, console, eventually, failures, wait_ready
 
 URL = "http://localhost:4173/"
 BROWSER = sys.argv[1] if len(sys.argv) > 1 else "chromium"
@@ -24,6 +24,7 @@ with sync_playwright() as p:
 
     # ---- wide: three columns, no pane tabs ----
     page = browser.new_page(viewport={"width": 1366, "height": 800})
+    page.add_init_script(FILES_FIRST)
     page.goto(URL)
     page.wait_for_selector(".tree")
     check("wide: no pane tabs", page.locator(".pane-tabs").count() == 0)
@@ -44,6 +45,7 @@ with sync_playwright() as p:
     page = browser.new_page(viewport={"width": 390, "height": 800})
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
+    page.add_init_script(FILES_FIRST)
     page.goto(URL)
     page.wait_for_selector(".pane-tabs")
     check("narrow: starts on the editor", visible(page, ".main") and not visible(page, ".sidebar") and not visible(page, ".world-panel"))
@@ -77,6 +79,7 @@ with sync_playwright() as p:
 
     # ---- tablet portrait ----
     page = browser.new_page(viewport={"width": 820, "height": 1100})
+    page.add_init_script(FILES_FIRST)
     page.goto(URL)
     page.wait_for_selector(".pane-tabs")
     check("tablet: editor has room", width(page, ".main") >= 800, str(width(page, ".main")))

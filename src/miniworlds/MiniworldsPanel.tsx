@@ -1,5 +1,6 @@
 import { t, useLang } from '../i18n'
 import { infoDialog, openDialog } from '../ui/dialogs'
+import { Menu, type MenuItem } from '../ui/Menu'
 import type { MiniworldsController, MiniworldsState } from './controller'
 import { SPEED_MAX, SPEED_MIN, speedLabel } from './scenario'
 
@@ -12,7 +13,7 @@ interface Props {
   onInsert: (code: string) => void
 }
 
-/** Controls under the world: Act / Run / Pause, speed, Reset, creating actors, start setup, "save the world". */
+/** Controls under the world: Act / Run / Pause, Reset, speed, creating actors; start setup and "save the world" sit in the More menu. */
 export function MiniworldsControls({ controller, state, onReset, onInsert }: Props) {
   useLang()
   const actorClasses = state.classes.filter((c) => c.is_actor)
@@ -37,6 +38,13 @@ export function MiniworldsControls({ controller, state, onReset, onInsert }: Pro
     })
   }
 
+  const setupItems: MenuItem[] = [
+    { label: steps > 0 ? t('miniworlds.startSteps', { n: steps }) : t('miniworlds.startEmpty'), disabled: true, onSelect: () => {} },
+    { label: t('miniworlds.keep'), disabled: !state.active || !state.paused, onSelect: () => void controller.keepSetup() },
+    { label: t('miniworlds.clear'), disabled: steps === 0, onSelect: () => (controller.clearSetup(), onReset()) },
+    { label: t('miniworlds.saveWorld'), divider: true, disabled: !state.active, onSelect: () => void saveWorld() },
+  ]
+
   return (
     <div class="gf">
       <div class="mw-controls">
@@ -45,6 +53,9 @@ export function MiniworldsControls({ controller, state, onReset, onInsert }: Pro
         </button>
         <button type="button" disabled={!state.active} class="primary-ish" onClick={() => void controller.togglePause()}>
           {state.paused ? `▶ ${t('miniworlds.run')}` : `❚❚ ${t('miniworlds.pause')}`}
+        </button>
+        <button type="button" onClick={onReset} disabled={!state.active} title={t('miniworlds.reset')}>
+          ↻ {t('miniworlds.reset')}
         </button>
         <label class="mw-speed">
           <span>{t('miniworlds.speed')}</span>
@@ -60,58 +71,31 @@ export function MiniworldsControls({ controller, state, onReset, onInsert }: Pro
           />
           <output>{speedLabel(state.speedIndex)}</output>
         </label>
-        <button type="button" onClick={onReset} disabled={!state.active}>
-          ↻ {t('miniworlds.reset')}
-        </button>
+        <Menu label={`${t('miniworlds.more')} ▾`} title={t('miniworlds.moreTitle')} items={setupItems} align="right" />
       </div>
 
-      <div class="mw-info" role="status">
-        {state.active ? (
-          <>
-            {t('miniworlds.frame', { n: state.frame })} · {t('miniworlds.actors', { n: state.actors })}
-          </>
-        ) : (
-          t('miniworlds.starting')
-        )}
-        {state.armed && <div class="mw-armed">{t('miniworlds.armed', { cls: state.armed.cls })}</div>}
-      </div>
-
-      <section class="mw-classes" aria-label={t('miniworlds.classes')}>
-        <h2>{t('miniworlds.classes')}</h2>
-        {actorClasses.length === 0 && <p class="muted small">{t('miniworlds.noClasses')}</p>}
-        <div class="mw-class-buttons">
-          {actorClasses.map((c) => (
-            <button
-              type="button"
-              key={c.name}
-              aria-pressed={state.armed?.cls === c.name}
-              disabled={!state.active}
-              onClick={() => void controller.arm(state.armed?.cls === c.name ? null : c.name)}
-            >
-              {t('miniworlds.new', { cls: c.name })}
-              {state.byClass[c.name] ? <span class="count"> {state.byClass[c.name]}×</span> : null}
-            </button>
-          ))}
+      {actorClasses.length > 0 && (
+        <div class="mw-add" role="group" aria-label={t('miniworlds.classes')}>
+          <span class="mw-label">{t('miniworlds.classes')}</span>
+          <div class="mw-class-buttons">
+            {actorClasses.map((c) => (
+              <button
+                type="button"
+                key={c.name}
+                aria-pressed={state.armed?.cls === c.name}
+                title={t('miniworlds.newTitle', { cls: c.name })}
+                disabled={!state.active}
+                onClick={() => void controller.arm(state.armed?.cls === c.name ? null : c.name)}
+              >
+                {t('miniworlds.new', { cls: c.name })}
+                {state.byClass[c.name] ? <span class="count"> {state.byClass[c.name]}×</span> : null}
+              </button>
+            ))}
+          </div>
         </div>
-      </section>
-
-      <section class="mw-setup" aria-label={t('miniworlds.start')}>
-        <span class="small">
-          {steps > 0 ? t('miniworlds.startSteps', { n: steps }) : t('miniworlds.startEmpty')}
-          {state.lateEdit && ` — ${t('miniworlds.lateEdit')}`}
-        </span>
-        <div class="mw-setup-buttons">
-          <button type="button" disabled={!state.active || !state.paused} onClick={() => void controller.keepSetup()}>
-            {t('miniworlds.keep')}
-          </button>
-          <button type="button" disabled={steps === 0} onClick={() => (controller.clearSetup(), onReset())}>
-            {t('miniworlds.clear')}
-          </button>
-          <button type="button" disabled={!state.active} onClick={() => void saveWorld()}>
-            {t('miniworlds.saveWorld')}
-          </button>
-        </div>
-      </section>
+      )}
+      {state.armed && <div class="mw-armed">{t('miniworlds.armed', { cls: state.armed.cls })}</div>}
+      {state.lateEdit && <div class="mw-note small muted mw-setup">{t('miniworlds.lateEdit')}</div>}
     </div>
   )
 }

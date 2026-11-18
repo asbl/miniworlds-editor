@@ -6,7 +6,7 @@ Usage:  python test/pwa.py [chromium|firefox]
 import json, os, re, shutil, sys
 from playwright.sync_api import sync_playwright
 sys.path.insert(0, os.path.dirname(__file__))
-from support import Server, check, console, copy_dist, eventually, failures, set_main, wait_ready
+from support import FILES_FIRST, Server, check, console, copy_dist, eventually, failures, set_main, wait_ready
 
 BROWSER = sys.argv[1] if len(sys.argv) > 1 else "chromium"
 PORT = 4180
@@ -20,6 +20,7 @@ with sync_playwright() as p:
     page = context.new_page()
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
+    page.add_init_script(FILES_FIRST)
     page.goto(URL)
     page.wait_for_selector(".tree", timeout=30000)
 
@@ -71,6 +72,7 @@ with sync_playwright() as p:
     open(sw_path, "w").write(re.sub(r"const VERSION = '[0-9a-f]+'", "const VERSION = 'newbuild00000'", text))
     server.start()
     other = context.new_page()  # a second tab of the same classroom
+    other.add_init_script(FILES_FIRST)
     other.goto(URL)
     other.wait_for_selector(".tree", timeout=30000)
     page.evaluate("navigator.serviceWorker.getRegistration().then(r => r.update())")

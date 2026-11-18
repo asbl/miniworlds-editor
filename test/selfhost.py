@@ -6,7 +6,7 @@ Usage:  python test/selfhost.py [chromium|firefox]
 import os, shutil, subprocess, sys
 from playwright.sync_api import sync_playwright
 sys.path.insert(0, os.path.dirname(__file__))
-from support import ROOT, Server, check, console, copy_dist, eventually, failures, set_main, wait_ready
+from support import FILES_FIRST, ROOT, Server, check, console, copy_dist, eventually, failures, set_main, wait_ready
 
 BROWSER = sys.argv[1] if len(sys.argv) > 1 else "chromium"
 dist = copy_dist()
@@ -19,6 +19,7 @@ with sync_playwright() as p:
     cdn, local, errors = [], [], []
     page.on("request", lambda r: cdn.append(r.url) if "cdn.jsdelivr.net" in r.url else local.append(r.url) if "/pyodide/" in r.url else None)
     page.on("pageerror", lambda e: errors.append(str(e)))
+    page.add_init_script(FILES_FIRST)
     page.goto("http://localhost:4182/")
     page.wait_for_selector(".tree", timeout=30000)
     set_main(page, 'import numpy\nprint("lokal", numpy.arange(3).sum())')

@@ -19,6 +19,7 @@ import type { Catalog } from '../packages/catalog'
 import { useCachedVersions } from '../pwa/offline'
 import { useOnline } from '../pwa/useOnline'
 import { useNarrow } from './useNarrow'
+import { loadPreferences } from './preferences'
 import { HistoryDialog } from '../history/HistoryDialog'
 import { HistoryPanel } from '../history/HistoryPanel'
 import { readTexts, restoreAll, restoreFile } from '../history/restore'
@@ -70,7 +71,9 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   const { fs } = workspace
   const [entries, setEntries] = useState<FileEntry[]>([])
   const [session, setSession] = useState<Session | null>(null)
-  const [tab, setTab] = useState<'files' | 'search' | 'classes' | 'history'>('files')
+  // the sidebar opens with the person's choice (class diagram by default); a project without the class structure shows its files
+  const startTab = useRef(loadPreferences().sidebar).current
+  const [tab, setTab] = useState<'files' | 'search' | 'classes' | 'history'>(startTab)
   const [viewing, setViewing] = useState<{ snapshot: Snapshot; old: Record<string, string>; current: Record<string, string> } | null>(null)
   const [details, setDetails] = useState(true)
   const [cursor, setCursor] = useState<{ path: string; line: number } | null>(null)
@@ -84,6 +87,12 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   const upload = useRef<HTMLInputElement>(null)
   const state = useSessionState(session)
   const kind = detectKind(entries)
+  const tabDecided = useRef(false)
+  useEffect(() => {
+    if (tabDecided.current || entries.length === 0) return
+    tabDecided.current = true
+    if (kind !== 'project') setTab((now) => (now === startTab ? 'files' : now))
+  }, [entries, kind, startTab])
   const [showPackages, setShowPackages] = useState(false)
   const [problems, setProblems] = useState(0)
   const [imageFor, setImageFor] = useState<string | null>(null)
@@ -754,6 +763,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
         </div>
       </div>
       <WorldPanel
+        name={projectName}
         runner={runner}
         onJump={(loc) => {
           setPane('editor') // a link in the console: show the line it points to
