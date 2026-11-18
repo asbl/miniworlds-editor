@@ -14,6 +14,7 @@ import { openContextMenu } from './ContextMenu'
 import { infoDialog } from './dialogs'
 import { useRunnerState } from './hooks'
 import { Menu } from './Menu'
+import { rememberMuted } from '../runtime/browser'
 import { openWorldWindow, type WorldWindow, type WorldWindowKind } from './worldWindow'
 
 export interface MiniworldsProps {
@@ -32,7 +33,7 @@ export interface TasksProps {
   hasCheck?: (index: number) => boolean
 }
 
-export function WorldPanel({ runner, onJump, miniworlds, tasks, name = '' }: { runner: Runner; onJump: (location: TraceLocation) => void; miniworlds?: MiniworldsProps; tasks?: TasksProps; name?: string }) {
+export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, name = '' }: { runner: Runner; onJump: (location: TraceLocation) => void; onReport?: () => void; miniworlds?: MiniworldsProps; tasks?: TasksProps; name?: string }) {
   useLang()
   const state = useRunnerState(runner)
   const slot = useRef<HTMLDivElement>(null)
@@ -201,6 +202,23 @@ export function WorldPanel({ runner, onJump, miniworlds, tasks, name = '' }: { r
           {state.version && !mw && <span class="muted"> · miniworlds {state.version}</span>}
           {mouse && <span class="mw-info muted mouse-pos"> · x {mouse.x}, y {mouse.y}</span>}
         </div>
+        {state.audioUsed && runner.audio?.setMuted && (
+          <button
+            type="button"
+            class="menu-button"
+            aria-pressed={runner.audio.isMuted}
+            title={t(runner.audio.isMuted ? 'world.unmute' : 'world.mute')}
+            aria-label={t(runner.audio.isMuted ? 'world.unmute' : 'world.mute')}
+            onClick={() => {
+              const next = !runner.audio?.isMuted
+              runner.audio?.setMuted?.(next)
+              rememberMuted(next)
+              redraw((n) => n + 1)
+            }}
+          >
+            {runner.audio.isMuted ? '🔇' : '🔊'}
+          </button>
+        )}
         <Menu label="⤢" title={t('world.view')} items={placeItems} align="right" />
       </div>
       <div class="world-stage" ref={stage}>
@@ -251,7 +269,7 @@ export function WorldPanel({ runner, onJump, miniworlds, tasks, name = '' }: { r
           </ol>
         </details>
       )}
-      <Console lines={state.lines} onClear={() => runner.clearConsole()} onJump={onJump} />
+      <Console lines={state.lines} onClear={() => runner.clearConsole()} onJump={onJump} waiting={state.input} onAnswer={(text) => runner.answerInput(text)} onReport={onReport} />
     </section>
   )
 }

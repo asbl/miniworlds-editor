@@ -42,5 +42,5 @@ jobs:
           sleep 3
           for t in smoke run miniworlds templates assist; do python test/$t.py chromium; done
       - run: |
-          for t in pwa embed selfhost responsive a11y history; do python test/$t.py chromium; done
+          for t in pwa embed selfhost responsive a11y history world input launch sound rename csp; do python test/$t.py chromium; done
           python test/memory.py && LOW_MEMORY=1 python test/memory.py

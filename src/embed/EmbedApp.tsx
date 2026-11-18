@@ -46,6 +46,9 @@ export function EmbedApp({ config, runner: injected, catalog: injectedCatalog, l
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const [revision, setRevision] = useState(0)
   const flush = useRef<(() => Promise<void>) | null>(null)
+  const submitNow = useRef<(() => Promise<void>) | null>(null)
+  const [submitted, setSubmitted] = useState(false)
+  const canSubmit = new URLSearchParams((win as unknown as { location?: { search: string } } | undefined)?.location?.search ?? location.search).get('submit') === '1'
 
   useEffect(() => {
     const store = new MemoryStore()
@@ -94,6 +97,10 @@ export function EmbedApp({ config, runner: injected, catalog: injectedCatalog, l
         bridge?.send({ type: 'loaded', id: message.id })
       }
 
+      submitNow.current = async () => {
+        await flush.current?.()
+        bridge?.send({ type: 'submit', files: await collectFiles(raw.fs) })
+      }
       const handle = (message: Incoming) => enqueue(() => handleNow(message))
       bridge = new EmbedBridge(win ?? (window as unknown as BridgeWindow), config.embedOrigins, handle)
       bridge.start()
@@ -119,6 +126,21 @@ export function EmbedApp({ config, runner: injected, catalog: injectedCatalog, l
       <header class="topbar">
         <h1 class="brand">{t('app.title')}</h1>
         <span class="spacer" />
+        {canSubmit && (
+          <button
+            type="button"
+            class="primary"
+            disabled={!workspace}
+            onClick={() => {
+              void submitNow.current?.().then(() => {
+                setSubmitted(true)
+                setTimeout(() => setSubmitted(false), 3000)
+              })
+            }}
+          >
+            {submitted ? t('embed.submitted') : t('embed.submit')}
+          </button>
+        )}
         <Menu label={`🌐 ${LANG_NAMES[lang]} ▾`} title={t('lang.label')} align="right" items={LANGS.map((l) => ({ label: LANG_NAMES[l], checked: l === lang, onSelect: () => setLang(l) }))} />
       </header>
       {workspace && <ProjectView embedded key={revision} workspace={workspace} projectName={PROJECT} runner={runner} catalog={catalog} language={language} registerFlush={(f) => (flush.current = f)} />}

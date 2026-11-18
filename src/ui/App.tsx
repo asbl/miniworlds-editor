@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { DEFAULT_CONFIG, type AppConfig } from '../config/appConfig'
 import { registerServiceWorker, type PwaHandle } from '../pwa/register'
-import { LANGS, LANG_NAMES, setLang, t, useLang } from '../i18n'
+import { LANGS, LANG_NAMES, getLang, setLang, t, useLang } from '../i18n'
 import type { ProjectStore, Workspace } from '../workspace'
 import { isLowMemory } from '../config/memory'
 import { createBrowserLanguageService } from '../language/browser'
@@ -11,8 +11,13 @@ import { browserKeyValue } from '../project/settings'
 import { createBrowserRunner } from '../runtime/browser'
 import type { Runner } from '../runtime/runner'
 import { ContextMenuHost } from './ContextMenu'
-import { DialogHost, infoDialog, openDialog } from './dialogs'
+import { confirmDialog, DialogHost, infoDialog, openDialog } from './dialogs'
+import { launchedProject, parseLaunch, rememberLaunched, withoutLaunch, type Launch } from './launch'
+import { MAX_ZIP_BYTES } from '../project/zip'
+import { dragHasFiles, droppedFolders, fromFileList } from '../project/folder'
+import { createFromTemplate, TEMPLATES } from '../templates'
 import { loadPreferences, savePreferences, type Preferences } from './preferences'
+import { LoadingBanner } from './LoadingBanner'
 import { Menu } from './Menu'
 import { ProjectView } from './ProjectView'
 import { collectShareContext, type ShareContext } from '../share/collect'
@@ -21,8 +26,11 @@ import {
   createStarterProject,
   duplicateProject,
   exportProjectZip,
+  importProjectFolder,
+  importProjectFolders,
   importProjectZip,
   lastProject,
+  uniqueProjectName,
   promptDeleteProject,
   promptNewProject,
   promptRenameProject,
@@ -47,6 +55,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const flush = useRef<(() => Promise<void>) | null>(null)
   const zipInput = useRef<HTMLInputElement>(null)
+  const folderInput = useRef<HTMLInputElement>(null)
   const [update, setUpdate] = useState<PwaHandle | null>(null)
   const [sharing, setSharing] = useState<ShareContext | null>(null)
   useEffect(() => registerServiceWorker((handle) => setUpdate(handle)), [])
@@ -67,16 +76,55 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     setName(next)
   }
 
-  // First start: reopen the last project, else the first one, else create a starter project.
+  /** A link that opens a task (`?template=`, `?zip=`): the project is made once, the same link later opens it again. */
+  async function openLaunch(launch: Launch) {
+    if (launch.lang) setLang(launch.lang, false) // for this visit only: a link must not change the visitor's saved language
+    const source = launch.template ? `template:${launch.template}` : `zip:${launch.zip}`
+    const known = launchedProject(source)
+    if (known && (await store.exists(known))) return show(known)
+    if (launch.template) {
+      const template = TEMPLATES.find((x) => x.id === launch.template)
+      if (!template) return void (await infoDialog(t('launch.title'), t('launch.unknown', { id: launch.template })))
+      const text = template.text[getLang()] ?? template.text.de
+      const name = await uniqueProjectName(store, launch.name ?? text.title)
+      await createFromTemplate((await store.open(name)).fs, { template, lang: getLang(), name, miniworlds: await newestVersion() })
+      rememberLaunched(source, name)
+      return show(name)
+    }
+    const address = new URL(launch.zip as string)
+    if (!(await confirmDialog(t('launch.title'), t('launch.confirm', { host: address.host }), false))) return
+    let bytes: ArrayBuffer
+    try {
+      const response = await fetch(address.href)
+      if (!response.ok) throw new Error(`HTTP ${response.status}`)
+      bytes = await response.arrayBuffer()
+      if (bytes.byteLength > MAX_ZIP_BYTES) throw new Error('too large')
+    } catch (error) {
+      return void (await infoDialog(t('launch.title'), t('launch.failed', { reason: error instanceof Error ? error.message : String(error) })))
+    }
+    const file = new File([bytes], `${launch.name ?? decodeURIComponent(address.pathname.split('/').pop() || '').replace(/\.zip$/i, '') ?? ''}.zip`)
+    const name = await importProjectZip(store, file)
+    if (name) {
+      rememberLaunched(source, name)
+      await show(name)
+    }
+  }
+
+  // First start: reopen the last project, else the first one, else create a starter project; then open the task of the link.
   useEffect(() => {
     void (async () => {
+      const launch = parseLaunch(location.search, location.href)
+      if (launch) history.replaceState(null, '', withoutLaunch(location.href)) // a reload must not repeat the task
       const list = await store.list()
       const wanted = lastProject()
-      if (wanted && list.includes(wanted)) return show(wanted)
-      if (list[0]) return show(list[0])
-      const starter = t('project.untitled')
-      await createStarterProject(store, starter, 'project', await newestVersion())
-      await show(starter)
+      if (wanted && list.includes(wanted)) await show(wanted)
+      else if (list[0]) await show(list[0])
+      else {
+        const starter = t('project.untitled')
+        await createStarterProject(store, starter, 'project', await newestVersion())
+        await show(starter)
+      }
+      if (launch) await openLaunch(launch).catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store])
@@ -104,6 +152,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     },
     { label: t('project.share'), divider: true, onSelect: guarded(async () => { await flush.current?.(); setSharing(await collectShareContext(await store.open(current), current, browserKeyValue())) }) },
     { label: t('project.exportZip'), onSelect: guarded(async () => { await flush.current?.(); await exportProjectZip(store, current) }) },
+    { label: t('project.importFolder'), onSelect: () => folderInput.current?.click() },
     { label: t('project.importZip'), onSelect: () => zipInput.current?.click() },
     ...projects.map((p, i) => ({ label: p, checked: p === name, divider: i === 0, onSelect: guarded(() => show(p)) })),
   ]
@@ -130,7 +179,19 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
   }
 
   return (
-    <div class="shell">
+    <div
+      class="shell"
+      // accept file drops everywhere, so that a folder dropped on the top bar is imported rather than opened by the browser
+      onDragOver={(e) => dragHasFiles(e.dataTransfer) && e.preventDefault()}
+      onDropCapture={(e) => {
+        // a dropped folder becomes a new project (each one of several folders, too); plain files fall through to the open project
+        const folders = droppedFolders(e.dataTransfer)
+        if (!folders) return
+        e.preventDefault()
+        e.stopPropagation()
+        guarded(async () => { await flush.current?.(); const n = await importProjectFolders(store, folders); if (n) await show(n) })()
+      }}
+    >
       <header class="topbar">
         <h1 class="brand">{t('app.title')}</h1>
         {name && <Menu label={`${t('project.menu')}: ${name} ▾`} items={projectItems} />}
@@ -176,6 +237,21 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
         }}
       />
       {sharing && <ShareDialog context={sharing} onClose={() => setSharing(null)} />}
+      <input
+        ref={folderInput}
+        type="file"
+        // @ts-expect-error non-standard but supported by every current browser
+        webkitdirectory={true}
+        multiple
+        hidden
+        onChange={(e) => {
+          const list = e.currentTarget.files
+          const source = list && list.length > 0 ? fromFileList(list) : null
+          e.currentTarget.value = ''
+          if (source) guarded(async () => { await flush.current?.(); const n = await importProjectFolder(store, source); if (n) await show(n) })()
+        }}
+      />
+      <LoadingBanner runner={runner} language={language} onReload={() => void (flush.current?.() ?? Promise.resolve()).then(() => location.reload())} />
       <DialogHost />
       <ContextMenuHost />
     </div>

@@ -140,6 +140,22 @@ def hover(path, source, line, col):
     return json.dumps({"name": n.name, "type": n.type, "doc": doc[:1200]})
 
 
+def signature(path, source, line, col):
+    """The call around the cursor: JSON {name, params, index} (index = parameter being typed) or null."""
+    try:
+        signatures = _script(path, source).get_signatures(line, col)
+    except Exception:  # jedi can fail on half-typed code; no tooltip is fine
+        return "null"
+    if not signatures:
+        return "null"
+    s = signatures[0]
+    params = []
+    for p in s.params:
+        text = p.to_string().strip()
+        params.append(text[len("param "):] if text.startswith("param ") else text)
+    return json.dumps({"name": s.name, "params": params, "index": s.index})
+
+
 def hints(files_json):
     """Beginner hints from miniworlds.tools.code_hints (empty list when the engine version has none)."""
     if not _tools_ok or _api is None:

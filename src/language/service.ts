@@ -1,4 +1,4 @@
-import type { EngineHint, FromLanguage, Hover, JediItem, RuffDiagnostic, ToLanguage } from './protocol'
+import type { EngineHint, FromLanguage, Hover, JediItem, RuffDiagnostic, Signature, ToLanguage } from './protocol'
 
 export interface LanguageWorkerLike {
   postMessage(message: ToLanguage): void
@@ -209,6 +209,9 @@ export class LanguageService {
   }
   hover(path: string, source: string, line: number, col: number): Promise<Hover | null> {
     return this.request<Hover>('hover', path, source, line, col)
+  }
+  signature(path: string, source: string, line: number, col: number): Promise<Signature | null> {
+    return this.request<Signature>('signature', path, source, line, col)
   }
   async hints(files: Record<string, string>): Promise<EngineHint[]> {
     return (await this.request<EngineHint[]>('hints', JSON.stringify(files))) ?? []

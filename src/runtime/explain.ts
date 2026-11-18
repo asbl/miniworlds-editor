@@ -1,4 +1,5 @@
-import { t, type Lang, type MessageKey } from '../i18n'
+import { getLang, t, type Lang, type MessageKey } from '../i18n'
+import { explainError as explainByRules } from './hints'
 
 /**
  * Plain-language help for a Python error. Reads the last line of a traceback ("NameError: name 'x' is not defined. Did you
@@ -6,6 +7,11 @@ import { t, type Lang, type MessageKey } from '../i18n'
  * then the traceback alone has to do.
  */
 export function explainError(trace: string, lang?: Lang): string | null {
+  // the rule table in hints.ts answers first; the cases below add what it does not know (missing self, keyword arguments, ...)
+  return explainByRules(trace, lang ?? getLang()) ?? explainMore(trace, lang)
+}
+
+function explainMore(trace: string, lang?: Lang): string | null {
   const error = parseFinalError(trace)
   if (!error) return null
   const say = (key: MessageKey, params?: Record<string, string | number>) => t(key, params, lang)

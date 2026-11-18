@@ -36,10 +36,11 @@ interface Props {
   stale: Set<string>
   refresh: () => Promise<void>
   onNewClass: (base?: BaseClass) => void
+  onRenameClass: (info: ModelClass) => void
 }
 
 /** The class diagram of the project with its tools: show a class, add a new one or a subclass, choose an image. */
-export function ClassPanel({ view, fs, session, entries, kind, classModel, gf, metaApi, cursor, stale, refresh, onNewClass }: Props) {
+export function ClassPanel({ view, fs, session, entries, kind, classModel, gf, metaApi, cursor, stale, refresh, onNewClass, onRenameClass }: Props) {
   const { details, setDetails, picked: pickedClass, setPicked: setPickedClass } = view
   const [imageFor, setImageFor] = useState<string | null>(null)
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
@@ -108,6 +109,7 @@ export function ClassPanel({ view, fs, session, entries, kind, classModel, gf, m
       )
     }
     if (info) items.push({ text: t('uml.menu.source'), run: () => onSelect(info, name) })
+    if (info && kind === 'project') items.push({ text: t('class.rename'), run: () => onRenameClass(info) })
     if (info?.kind === 'actor') items.push({ text: t('uml.menu.image'), run: () => setImageFor(name) })
     if (info?.kind === 'world') items.push({ text: t('uml.menu.background'), run: () => setImageFor(name) })
     if (base && kind === 'project' && canSubclass(base)) {

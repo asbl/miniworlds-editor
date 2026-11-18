@@ -102,6 +102,15 @@ with sync_playwright() as p:
     check("completion follows imports between files", eventually(lambda: "beissen" in completions(page), 20000), completions(page)[:200])
     page.keyboard.press("Escape")
 
+    # --- signature help: the parameters of the call being typed
+    open_file(page, "main.py")
+    replace_content(page, "import miniworlds as mw\nmw.Circle(")
+    page.keyboard.press("Control+End")
+    check("typing a call shows its parameters", eventually(lambda: page.locator(".cm-signature").count() == 1 and "position" in page.locator(".cm-signature").inner_text(), 20000), page.locator(".cm-signature").all_inner_texts().__str__())
+    check("the parameter being typed is marked", eventually(lambda: page.locator(".cm-signature-active").count() == 1, 5000))
+    page.keyboard.press("Escape")
+    check("Escape closes it", eventually(lambda: page.locator(".cm-signature").count() == 0, 3000))
+
     # --- hover shows the documentation
     open_file(page, "Figur.py")
     replace_content(page, FIGUR + "self.move(2)\n")

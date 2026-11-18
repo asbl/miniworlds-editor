@@ -30,6 +30,8 @@ import type { Pane } from './project/layout'
 import { useEditorSession } from './project/useEditorSession'
 import { useFileOps } from './project/useFileOps'
 import { useHistoryActions } from './project/useHistoryActions'
+import { useRenameClass } from './project/useRenameClass'
+import { useReport } from './project/useReport'
 import { usePanelWidths } from './project/usePanelWidths'
 import { useSessionState } from './project/useSessionState'
 import { useStaleClasses } from './project/useStaleClasses'
@@ -94,6 +96,10 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   const gf = useMiniworlds(runner, metaApi)
   const reloader = useAutoReload({ enabled: view === 'miniworlds' && autoReload, session, runner, fs, reload: () => void program.run() })
   const installedVersion = program.state.version
+  const waitingForInput = program.state.input !== null
+  useEffect(() => {
+    if (waitingForInput) setPane('world') // the program asks for a line: the console is where to type it
+  }, [waitingForInput])
   const modelSupported = installedVersion ? engineTier(installedVersion) === 'full' : miniworldsSupported
   const classModel = useClassModel({ runner, session, fs, supported: modelSupported, ready: installedVersion !== null && program.state.phase !== 'booting', fileSignal: entries })
   const stale = useStaleClasses(classModel, gf.state.active)
@@ -113,6 +119,8 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
 
   const files = useFileOps({ fs, session, entries, kind, refresh, metaApi, historyApi })
   const history = useHistoryActions(fs, session, historyApi, refresh)
+  const renameClassDialog = useRenameClass({ fs, session, kind, runner, classModel, metaApi, historyApi, refresh, onRenamed: classView.setPicked })
+  const copyReport = useReport({ fs, session, runner, lang, settings, entries })
 
   async function switchView(next: 'program' | 'miniworlds') {
     if (next === mode) return
@@ -237,6 +245,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
               stale={stale}
               refresh={refresh}
               onNewClass={(base) => void files.newClass(base)}
+              onRenameClass={(info) => void renameClassDialog(info)}
             />
           }
         />
@@ -257,6 +266,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
         <WorldPanel
           name={projectName}
           runner={runner}
+          onReport={() => void copyReport()}
           onJump={(loc) => {
             setPane('editor') // a link in the console: show the line it points to
             void program.jumpTo(loc)

@@ -12,6 +12,7 @@ import { normalizePath } from '../workspace/types'
  *   ready      {}                              the editor listens (sent when it started, before any `load`)
  *   loaded     { id? }                         `load` was applied
  *   files      { id?, files }                  all project files
+ *   submit     { files }                       the person pressed "Hand in" (only with `?submit=1`): all project files
  *   change     { paths }                       these files changed (a hint, not the content: fetch with `get-files`; the editor
  *                                              has not necessarily saved the last keystrokes yet, `get-files` does that first)
  *   error      { id?, message }                a message was refused
@@ -29,6 +30,7 @@ export type Outgoing =
   | { type: 'loaded'; id?: string }
   | { type: 'files'; id?: string; files: Record<string, FileContent> }
   | { type: 'change'; paths: string[] }
+  | { type: 'submit'; files: Record<string, FileContent> }
   | { type: 'error'; id?: string; message: string }
 
 export class EmbedError extends Error {}

@@ -1,5 +1,6 @@
-import { t } from '../i18n'
+import { getLang, t } from '../i18n'
 import { explainError } from './explain'
+import type { AudioMessage, AudioSink } from './audio'
 import { STOP_TIMEOUT_MS } from './config'
 import type { BootStep, FileChanges, FromWorker, InputEvent, RpcReply, ToWorker } from './protocol'
 
@@ -7,7 +8,7 @@ export type Phase = 'idle' | 'booting' | 'ready' | 'running' | 'stopping'
 
 export interface ConsoleLine {
   id: number
-  kind: 'stdout' | 'stderr' | 'system' | 'help'
+  kind: 'stdout' | 'stderr' | 'system' | 'input' | 'hint'
   text: string
 }
 
@@ -28,6 +29,12 @@ export interface RunnerEnv<C extends CanvasLike = HTMLCanvasElement> {
   /** A fresh canvas: transferControlToOffscreen() works only once per element. */
   createCanvas(): C
   pyodideBase: string
+  /** Address the Service Worker answers blocking reads on (see `input-request`); omitted: none. */
+  inputBase?: string
+  /** Plays the program's sound; omitted: sound is silenced. */
+  audio?: AudioSink
+  /** Hand a line to the Service Worker that holds the program's read open. */
+  replyToServiceWorker?(base: string, id: string, text: string | null): void
 }
 
 export interface RuntimeConfig {
@@ -48,6 +55,10 @@ export interface RunnerState {
   mode: 'program' | 'scenario' | null
   /** Scenario mode only: the world exists (paused) and answers commands. */
   scenarioReady: boolean
+  /** The program waits in `input()`. */
+  input: { id: string; prompt: string; via: 'worker' | 'service-worker' } | null
+  /** The program has played sound: the page offers a mute button. */
+  audioUsed: boolean
 }
 
 export interface RunResult extends FileChanges {
@@ -71,7 +82,7 @@ interface Waiter<T> {
  * Single program at a time. UI-framework free; components subscribe to `state`.
  */
 export class Runner<C extends CanvasLike = HTMLCanvasElement> {
-  state: RunnerState = { phase: 'idle', bootStep: null, version: null, lines: [], canvasGeneration: 0, mode: null, scenarioReady: false }
+  state: RunnerState = { phase: 'idle', bootStep: null, version: null, lines: [], canvasGeneration: 0, mode: null, scenarioReady: false, input: null, audioUsed: false }
   canvas: C
 
   private worker: WorkerLike | null = null
@@ -137,7 +148,7 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
     this.boot = { key, promise, waiter }
     this.set({ phase: 'booting', bootStep: null, version: null, canvasGeneration: this.state.canvasGeneration + 1 })
     worker.postMessage(
-      { type: 'boot', canvas: offscreen, pyodideBase: this.env.pyodideBase, miniworlds: config.miniworlds, packages: config.packages },
+      { type: 'boot', canvas: offscreen, pyodideBase: this.env.pyodideBase, miniworlds: config.miniworlds, packages: config.packages, inputBase: this.env.inputBase ?? null, audio: this.env.audio !== undefined },
       [offscreen],
     )
     return promise
@@ -165,7 +176,8 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
     this.installWaiters.clear()
     for (const resolve of this.rpcWaiters.values()) resolve({ ok: false, error: reason })
     this.rpcWaiters.clear()
-    this.set({ phase: 'idle', bootStep: null, version: null, scenarioReady: false })
+    this.env.audio?.reset?.() // a new worker sends its sounds again; the old decoded ones would stay in memory
+    this.set({ phase: 'idle', bootStep: null, version: null, scenarioReady: false, input: null })
   }
 
   private onCrash(worker: WorkerLike, text: string): void {
@@ -189,6 +201,7 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
         break
       case 'boot-error': {
         this.log('stderr', message.text)
+        if (message.hint === 'blocked') this.log('system', t('run.blocked'))
         const waiter = this.boot?.waiter
         this.discardWorker(message.text)
         waiter?.reject(new Error(message.text))
@@ -197,6 +210,16 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
       case 'out':
         this.log(message.stream, message.text)
         break
+      case 'audio': {
+        const { type: _type, ...audio } = message
+        this.env.audio?.handle(audio as AudioMessage)
+        // the mute button is for programs that make sound; the engine also stops music while a world starts
+        if (!this.state.audioUsed && (message.op === 'play' || message.op === 'music-play')) this.set({ audioUsed: true })
+        break
+      }
+      case 'input-request':
+        this.set({ input: { id: message.id, prompt: message.prompt, via: message.via } })
+        break
       case 'notice':
         this.log('system', t('run.silentAudio'))
         break
@@ -204,11 +227,12 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
         const { error, changed, deleted } = message
         if (error) {
           this.log('stderr', error)
-          const help = explainError(error)
-          if (help) this.log('help', `💡 ${help}`)
+          const hint = explainError(error, getLang())
+          if (hint) this.log('hint', `${t('run.hint')} ${hint}`)
         }
         this.log('system', t(error ? 'run.crashed' : 'run.finished'))
-        this.set({ phase: 'ready', scenarioReady: false })
+        this.env.audio?.stopAll()
+        this.set({ phase: 'ready', scenarioReady: false, input: null })
         this.runWaiter?.resolve({ error, changed, deleted, stopped: false })
         this.runWaiter = null
         break
@@ -216,7 +240,8 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
       case 'stopped':
         if (this.stopTimer) clearTimeout(this.stopTimer)
         this.stopTimer = null
-        this.set({ phase: 'ready', scenarioReady: false })
+        this.env.audio?.stopAll()
+        this.set({ phase: 'ready', scenarioReady: false, input: null })
         this.log('system', t('run.stopped'))
         this.runWaiter?.resolve({ changed: message.changed, deleted: message.deleted, error: null, stopped: true })
         this.runWaiter = null
@@ -270,6 +295,7 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
     }
     if (!this.worker || this.state.phase !== 'running') return Promise.resolve(NO_CHANGES)
     const worker = this.worker
+    this.answerInput(null) // a program waiting in input() has to let go first
     this.set({ phase: 'stopping' })
     const promise = new Promise<FileChanges>((resolve, reject) => (this.stopWaiter = { resolve, reject }))
     worker.postMessage({ type: 'stop' })
@@ -316,6 +342,22 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
     const reply = new Promise<RpcReply>((resolve) => this.rpcWaiters.set(id, resolve))
     worker.postMessage({ type: 'rpc', id, name, args })
     return reply as Promise<RpcReply<T>>
+  }
+
+  /** The page's sound output (mute switch), if the browser has one. */
+  get audio(): AudioSink | undefined {
+    return this.env.audio
+  }
+
+  /** The person typed a line for the waiting `input()` (null: give up). */
+  answerInput(text: string | null): void {
+    const request = this.state.input
+    if (!request) return
+    if (text !== null) this.log('input', request.prompt + text)
+    this.set({ input: null })
+    if (request.via === 'service-worker') {
+      if (this.env.inputBase) this.env.replyToServiceWorker?.(this.env.inputBase, request.id, text)
+    } else this.worker?.postMessage({ type: 'input-reply', id: request.id, text })
   }
 
   sendInput(event: InputEvent): void {

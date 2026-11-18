@@ -2,6 +2,7 @@ import { autocompletion, insertBracket, type Completion, type CompletionContext,
 import { forceLinting, lintGutter, linter, type Action, type Diagnostic } from '@codemirror/lint'
 import { syntaxTree } from '@codemirror/language'
 import { hoverTooltip } from '@codemirror/view'
+import { signatureHelp } from './signatureHelp'
 import type { EditorView } from '@codemirror/view'
 import type { Text } from '@codemirror/state'
 import type { Assist } from '../language/assist'
@@ -74,6 +75,7 @@ export function assistExtensions(getAssist: () => Assist | null, getPath: () => 
 
   return [
     autocompletion({ override: [source], icons: true, maxRenderedOptions: 60 }),
+    ...signatureHelp(getAssist, getPath),
     lintGutter(),
     linter(
       async (view) => {

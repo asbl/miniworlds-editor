@@ -42,6 +42,7 @@ Jede Nachricht ist ein Objekt mit `app: 'miniworlds-editor'` und `type`. Ein opt
 | `ready` | – | Der Editor hört zu (kommt einmal beim Start). Erst danach `load` senden. |
 | `loaded` | `id?` | `load` wurde angewendet. |
 | `files` | `id?`, `files` | Alle Projektdateien (Antwort auf `get-files`). |
+| `submit` | `files` | Die Person hat „Abgeben“ gedrückt (der Knopf erscheint nur mit `?embed=1&submit=1`). Enthält alle Projektdateien wie `files`; ungespeicherte Eingaben sind vorher übernommen. Die Seite speichert sie, z. B. als Moodle-Abgabe. |
 | `change` | `paths` | Diese Dateien haben sich geändert. Nur ein Hinweis ohne Inhalt: vor dem Abgeben oder Wegnavigieren immer `get-files` aufrufen. Das übernimmt auch Eingaben, die noch nicht gespeichert sind. |
 | `error` | `id?`, `message` | Eine Nachricht wurde abgelehnt (ungültiger Pfad, zu viele oder zu große Dateien, …). |
 
@@ -61,7 +62,20 @@ ohne `load` startet der Editor nach 1,5 s mit einem leeren Startprojekt (so funk
   und ein Editor-Ursprung, der nichts anderes enthält (z. B. eine eigene Subdomain), ist die sicherste Wahl.
 - Der Rahmen braucht keine besonderen Header (kein `COOP`/`COEP`); `Content-Security-Policy: frame-ancestors` auf dem Server des Editors kann die Einbettung zusätzlich auf Moodle beschränken.
 
+## Aufgaben per Link (ohne Einbetten)
+
+Auch ohne iframe lässt sich eine Aufgabe über die Adresse öffnen, z. B. als Link auf einer Kursseite:
+
+| Parameter | Wirkung |
+|---|---|
+| `?template=krabbe` | legt ein Projekt aus einer mitgelieferten Vorlage an (`krabbe`, `sammler`, `pong`) |
+| `?zip=https://…/aufgabe.zip` | lädt ein Projekt-ZIP (relative Adressen gelten ab dem Editor; fremde Server müssen CORS erlauben). Vorher fragt der Editor, ob dem Server vertraut wird |
+| `&name=Aufgabe 1` | Name des Projekts |
+| `&lang=de` / `en` | Sprache |
+
+Derselbe Link öffnet das schon angelegte Projekt wieder, statt eine Kopie zu machen. Die Parameter verschwinden danach aus der Adresszeile. Nur `http(s)`-Adressen werden angenommen.
+
 ## Nicht enthalten (Stand jetzt)
 
-Lauf starten/stoppen von außen, Laufergebnis und Konsole als Nachricht, schreibgeschützte Dateien, Aufgabenvorlagen aus der Seite. Sie lassen sich in
+Lauf starten/stoppen von außen, Laufergebnis und Konsole als Nachricht, schreibgeschützte Dateien, Aufgabenvorlagen aus der Seite (außer per `load`). Sie lassen sich in
 `src/embed/` ergänzen; Protokoll und Prüfung liegen in `protocol.ts`.
