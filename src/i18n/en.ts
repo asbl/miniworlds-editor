@@ -221,6 +221,7 @@ export const en: Record<keyof typeof de, string> = {
   'assist.noProblems': 'No hints',
   'links.menu': 'More editors',
   'pwa.update': 'A new version of the editor is ready. Your files are kept.',
+  'pwa.stale': 'The editor was updated in another tab. Please reload so everything matches.',
   'pwa.reload': 'Reload',
   'version.notOffline': 'not available offline',
   'assist.partial': 'basic checks only, no completion',

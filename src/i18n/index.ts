@@ -35,10 +35,11 @@ export function getLang(): Lang {
   return current
 }
 
-export function setLang(lang: Lang): void {
+/** `remember: false` for a language chosen by an embedding page (it must not change the visitor's own setting). */
+export function setLang(lang: Lang, remember = true): void {
   current = lang
   try {
-    localStorage.setItem(STORAGE_KEY, lang)
+    if (remember) localStorage.setItem(STORAGE_KEY, lang)
   } catch {
     /* private mode etc.: the choice just does not persist */
   }

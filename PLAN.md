@@ -310,7 +310,7 @@ Grenzen und Ideen:
 
 ### Stand Meilenstein 5 (2026-11-18)
 
-Umgesetzt und getestet (189 Vitest-Tests; Browsertests `test/pwa.py`, `test/embed.py`, `test/selfhost.py` und alle älteren in Chromium, die neuen auch in Firefox; Shell 265 KB gzip inkl. Icons, Hintergrund-WASM 3,5 MB):
+Umgesetzt und getestet (191 Vitest-Tests; Browsertests `test/pwa.py`, `test/embed.py`, `test/selfhost.py` und alle älteren in Chromium, die neuen auch in Firefox; Shell 265 KB gzip inkl. Icons, Hintergrund-WASM 3,5 MB):
 - **Audit der Meilenstein-4-Änderungen** (vorab, 9 Funde, alle behoben und getestet): Worker-Nachrichtenkette überlebt Fehler in `sync`/`api`; ruff bleibt nutzbar, wenn der Python-Teil nicht lädt (offline; Statusleiste „nur Grundprüfung“, automatischer neuer Versuch bei `online`);
   `saveMeta` schreibt `miniworlds.json` vor dem Löschen der alten Datei; Umlaute und Emojis in Vervollständigung und Hover (Unicode-Wortmuster, jedi zählt Codepunkte); überholte Anfragen werden im Worker nicht mehr gerechnet, Timer werden beim Verwerfen gelöscht;
   Format, Vervollständigung, Hover und Statusanzeige nur für `.py`; kein Neustart eines laufenden „neueste Version“-Boots, wenn die Welt später eine konkrete Version meldet (der Worker meldet die installierte Version); Pfadprüfung beim Spiegeln des Projekts in den Language-Worker;
@@ -323,5 +323,14 @@ Umgesetzt und getestet (189 Vitest-Tests; Browsertests `test/pwa.py`, `test/embe
 - **Selbst-Hosting:** `npm run selfhost` lädt Pyodide-Kern und die vom Editor benutzten Pakete (micropip, numpy, pygame-ce, jedi, parso; 11 Dateien) mit Prüfsummen, legt sie nach `dist/pyodide/…` und stellt `config.json` um. Test: mit Selbst-Hosting kein einziger Aufruf von jsDelivr.
 - **Einbetten per postMessage** (`?embed=1`, `docs/embed.md`): `load` / `get-files` hinein, `ready` / `loaded` / `files` / `change` / `error` hinaus; Projekt nur im Arbeitsspeicher (kein Zugriff auf die gespeicherten Projekte des Besuchers), Antworten nur an den Ursprung des Absenders, optionale Liste erlaubter Seiten, Pfad- und Größenprüfung. Getestet über zwei Ursprünge.
 - **Doku und CI:** `docs/deploy.md`, `docs/embed.md`, `.github/workflows/ci.yml` (Unit, Build, Größe, Browsertests in Chromium).
+
+**Audit von Meilenstein 5 (2026-11-18), alle Funde behoben:**
+- Service Worker: HTML-Antworten (Fehlerseiten, SPA-Fallback) werden nicht gecacht; `put` blockiert die Antwort nicht mehr und scheitert nicht an Quota (`waitUntil`, `try/catch`); Laufzeit-Cache trägt die Pyodide-Version im Namen, Veraltetes wird gelöscht, höchstens 40 Wheels;
+  `networkFirst` wartet bei leerem Cache auf das Netz statt nach dem Timeout zu scheitern; der `index.html`-Fallback gilt nur noch offline (andere Seiten auf demselben Host, z. B. `/ide/`, bleiben erreichbar).
+- Update: Eingaben werden vor dem Neuladen gespeichert; andere offene Tabs bekommen einen Hinweis, statt mit gelöschtem Cache weiterzulaufen.
+- „Offline verfügbar“ fragt den Cache (nicht `localStorage`); auch „Neueste (auto)“ wird geprüft.
+- Einbetten ist freigabepflichtig (`embedOrigins` fehlt oder ist kaputt = niemand; `["*"]` ausdrücklich für alle); `load` ist alles oder nichts (Base64 vorab geprüft, schreiben vor löschen, `Set` statt `in`), Nachrichten laufen nacheinander;
+  `change` meldet nur Pfade (Inhalt per `get-files`, das auch ungespeicherte Eingaben übernimmt); die Seitensprache wird nicht als Besucher-Einstellung gespeichert. Grenze bleibt: Python der einbettenden Seite läuft mit den Rechten des Editor-Ursprungs, Schutz der Projekte beruht auf Storage-Partitionierung (`docs/embed.md`).
+- `selfhost`: Version und Paketlisten aus `src/runtime/config.ts`, Downloads auf Länge, WASM-Kennung und Prüfsumme geprüft, atomar abgelegt, beschädigter Cache wird erneuert.
 
 Noch offen: Deployment unter miniworlds.opencoding.de und Anpassung der Repos `miniworlds-ide` und `miniworlds-moodle-web-player` (Schritte in `docs/deploy.md`, bewusst nicht angefasst); Embed ohne Lauf-/Konsolen-Nachrichten und ohne Service Worker; S6 (Safari/Chromebook auf echten Geräten); miniworlds-Wheels spiegeln (voll offline ohne PyPI-Erstzugriff); Audio, `input()`.

@@ -8,8 +8,13 @@ export async function collectFiles(fs: Fs): Promise<Record<string, FileContent>>
   return out
 }
 
-/** Replace the project: files the page did not send are removed. */
+/**
+ * Replace the project. Everything is decoded first (a bad file fails before anything changes), the new files are written,
+ * and only then are the files the page did not send removed.
+ */
 export async function replaceFiles(fs: Fs, files: Record<string, FileContent>): Promise<void> {
-  for (const entry of await fs.list()) if (entry.kind === 'file' && !(entry.path in files)) await fs.remove(entry.path)
-  for (const [path, content] of Object.entries(files)) await fs.write(path, decodeContent(content))
+  const prepared = Object.entries(files).map(([path, content]) => [path, decodeContent(content)] as const)
+  const keep = new Set(prepared.map(([path]) => path)) // a Set: "constructor" or "toString" are not special
+  for (const [path, data] of prepared) await fs.write(path, data)
+  for (const entry of await fs.list()) if (entry.kind === 'file' && !keep.has(entry.path)) await fs.remove(entry.path)
 }

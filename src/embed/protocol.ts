@@ -12,7 +12,8 @@ import { normalizePath } from '../workspace/types'
  *   ready      {}                              the editor listens (sent when it started, before any `load`)
  *   loaded     { id? }                         `load` was applied
  *   files      { id?, files }                  all project files
- *   change     { files }                       the user edited something (about half a second after the last keystroke)
+ *   change     { paths }                       these files changed (a hint, not the content: fetch with `get-files`; the editor
+ *                                              has not necessarily saved the last keystrokes yet, `get-files` does that first)
  *   error      { id?, message }                a message was refused
  */
 export const APP = 'miniworlds-editor'
@@ -27,10 +28,12 @@ export type Outgoing =
   | { type: 'ready' }
   | { type: 'loaded'; id?: string }
   | { type: 'files'; id?: string; files: Record<string, FileContent> }
-  | { type: 'change'; files: Record<string, FileContent> }
+  | { type: 'change'; paths: string[] }
   | { type: 'error'; id?: string; message: string }
 
 export class EmbedError extends Error {}
+
+const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/
 
 const id = (raw: unknown): string | undefined => (typeof raw === 'string' && raw.length <= 100 ? raw : undefined)
 
@@ -58,6 +61,8 @@ export function parseIncoming(data: unknown): Incoming | null {
       files[path] = value
     } else if (typeof value === 'object' && value !== null && typeof (value as { base64?: unknown }).base64 === 'string') {
       const base64 = (value as { base64: string }).base64
+      // checked here, not when writing: a bad file must not leave a half-replaced project behind
+      if (!BASE64.test(base64) || base64.length % 4 !== 0) throw new EmbedError(`load: "${rawPath}" is not valid base64`)
       bytes += base64.length
       files[path] = { base64 }
     } else throw new EmbedError(`load: "${rawPath}" must be a string or { base64 }`)

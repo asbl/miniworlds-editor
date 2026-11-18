@@ -11,11 +11,15 @@ export interface AppConfig {
   pyodideBase: string
   /** Other editors (Java, blocks …) shown in the menu "More editors". */
   links: ExternalLink[]
-  /** Pages that may embed the editor and talk to it; null = any page (the embed only ever shows what that page sent). */
+  /**
+   * Pages that may embed the editor and talk to it. Embedding is opt-in: without an entry (or with a file that cannot be read
+   * or is wrong) nobody may. `["*"]` allows every page; null means exactly that. Python that the embedding page loads runs with
+   * the editor's origin, so "every page" is a decision for the operator, not a default.
+   */
   embedOrigins: string[] | null
 }
 
-export const DEFAULT_CONFIG: AppConfig = { pyodideBase: PYODIDE_BASE, links: [], embedOrigins: null }
+export const DEFAULT_CONFIG: AppConfig = { pyodideBase: PYODIDE_BASE, links: [], embedOrigins: [] }
 
 const isHttpUrl = (value: string): boolean => /^https?:\/\//i.test(value)
 
@@ -53,17 +57,20 @@ export function parseAppConfig(raw: unknown, page: string): AppConfig {
       return isHttpUrl(url) && link.label.trim() ? [{ label: link.label.trim(), url }] : []
     })
   }
-  if (Array.isArray(r.embedOrigins)) {
-    const origins = r.embedOrigins.flatMap((o): string[] => {
-      if (typeof o !== 'string') return []
-      try {
-        const u = new URL(o)
-        return isHttpUrl(u.href) ? [u.origin] : []
-      } catch {
-        return []
-      }
-    })
-    config.embedOrigins = origins
+  if ('embedOrigins' in r) {
+    // present but unusable (a string, numbers …) stays "nobody": a typo must not open the door
+    const list = Array.isArray(r.embedOrigins) ? r.embedOrigins : []
+    if (list.includes('*')) config.embedOrigins = null
+    else
+      config.embedOrigins = list.flatMap((o): string[] => {
+        if (typeof o !== 'string') return []
+        try {
+          const u = new URL(o)
+          return isHttpUrl(u.href) ? [u.origin] : []
+        } catch {
+          return []
+        }
+      })
   }
   return config
 }

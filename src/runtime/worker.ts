@@ -1,4 +1,5 @@
 import runnerSource from './runner.py?raw'
+import { RUNTIME_PACKAGES } from './config'
 import type { BootStep, FileChanges, FromWorker, ToWorker } from './protocol'
 
 /** Minimal view of the Pyodide API that this file uses (pyodide is loaded from a URL at runtime, not bundled). */
@@ -125,7 +126,7 @@ async function boot(message: Extract<ToWorker, { type: 'boot' }>): Promise<strin
   py.canvas.setCanvas2D(canvas)
 
   progress('packages')
-  await py.loadPackage(['micropip', 'numpy', 'pygame-ce'])
+  await py.loadPackage(RUNTIME_PACKAGES)
   const micropip = py.pyimport('micropip')
   progress('miniworlds')
   await micropip.install(miniworlds ? `miniworlds==${miniworlds}` : 'miniworlds')

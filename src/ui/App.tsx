@@ -124,8 +124,8 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
       </header>
       {update && (
         <div class="notice" role="status">
-          <span>{t('pwa.update')}</span>
-          <button type="button" class="primary" onClick={() => update.applyUpdate()}>
+          <span>{t(update.kind === 'waiting' ? 'pwa.update' : 'pwa.stale')}</span>
+          <button type="button" class="primary" onClick={() => void update.applyUpdate(() => flush.current?.() ?? Promise.resolve())}>
             {t('pwa.reload')}
           </button>
           <button type="button" onClick={() => setUpdate(null)}>

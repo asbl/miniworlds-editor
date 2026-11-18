@@ -20,7 +20,7 @@ import { observeFs } from './observedFs'
 import type { Incoming } from './protocol'
 
 const PROJECT = 'embed'
-const CHANGE_DELAY_MS = 500
+const CHANGE_DELAY_MS = 150 // only coalesces a burst of writes; the message carries paths, not content
 /** Without a `load` from the page (the iframe opened on its own) the editor starts with an empty project. */
 const STANDALONE_AFTER_MS = 1500
 
@@ -49,6 +49,7 @@ export function EmbedApp({ config, runner: injected, catalog: injectedCatalog, l
   useEffect(() => {
     const store = new MemoryStore()
     let changeTimer: ReturnType<typeof setTimeout> | null = null
+    const changedPaths = new Set<string>()
     let loaded = false
     let disposed = false
     let bridge: EmbedBridge | null = null
@@ -57,20 +58,34 @@ export function EmbedApp({ config, runner: injected, catalog: injectedCatalog, l
       const raw = await store.open(PROJECT)
       const observed: Workspace = {
         kind: raw.kind,
-        fs: observeFs(raw.fs, () => {
-          if (changeTimer) clearTimeout(changeTimer)
-          changeTimer = setTimeout(() => void collectFiles(raw.fs).then((files) => bridge?.connected && bridge.send({ type: 'change', files })), CHANGE_DELAY_MS)
+        fs: observeFs(raw.fs, (paths) => {
+          paths.forEach((p) => changedPaths.add(p))
+          if (changeTimer) return
+          changeTimer = setTimeout(() => {
+            changeTimer = null
+            const paths = [...changedPaths].sort()
+            changedPaths.clear()
+            if (bridge?.connected && paths.length > 0) bridge.send({ type: 'change', paths })
+          }, CHANGE_DELAY_MS)
         }),
       }
 
-      async function handle(message: Incoming): Promise<void> {
+      // messages are handled one after the other: a second `load` must not interleave with the first
+      let queue: Promise<unknown> = Promise.resolve()
+      const enqueue = <T,>(task: () => Promise<T>): Promise<T> => {
+        const run = queue.then(task, task)
+        queue = run.catch(() => {})
+        return run
+      }
+
+      async function handleNow(message: Incoming): Promise<void> {
         if (message.type === 'get-files') {
           await flush.current?.()
           bridge?.send({ type: 'files', id: message.id, files: await collectFiles(raw.fs) })
           return
         }
         loaded = true
-        if (message.lang) setLang(message.lang)
+        if (message.lang) setLang(message.lang, false)
         if (message.mode) rememberMode(PROJECT, message.mode)
         await replaceFiles(raw.fs, message.files) // not the observed fs: loading is not an edit by the user
         setWorkspace(observed)
@@ -78,14 +93,16 @@ export function EmbedApp({ config, runner: injected, catalog: injectedCatalog, l
         bridge?.send({ type: 'loaded', id: message.id })
       }
 
+      const handle = (message: Incoming) => enqueue(() => handleNow(message))
       bridge = new EmbedBridge(win ?? (window as unknown as BridgeWindow), config.embedOrigins, handle)
       bridge.start()
       setTimeout(() => {
         if (loaded || disposed) return
-        void (async () => {
+        void enqueue(async () => {
+          if (loaded || disposed) return // a `load` that arrived in the meantime wins
           await createStarterProject(store, PROJECT, 'project', null)
-          if (!loaded && !disposed) setWorkspace(observed)
-        })()
+          setWorkspace(observed)
+        })
       }, STANDALONE_AFTER_MS)
     })()
 

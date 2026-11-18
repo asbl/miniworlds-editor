@@ -1,4 +1,5 @@
 import ruffWasmUrl from '@astral-sh/ruff-wasm-web/ruff_wasm_bg.wasm?url'
+import { LANGUAGE_PACKAGES } from '../runtime/config'
 import assistSource from './assist.py?raw'
 import type { FromLanguage, ToLanguage } from './protocol'
 
@@ -30,7 +31,7 @@ const newest = new Map<string, number>()
 async function bootPython(pyodideBase: string, miniworlds: string | null): Promise<{ hints: boolean; version: string | null }> {
   const { loadPyodide } = (await import(/* @vite-ignore */ `${pyodideBase}pyodide.mjs`)) as { loadPyodide(o: { indexURL: string }): Promise<Pyodide> }
   const py = await loadPyodide({ indexURL: pyodideBase })
-  await py.loadPackage(['micropip', 'jedi'])
+  await py.loadPackage(LANGUAGE_PACKAGES)
   // dependencies off: pygame and numpy stay out of this interpreter (see assist.py)
   py.globals.set('SPEC', miniworlds ? `miniworlds==${miniworlds}` : 'miniworlds')
   await py.runPythonAsync('import micropip\nawait micropip.install(SPEC, deps=False)')

@@ -30,6 +30,7 @@ export function pwaPlugin(): Plugin {
         for (const f of precache) hash.update(f).update(readFileSync(join(outDir, f)))
         const source = readFileSync('src/pwa/sw.js', 'utf8')
           .replace('__VERSION__', hash.digest('hex').slice(0, 12))
+          .replace('__PYODIDE__', /PYODIDE_VERSION = '([^']+)'/.exec(readFileSync('src/runtime/config.ts', 'utf8'))?.[1] ?? 'unknown')
           .replace('__PRECACHE__', JSON.stringify(['./', ...precache], null, 1))
         writeFileSync(join(outDir, 'sw.js'), source)
       },

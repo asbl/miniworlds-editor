@@ -43,6 +43,15 @@ with sync_playwright() as p:
     check("program prints online", eventually(lambda: "offline hallo" in console(page), 60000))
     page.wait_for_timeout(3000)  # the language worker boots in the background and caches jedi
 
+    # an HTML answer (error page, SPA fallback) must not be kept as if it were a Pyodide file
+    os.makedirs(os.path.join(dist, "pyodide"), exist_ok=True)
+    open(os.path.join(dist, "pyodide", "fake.html"), "w").write("<html>error page</html>")
+    check("html answer passes through", page.evaluate("fetch('pyodide/fake.html').then(r => r.status)") == 200)
+    page.wait_for_timeout(500)
+    cached_urls = page.evaluate("caches.keys().then(async ks => (await Promise.all(ks.map(async k => (await (await caches.open(k)).keys()).map(r => r.url)))).flat())")
+    check("html answer was not cached", not any("fake.html" in u for u in cached_urls))
+    check("Pyodide files are cached under a cache named after Pyodide's version", any(k.startswith("mw-runtime-0.") for k in cache_names()), str(cache_names()))
+
     # ---- no network at all ----
     server.stop()
     page.reload()
@@ -61,11 +70,15 @@ with sync_playwright() as p:
     text = open(sw_path).read()
     open(sw_path, "w").write(re.sub(r"const VERSION = '[0-9a-f]+'", "const VERSION = 'newbuild00000'", text))
     server.start()
+    other = context.new_page()  # a second tab of the same classroom
+    other.goto(URL)
+    other.wait_for_selector(".tree", timeout=30000)
     page.evaluate("navigator.serviceWorker.getRegistration().then(r => r.update())")
     check("update banner appears", eventually(lambda: page.locator(".notice", has_text="neue Version").count() + page.locator(".notice", has_text="new version").count() > 0, 30000))
     check("old build keeps running until the user agrees", old_cache in cache_names())
     page.locator(".notice button.primary").first.click()
     check("page reloads onto the new build", eventually(lambda: "mw-shell-newbuild00000" in cache_names() and old_cache not in cache_names(), 30000), str(cache_names()))
+    check("the other tab is told to reload (it still runs the old code)", eventually(lambda: other.locator(".notice", has_text="anderen Tab").count() + other.locator(".notice", has_text="another tab").count() > 0, 30000))
     check("project survived the update", eventually(lambda: page.locator(".tree .row-main", has_text="main.py").count() > 0, 30000))
     browser.close()
 

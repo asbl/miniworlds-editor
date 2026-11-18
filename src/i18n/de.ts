@@ -220,6 +220,7 @@ export const de = {
   'assist.noProblems': 'Keine Hinweise',
   'links.menu': 'Weitere Editoren',
   'pwa.update': 'Eine neue Version des Editors ist bereit. Deine Dateien bleiben erhalten.',
+  'pwa.stale': 'Der Editor wurde in einem anderen Tab aktualisiert. Bitte neu laden, damit alles zusammenpasst.',
   'pwa.reload': 'Neu laden',
   'version.notOffline': 'offline nicht verfügbar',
   'assist.partial': 'nur Grundprüfung, ohne Vervollständigung',

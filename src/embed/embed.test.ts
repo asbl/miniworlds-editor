@@ -29,6 +29,8 @@ describe('embed protocol', () => {
     expect(() => parseIncoming(msg({ type: 'load', files: { 'a/../../x.py': '' } }))).toThrow(EmbedError)
     expect(() => parseIncoming(msg({ type: 'load', files: [] }))).toThrow(EmbedError)
     expect(() => parseIncoming(msg({ type: 'load', files: { 'a.py': 5 } }))).toThrow(EmbedError)
+    expect(() => parseIncoming(msg({ type: 'load', files: { 'a.png': { base64: 'not base64!' } } }))).toThrow(/base64/)
+    expect(() => parseIncoming(msg({ type: 'load', files: { 'a.png': { base64: 'AAA' } } }))).toThrow(/base64/) // length not a multiple of 4
     expect(() => parseIncoming(msg({ type: 'load', files: Object.fromEntries(Array.from({ length: 5001 }, (_, i) => [`f${i}.py`, ''])) }))).toThrow(/too many/)
   })
   it('round-trips text and binary content', () => {
@@ -67,14 +69,14 @@ describe('EmbedBridge', () => {
     win.deliver(msg({ type: 'get-files', id: '1' }))
     await tick()
     expect(got).toEqual([{ type: 'get-files', id: '1' }])
-    bridge.send({ type: 'change', files: {} })
+    bridge.send({ type: 'change', paths: ['main.py'] })
     expect(win.sent.at(-1)).toMatchObject({ origin: 'https://moodle.example' }) // answers go to the asker, never to "*"
   })
   it('holds back data until the page has spoken', () => {
     const win = new FakeWindow()
     const bridge = new EmbedBridge(win, null, () => {})
     bridge.start()
-    bridge.send({ type: 'change', files: { 'main.py': 'secret' } })
+    bridge.send({ type: 'change', paths: ['main.py'] })
     expect(win.sent).toHaveLength(1) // only "ready"
     expect(bridge.connected).toBe(false)
   })
@@ -123,13 +125,22 @@ describe('embed files', () => {
     expect(await fs.exists('old.py')).toBe(false)
     expect(await collectFiles(fs)).toEqual({ 'main.py': 'new', 'classes/A.py': 'a', 'images/p.png': { base64: 'AAE=' } })
   })
-  it('reports writes through the observed file system', async () => {
-    let changes = 0
-    const fs = observeFs(new MemoryFs(), () => changes++)
+  it('keeps the old project when a file cannot be decoded, and treats "constructor" like any other name', async () => {
+    const fs = new MemoryFs()
+    await fs.write('old.py', 'x')
+    await expect(replaceFiles(fs, { 'new.py': 'y', 'bad.bin': { base64: '%%%%' } })).rejects.toThrow()
+    expect(await collectFiles(fs)).toEqual({ 'old.py': 'x' })
+    await fs.write('constructor', 'stale')
+    await replaceFiles(fs, { 'main.py': 'z' })
+    expect(await collectFiles(fs)).toEqual({ 'main.py': 'z' })
+  })
+  it('reports writes through the observed file system with their paths', async () => {
+    const seen: string[][] = []
+    const fs = observeFs(new MemoryFs(), (p) => void seen.push(p))
     await fs.write('a.py', '1')
     await fs.rename('a.py', 'b.py')
     await fs.remove('b.py')
     await fs.list()
-    expect(changes).toBe(3)
+    expect(seen).toEqual([['a.py'], ['a.py', 'b.py'], ['b.py']])
   })
 })

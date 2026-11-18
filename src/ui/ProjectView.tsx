@@ -16,9 +16,8 @@ import { openContextMenu } from './ContextMenu'
 import { detectKind, ENTRY_DEFAULT } from '../project/manifest'
 import { isImagePath, isTextPath } from '../project/search'
 import type { Catalog } from '../packages/catalog'
-import { offlineVersions, rememberInstalled } from '../pwa/offline'
+import { useCachedVersions } from '../pwa/offline'
 import { useOnline } from '../pwa/useOnline'
-import { browserKeyValue } from '../project/settings'
 import { updateStatus } from '../packages/versions'
 import type { Runner } from '../runtime/runner'
 import { runtimeConfig, useProgram } from './useProgram'
@@ -99,10 +98,6 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   const gf = useMiniworlds(runner, metaApi)
   const reloader = useAutoReload({ enabled: view === 'miniworlds' && autoReload, session, runner, fs, reload: () => void program.run() })
   const installedVersion = program.state.version
-  // an installed version is in the Service Worker's cache from now on: it stays usable without network
-  useEffect(() => {
-    if (installedVersion) rememberInstalled(browserKeyValue(), installedVersion)
-  }, [installedVersion])
   const modelSupported = installedVersion ? engineTier(installedVersion) === 'full' : miniworldsSupported
   const classModel = useClassModel({ runner, session, fs, supported: modelSupported, ready: installedVersion !== null && program.state.phase !== 'booting', fileSignal: entries })
   const languageState = useLanguage({
@@ -355,14 +350,14 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   const update = pinned ? updateStatus(pinned, versions?.latest ?? null) : null
   const online = useOnline()
   const noNetwork = !online || catalogStatus === 'offline' // the Service Worker may still answer PyPI from its cache
-  const offlineNow = noNetwork ? offlineVersions(browserKeyValue()) : []
+  const offlineNow = useCachedVersions(installedVersion, noNetwork)
   const versionItems: MenuItem[] = [
-    { label: t('version.newestAuto') + (versions?.latest ? ` (${versions.latest})` : ''), checked: pinned === null, onSelect: () => void changeVersion(null) },
+    { label: t('version.newestAuto') + (versions?.latest ? ` (${versions.latest})` : ''), checked: pinned === null, disabled: pinned !== null && noNetwork && !!versions?.latest && !offlineNow.includes(versions.latest), onSelect: () => void changeVersion(null) },
     ...(pinned && !versions?.versions.some((v) => v.version === pinned)
       ? [{ label: pinned, checked: true, divider: true, onSelect: () => void changeVersion(pinned) }]
       : []),
     ...(versions?.versions ?? []).map((v, i) => {
-      const unavailable = noNetwork && !offlineNow.includes(v.version)
+      const unavailable = noNetwork && pinned !== v.version && !offlineNow.includes(v.version)
       const label = v.tier === 'basic' ? `${v.version} · ${t('version.basic')}` : v.version
       return {
         label: unavailable ? `${label} · ${t('version.notOffline')}` : label,

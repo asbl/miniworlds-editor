@@ -1,13 +1,15 @@
-/* miniworlds editor: Service Worker. Plain JS, not bundled: scripts/pwaPlugin.ts fills in VERSION and PRECACHE at build time.
+/* miniworlds editor: Service Worker. Plain JS, not bundled: scripts/pwaPlugin.ts fills in VERSION, PYODIDE and PRECACHE at build time.
  *
  *  app files (index.html, assets, wasm)    precached on install, served cache-first; a new build waits until the user accepts it
  *  Pyodide and wheels (CDN, same origin)   cache-first at runtime (immutable URLs); what was used once also works offline
- *  PyPI metadata, config.json              network-first (short timeout), the last good copy when offline
+ *  PyPI metadata, config.json              network-first; the last good copy answers when the network fails or is slow
  */
 const VERSION = '__VERSION__'
 const PRECACHE = __PRECACHE__
 const SHELL_CACHE = `mw-shell-${VERSION}`
-const RUNTIME_CACHE = 'mw-runtime-v1'
+// named after Pyodide's version: a new Pyodide starts a fresh cache, the old one is deleted on activate
+const RUNTIME_CACHE = 'mw-runtime-__PYODIDE__'
+const MAX_WHEELS = 40
 const IMMUTABLE_HOSTS = ['cdn.jsdelivr.net', 'files.pythonhosted.org']
 const METADATA_HOSTS = ['pypi.org']
 const scope = new URL(self.registration.scope)
@@ -21,7 +23,10 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
-      for (const key of await caches.keys()) if (key.startsWith('mw-shell-') && key !== SHELL_CACHE) await caches.delete(key)
+      for (const key of await caches.keys()) {
+        const old = (key.startsWith('mw-shell-') && key !== SHELL_CACHE) || (key.startsWith('mw-runtime-') && key !== RUNTIME_CACHE)
+        if (old) await caches.delete(key)
+      }
       await self.clients.claim()
     })(),
   )
@@ -31,37 +36,63 @@ self.addEventListener('message', (event) => {
   if (event.data === 'skip-waiting') self.skipWaiting()
 })
 
-async function cacheFirst(request, cacheName) {
-  const cache = await caches.open(cacheName)
+/** Worth keeping: a complete, successful answer that is not an HTML page (error pages, captive portals, SPA fallbacks). */
+function cacheable(res) {
+  if (!res.ok || res.status !== 200 || res.type === 'opaque') return false
+  return !(res.headers.get('content-type') || '').toLowerCase().startsWith('text/html')
+}
+
+/** Never throws: a full disk or an evicted cache must not break a request that the network answered. */
+async function store(cache, request, res) {
+  try {
+    await cache.put(request, res)
+    // wheels pile up with every version a user tries: keep the newest ones (keys are in insertion order)
+    const wheels = (await cache.keys()).filter((r) => new URL(r.url).hostname === 'files.pythonhosted.org')
+    for (const old of wheels.slice(0, Math.max(0, wheels.length - MAX_WHEELS))) await cache.delete(old)
+  } catch {
+    /* quota or cache dropped */
+  }
+}
+
+async function cacheFirst(event, request) {
+  const cache = await caches.open(RUNTIME_CACHE)
   const hit = await cache.match(request)
   if (hit) return hit
   const res = await fetch(request)
-  if (res.ok && res.status === 200) await cache.put(request, res.clone())
+  // the page gets the response right away (streaming compile of the WebAssembly); the copy is stored on the side
+  if (cacheable(res)) event.waitUntil(store(cache, request, res.clone()))
   return res
 }
 
-async function networkFirst(request, timeoutMs, ignoreSearch) {
+async function networkFirst(event, request, timeoutMs, ignoreSearch) {
   const cache = await caches.open(RUNTIME_CACHE)
-  try {
-    const res = await Promise.race([fetch(request), new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs))])
-    if (res.ok && res.status === 200) cache.put(request, res.clone())
+  const cached = await cache.match(request, { ignoreSearch })
+  const network = fetch(request).then((res) => {
+    if (cacheable(res)) event.waitUntil(store(cache, request, res.clone()))
     return res
-  } catch (error) {
-    const hit = await cache.match(request, { ignoreSearch })
-    if (hit) return hit
-    throw error
-  }
+  })
+  // the copy is stored even when the answer is already given from the cache (a slow network); waitUntil must be called now
+  event.waitUntil(network.catch(() => {}))
+  // nothing to fall back on: wait for the network however long it takes
+  if (!cached) return network
+  const slow = new Promise((resolve) => setTimeout(() => resolve(cached), timeoutMs))
+  return Promise.race([network.catch(() => cached), slow])
 }
 
 async function shell(request) {
   const cache = await caches.open(SHELL_CACHE)
   const hit = await cache.match(request, { ignoreSearch: true })
   if (hit) return hit
-  if (request.mode === 'navigate') {
-    const index = await cache.match(abs('index.html'))
-    if (index) return index
+  try {
+    return await fetch(request)
+  } catch (error) {
+    // offline: an address of the editor itself still opens the editor (other pages on the same host are not ours to answer)
+    if (request.mode === 'navigate') {
+      const index = await cache.match(abs('index.html'))
+      if (index) return index
+    }
+    throw error
   }
-  return fetch(request)
 }
 
 self.addEventListener('fetch', (event) => {
@@ -71,9 +102,9 @@ self.addEventListener('fetch', (event) => {
   if (url.origin === scope.origin) {
     if (!url.href.startsWith(scope.href)) return
     const path = url.pathname.slice(scope.pathname.length)
-    if (path === 'config.json') event.respondWith(networkFirst(request, 1500, true))
-    else if (path.startsWith('pyodide/')) event.respondWith(cacheFirst(request, RUNTIME_CACHE))
+    if (path === 'config.json') event.respondWith(networkFirst(event, request, 1500, true))
+    else if (path.startsWith('pyodide/')) event.respondWith(cacheFirst(event, request))
     else event.respondWith(shell(request))
-  } else if (IMMUTABLE_HOSTS.includes(url.hostname)) event.respondWith(cacheFirst(request, RUNTIME_CACHE))
-  else if (METADATA_HOSTS.includes(url.hostname)) event.respondWith(networkFirst(request, 3000, false))
+  } else if (IMMUTABLE_HOSTS.includes(url.hostname)) event.respondWith(cacheFirst(event, request))
+  else if (METADATA_HOSTS.includes(url.hostname)) event.respondWith(networkFirst(event, request, 3000, false))
 })

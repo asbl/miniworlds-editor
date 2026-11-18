@@ -20,6 +20,14 @@ window.send = m => document.getElementById('f').contentWindow.postMessage({{ app
 
 dist = copy_dist()
 open(os.path.join(dist, "parent.html"), "w").write(PAGE)
+
+
+def allow(origins):
+    cfg = {} if origins is None else {"embedOrigins": origins}
+    json.dump(cfg, open(os.path.join(dist, "config.json"), "w"))
+
+
+allow(["http://127.0.0.1:4181"])  # embedding is opt-in: the parent page of this test is listed
 server = Server(dist, 4181).start()
 
 
@@ -52,7 +60,7 @@ with sync_playwright() as p:
     frame.locator(".cm-content").click()
     page.keyboard.press("Control+End")
     page.keyboard.insert_text("# bearbeitet")
-    check("change is sent after editing", eventually(lambda: any("# bearbeitet" in m["files"].get("main.py", "") for m in messages(page, "change")), 15000))
+    check("change names the edited file (a hint, no content)", eventually(lambda: any(m["paths"] == ["main.py"] and "files" not in m for m in messages(page, "change")), 15000))
 
     page.evaluate("send({ type: 'get-files', id: 'g1' })")
     check("get-files answers with all files", eventually(lambda: any(m.get("id") == "g1" and "# bearbeitet" in m["files"]["main.py"] and m["files"]["images/p.png"] == {"base64": "iVBORw0KGgo="} for m in messages(page, "files")), 15000))
@@ -75,14 +83,18 @@ with sync_playwright() as p:
     check("program runs in the embed", eventually(lambda: "2" in frame.locator(".console-lines").inner_text(), 150000))
     page.close()
 
-    # ---- origin list: a page that is not listed gets nothing ----
-    cfg = os.path.join(dist, "config.json")
-    json.dump({"embedOrigins": ["https://moodle.example"]}, open(cfg, "w"))
+    # ---- opt-in: unlisted, damaged or missing configuration means nobody ----
+    for label, origins in (("another origin listed", ["https://moodle.example"]), ("no embedOrigins entry", None), ("embedOrigins is a string", "http://127.0.0.1:4181")):
+        allow(origins)
+        page = open_parent(browser)
+        page.wait_for_timeout(3000)
+        page.evaluate("send({ type: 'get-files', id: 'x' })")
+        page.wait_for_timeout(1500)
+        check(f"unlisted page receives nothing ({label})", messages(page) == [], str(messages(page)))
+        page.close()
+    allow(["*"])
     page = open_parent(browser)
-    page.wait_for_timeout(3000)
-    page.evaluate("send({ type: 'get-files', id: 'x' })")
-    page.wait_for_timeout(2000)
-    check("unlisted page receives nothing", messages(page) == [], str(messages(page)))
+    check("explicit * lets any page embed", eventually(lambda: messages(page, "ready"), 30000))
     browser.close()
 
 server.stop()
