@@ -1,3 +1,5 @@
+import { EMPTY_FACTS, type Facts } from '../tasks/checks'
+import { FactTracker } from '../tasks/facts'
 import { append, fromWorld, keyFor, replay, roundPoint, type Op } from './journal'
 import type { MiniworldsMeta } from './meta'
 import { speedFactor, SPEED_MAX, SPEED_MIN, type ActorInfo, type ClassInfo, type Inspection, type MethodInfo, type ParamInfo, type ScenarioClient } from './scenario'
@@ -32,6 +34,12 @@ export interface MiniworldsState {
   byClass: Record<string, number>
   classes: ClassInfo[]
   selected: ActorInfo | null
+  /** The selected actor's fields, kept up to date while the world runs (null: nothing selected). */
+  inspection: Inspection | null
+  /** Every actor; filled only while the guide lines need them (`setGuides`). */
+  actorList: ActorInfo[]
+  /** What happened in the world since it started (for the tasks' automatic checks). */
+  facts: Facts
   armed: { cls: string; args: string[] } | null
   /** An edit after the first frame happened: it is not part of the start setup. */
   lateEdit: boolean
@@ -47,6 +55,9 @@ const INITIAL: MiniworldsState = {
   byClass: {},
   classes: [],
   selected: null,
+  inspection: null,
+  actorList: [],
+  facts: EMPTY_FACTS,
   armed: null,
   lateEdit: false,
 }
@@ -62,6 +73,11 @@ export class MiniworldsController {
   private listeners = new Set<() => void>()
   private drag: { handle: string; dx: number; dy: number; pending: [number, number] | null; inflight: boolean; moved: boolean } | null = null
   private busy = false
+  private guides = false
+  private trackMoves = false
+  private tracker = new FactTracker()
+  /** The primary button is down: a quick tap can release it while `pickAt` is still answering. */
+  private pressed = false
 
   constructor(
     private client: ScenarioClient,
@@ -94,6 +110,7 @@ export class MiniworldsController {
     this.busy = true
     try {
       const classes = await this.client.classes()
+      this.tracker.reset()
       this.set({ ...INITIAL, active: true, classes, speedIndex: this.state.speedIndex })
       await this.client.setSpeed(speedFactor(this.state.speedIndex))
       const journal = this.env.getMeta().journal
@@ -116,7 +133,7 @@ export class MiniworldsController {
   /** The program ended or was stopped. */
   onEnded(): void {
     this.drag = null
-    this.set({ ...INITIAL, speedIndex: this.state.speedIndex, classes: this.state.classes })
+    this.set({ ...INITIAL, speedIndex: this.state.speedIndex, classes: this.state.classes, facts: this.tracker.facts }) // the facts of the last run stay (a task done is done)
   }
 
   /** Cheap status refresh; also keeps the selection box in place. */
@@ -124,20 +141,50 @@ export class MiniworldsController {
     if (!this.state.active || this.busy) return
     try {
       const s = await this.client.status()
-      const patch: Partial<MiniworldsState> = { frame: s.frame, paused: s.paused, fps: s.fps, actors: s.actors, byClass: s.by_class }
+      this.tracker.status(s.by_class, s.frame)
+      const patch: Partial<MiniworldsState> = { frame: s.frame, paused: s.paused, fps: s.fps, actors: s.actors, byClass: s.by_class, facts: this.tracker.facts }
       this.set(patch)
-      await this.refreshSelection()
+      await this.refreshWatch()
     } catch {
       /* the world ended in between; onEnded follows */
     }
   }
 
-  private async refreshSelection(): Promise<void> {
+  /** Task checks that look at movement need the actors' positions at every poll. */
+  setTrackMoves(on: boolean): void {
+    this.trackMoves = on
+  }
+
+  /** The guide lines (hit boxes, directions) need every actor; they ask for it here. */
+  setGuides(on: boolean): void {
+    this.guides = on
+    if (!on && this.state.actorList.length > 0) this.set({ actorList: [] })
+    else if (on) void this.poll()
+  }
+
+  /**
+   * Keeps what the UI watches fresh: the selected actor (box and live fields, also while the world runs) and, with guides
+   * on, all actors. One snapshot serves both; nothing is fetched when nothing is watched.
+   */
+  private async refreshWatch(): Promise<void> {
     const sel = this.state.selected
-    if (!sel) return
-    if (!this.state.paused) return void this.set({ selected: null })
+    if (!sel && !this.guides && !this.trackMoves) {
+      if (this.state.actorList.length > 0 || this.state.inspection) this.set({ actorList: [], inspection: null })
+      return
+    }
     const { actors } = await this.client.snapshot()
-    this.set({ selected: actors.find((a) => a.handle === sel.handle) ?? null })
+    if (this.trackMoves) this.tracker.actors(actors, this.state.frame)
+    const selected = sel ? (actors.find((a) => a.handle === sel.handle) ?? null) : null
+    let inspection: Inspection | null = null
+    if (selected) {
+      try {
+        inspection = await this.client.inspect(selected.handle)
+      } catch {
+        /* the actor vanished between the two calls; the next poll clears the selection */
+      }
+    }
+    if (selected && this.tracker.selected(selected.cls)) this.set({ facts: this.tracker.facts })
+    this.set({ selected, inspection, actorList: this.guides ? actors : [], facts: this.tracker.facts })
   }
 
   // ---- run control ----
@@ -150,7 +197,7 @@ export class MiniworldsController {
 
   async togglePause(): Promise<void> {
     if (this.state.paused) {
-      this.set({ armed: null, selected: null })
+      this.set({ armed: null }) // the selection stays: the inspector follows the actor while the world runs
       await this.client.run()
     } else {
       await this.client.pause()
@@ -234,9 +281,10 @@ export class MiniworldsController {
 
   /** Select an actor by handle (or clear the selection). */
   async select(handle: string | null): Promise<void> {
-    if (!handle) return void this.set({ selected: null })
+    if (!handle) return void this.set({ selected: null, inspection: null })
     const { actors } = await this.client.snapshot()
     this.set({ selected: actors.find((a) => a.handle === handle) ?? null })
+    if (!this.drag) await this.refreshWatch() // fields right away, not at the next poll
   }
 
   async pickAt(x: number, y: number): Promise<ActorInfo | null> {
@@ -257,9 +305,10 @@ export class MiniworldsController {
       if (!shift) this.set({ armed: null })
       return true
     }
+    this.pressed = true
     const actor = await this.pickAt(x, y)
-    this.set({ selected: actor })
-    this.drag = actor ? { handle: actor.handle, dx: x - actor.x, dy: y - actor.y, pending: null, inflight: false, moved: false } : null
+    this.set({ selected: actor, ...(actor ? {} : { inspection: null }) })
+    this.drag = actor && this.pressed ? { handle: actor.handle, dx: x - actor.x, dy: y - actor.y, pending: null, inflight: false, moved: false } : null
     return true
   }
 
@@ -289,6 +338,7 @@ export class MiniworldsController {
   }
 
   async pointerUp(): Promise<void> {
+    this.pressed = false
     const d = this.drag
     this.drag = null
     if (!d) return
@@ -311,7 +361,7 @@ export class MiniworldsController {
     try {
       await this.recordWithKey(handle, (key) => ({ op: 'delete', cls: key.cls, n: key.n })) // key before the actor is gone
       await this.client.remove(handle)
-      if (this.state.selected?.handle === handle) this.set({ selected: null })
+      if (this.state.selected?.handle === handle) this.set({ selected: null, inspection: null })
       await this.poll()
     } catch (error) {
       this.env.note(messageOf(error), 'stderr')
@@ -333,6 +383,7 @@ export class MiniworldsController {
       try {
         const reply = await this.client.call(handle, method.name, texts)
         await this.recordWithKey(handle, (key) => ({ op: 'call', cls: key.cls, n: key.n, method: method.name, texts: [...texts] }))
+        if (this.tracker.called(method.name)) this.set({ facts: this.tracker.facts })
         const shown = `${method.name}(${texts.filter(Boolean).join(', ')})`
         this.env.note(reply.result != null ? `${shown} → ${reply.result}` : shown)
         await this.poll()

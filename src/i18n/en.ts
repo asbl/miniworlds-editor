@@ -1,4 +1,5 @@
 import type { de } from './de'
+import { studentEn } from './student.en'
 
 export const en: Record<keyof typeof de, string> = {
   'app.title': 'miniworlds editor',
@@ -228,6 +229,11 @@ export const en: Record<keyof typeof de, string> = {
   'pane.files': 'Files',
   'pane.editor': 'Editor',
   'pane.world': 'World',
+  'layout.resizeSidebar': 'Sidebar width',
+  'layout.resizeWorld': 'World width',
+  'layout.splitterHint': 'Drag or arrow keys: change the width · double click or Home: default width',
+  'errorNote.close': 'Close error message',
+  'errorNote.label': 'Error in this line',
   'history.title': 'History',
   'history.save': 'Save version …',
   'history.saveName': 'Name for this version',
@@ -305,4 +311,6 @@ export const en: Record<keyof typeof de, string> = {
   'status.storage.memory': 'Storage: memory only',
   'status.saved': 'Saved',
   'status.saving': 'Saving …',
+
+  ...studentEn,
 }

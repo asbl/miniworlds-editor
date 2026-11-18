@@ -3,10 +3,53 @@
  "level": "Einstieg",
  "description": "Eine Krabbe läuft über das Feld und frisst Würmer. Ideal zum Kennenlernen: Figuren platzieren, Act, Methoden aufrufen.",
  "tasks": [
-  "Rechtsklick auf die Welt → „Neu: Krabbe“ und „Neu: Wurm“. Drücke dann mehrmals Act.",
-  "Rechtsklick auf die Krabbe → fressen(menge) aufrufen. Was passiert mit dem Attribut gefressen? (Inspizieren…)",
-  "Ändere im Code die Geschwindigkeit der Krabbe (self.move(2)). Was ändert sich?",
-  "Lege mit „Neue Klasse…“ eine Klasse Hai an, die die Krabbe jagt.",
-  "Gib der Krabbe ein Bild: Rechtsklick auf die Klasse im Diagramm → „Bild festlegen…“."
+  {
+   "text": "Rechtsklick auf die Welt → „Neu: Krabbe“ und „Neu: Wurm“. Drücke dann mehrmals Act.",
+   "check": {
+    "type": "all",
+    "of": [
+     {
+      "type": "actors",
+      "cls": "Krabbe"
+     },
+     {
+      "type": "actors",
+      "cls": "Wurm"
+     },
+     {
+      "type": "frames",
+      "min": 3
+     }
+    ]
+   }
+  },
+  {
+   "text": "Klicke die Krabbe an: unten erscheinen ihre Eigenschaften. Rechtsklick auf die Krabbe → fressen(menge) aufrufen. Was passiert mit dem Attribut gefressen?",
+   "check": {
+    "type": "called",
+    "method": "fressen"
+   }
+  },
+  {
+   "text": "Ändere im Code die Geschwindigkeit der Krabbe (self.move(2)). Was ändert sich?",
+   "check": {
+    "type": "changed",
+    "path": "classes/Krabbe.py"
+   }
+  },
+  {
+   "text": "Lege mit „Neue Klasse…“ eine Klasse Hai an, die die Krabbe jagt.",
+   "check": {
+    "type": "class",
+    "name": "Hai"
+   }
+  },
+  {
+   "text": "Gib der Krabbe ein Bild: Rechtsklick auf die Klasse im Diagramm → „Bild festlegen…“.",
+   "check": {
+    "type": "image",
+    "cls": "Krabbe"
+   }
+  }
  ]
 }

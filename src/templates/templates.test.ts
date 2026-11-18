@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { detectKind } from '../project/manifest'
 import { MemoryFs } from '../workspace'
 import { loadMeta } from '../miniworlds/meta'
-import { createFromTemplate, loadTemplates, TEMPLATES } from './index'
+import { hashText, type Check } from '../tasks/checks'
+import { createFromTemplate, loadTemplates, resolveCheck, TEMPLATES } from './index'
 
 describe('templates', () => {
   it('ships krabbe, sammler and pong in that order', () => {
@@ -58,6 +59,31 @@ describe('templates', () => {
     const meta = await loadMeta(fs)
     expect(meta.tasks[0]).toMatch(/Right-click/)
     expect(await fs.read('project.toml')).toContain('miniworlds = "4.4.0.16"')
+  })
+
+  it('carries the same automatic checks in both languages, and `changed` checks name existing files', () => {
+    for (const t of TEMPLATES) {
+      const checks = (lang: 'de' | 'en') => t.text[lang].tasks.map((task) => (typeof task === 'string' ? null : task.check ?? null))
+      expect(checks('de'), t.id).toEqual(checks('en'))
+      for (const c of checks('de')) {
+        const parsed = resolveCheck(c, t.files)
+        if (c) expect(parsed, `${t.id}: ${JSON.stringify(c)}`).not.toBeNull()
+        const walk = (x: Check | null) => {
+          if (x?.type === 'changed') expect(t.files[x.path], `${t.id}/${x.path}`).toBeDefined()
+          if (x?.type === 'all') x.of.forEach(walk)
+        }
+        walk(parsed)
+      }
+    }
+  })
+
+  it('stores the checks next to the tasks, with the template file as the baseline of `changed`', async () => {
+    const fs = new MemoryFs()
+    await createFromTemplate(fs, { template: TEMPLATES[0]!, lang: 'de', name: 'Krabbe', miniworlds: null })
+    const meta = await loadMeta(fs)
+    expect(meta.checks).toHaveLength(meta.tasks.length)
+    const changed = meta.checks?.find((c) => c?.type === 'changed')
+    expect(changed).toMatchObject({ type: 'changed', path: 'classes/Krabbe.py', hash: hashText(TEMPLATES[0]!.files['classes/Krabbe.py']!) })
   })
 
   it('ignores files outside template folders', () => {

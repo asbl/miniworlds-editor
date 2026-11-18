@@ -1,3 +1,4 @@
+import { studentDe } from './student.de'
 /** Deutsche Texte. Der Schlüsselsatz hier ist maßgeblich; `en.ts` muss denselben Satz haben (Typ + Test). */
 export const de = {
   'app.title': 'miniworlds-Editor',
@@ -227,6 +228,11 @@ export const de = {
   'pane.files': 'Dateien',
   'pane.editor': 'Editor',
   'pane.world': 'Welt',
+  'layout.resizeSidebar': 'Breite der Seitenleiste',
+  'layout.resizeWorld': 'Breite der Welt',
+  'layout.splitterHint': 'Ziehen oder Pfeiltasten: Breite ändern · Doppelklick oder Pos1: Standardbreite',
+  'errorNote.close': 'Fehlermeldung schließen',
+  'errorNote.label': 'Fehler in dieser Zeile',
   'history.title': 'Verlauf',
   'history.save': 'Stand merken …',
   'history.saveName': 'Name für diesen Stand',
@@ -304,4 +310,6 @@ export const de = {
   'status.storage.memory': 'Speicher: nur im Arbeitsspeicher',
   'status.saved': 'Gespeichert',
   'status.saving': 'Speichert …',
+
+  ...studentDe,
 } as const

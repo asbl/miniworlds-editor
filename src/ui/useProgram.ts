@@ -5,6 +5,7 @@ import { ENTRY_DEFAULT } from '../project/manifest'
 import { isTextPath } from '../project/search'
 import type { ProjectSettings } from '../project/settings'
 import type { RunResult, Runner, RuntimeConfig } from '../runtime/runner'
+import { errorNote, type ErrorNote } from '../runtime/explain'
 import { errorLocation, type TraceLocation } from '../runtime/traceback'
 import type { Fs } from '../workspace'
 import { infoDialog } from './dialogs'
@@ -57,10 +58,10 @@ export function useProgram({ runner, catalog, fs, session, host, settings, setti
   }, [runner, catalog, settingsLoaded, configKey])
 
   const jumpTo = useCallback(
-    async ({ path, line }: TraceLocation) => {
+    async ({ path, line }: TraceLocation, note: ErrorNote | null = null) => {
       if (!session || !(await fs.exists(path))) return
       await session.open(path, { line, column: 0, length: 0 })
-      if (isTextPath(path)) host.current?.markError(line)
+      if (isTextPath(path)) host.current?.markError(line, note)
     },
     [fs, session, host],
   )
@@ -101,7 +102,7 @@ export function useProgram({ runner, catalog, fs, session, host, settings, setti
       await applyChanges(result)
       if (result.error) {
         const location = errorLocation(result.error)
-        if (location) await jumpTo(location)
+        if (location) await jumpTo(location, errorNote(result.error))
       }
     } catch (error) {
       if (!(error instanceof Error && error.message === t('run.cancelled'))) {

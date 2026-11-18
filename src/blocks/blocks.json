@@ -1,0 +1,25 @@
+[
+  { "id": "move", "group": "move", "kind": "statement", "code": "self.move(${1:3})" },
+  { "id": "turn", "group": "move", "kind": "statement", "code": "self.turn_right(${1:90})" },
+  { "id": "moveTo", "group": "move", "kind": "statement", "code": "self.move_to((${1:200}, ${2:150}))" },
+  { "id": "bounce", "group": "move", "kind": "statement", "code": "borders = self.detect_borders()\nif borders:\n    self.bounce_from_border(borders)" },
+
+  { "id": "keyHold", "group": "input", "kind": "method", "code": "def on_key_pressed(self, key):\n    if \"${1:left}\" in key:\n        self.x -= ${2:3}" },
+  { "id": "keyOnce", "group": "input", "kind": "method", "code": "def on_key_down(self, key):\n    if \"${1:space}\" in key:\n        ${2:pass}" },
+  { "id": "click", "group": "input", "kind": "method", "code": "def on_clicked_left(self, position):\n    ${1:pass}" },
+
+  { "id": "touch", "group": "collide", "kind": "statement", "code": "for ${1:other} in self.detect_all(${2:Wurm}):\n    ${1:other}.remove()" },
+  { "id": "touchEvent", "group": "collide", "kind": "method", "code": "def on_detecting_actor(self, actor):\n    ${1:pass}" },
+  { "id": "remove", "group": "collide", "kind": "statement", "code": "self.remove()" },
+
+  { "id": "act", "group": "flow", "kind": "method", "code": "def act(self):\n    ${1:pass}" },
+  { "id": "setup", "group": "flow", "kind": "method", "code": "def on_setup(self):\n    ${1:pass}" },
+  { "id": "ifElse", "group": "flow", "kind": "statement", "code": "if ${1:True}:\n    ${2:pass}\nelse:\n    ${3:pass}" },
+  { "id": "repeat", "group": "flow", "kind": "statement", "code": "for i in range(${1:10}):\n    ${2:pass}" },
+  { "id": "every", "group": "flow", "kind": "statement", "code": "if self.world.frame % ${1:60} == 0:\n    ${2:pass}" },
+  { "id": "count", "group": "flow", "kind": "statement", "code": "self.${1:zaehler} += 1" },
+
+  { "id": "random", "group": "world", "kind": "statement", "imports": ["random"], "code": "${1:zahl} = random.randint(${2:1}, ${3:6})" },
+  { "id": "create", "group": "world", "kind": "statement", "code": "${1:Wurm}((${2:100}, ${3:100}))" },
+  { "id": "background", "group": "world", "kind": "statement", "code": "self.add_background((${1:20}, ${2:120}, ${3:60}))" }
+]

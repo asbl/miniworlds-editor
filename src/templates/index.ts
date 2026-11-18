@@ -1,5 +1,6 @@
 import type { Lang } from '../i18n'
 import { saveMeta } from '../miniworlds/meta'
+import { hashText, parseCheck, type Check } from '../tasks/checks'
 import { MANIFEST_FILE, serializeManifest } from '../project/manifest'
 import type { Fs } from '../workspace'
 
@@ -8,7 +9,8 @@ export interface TemplateText {
   title: string
   level: string
   description: string
-  tasks: string[]
+  /** A text, or a text with an automatic check (`changed` without `hash`: the template's own file is the baseline). */
+  tasks: (string | { text: string; check?: unknown })[]
 }
 export interface Template {
   id: string
@@ -50,5 +52,19 @@ export async function createFromTemplate(fs: Fs, { template, lang, name, miniwor
   await fs.write(MANIFEST_FILE, serializeManifest({ name, miniworlds, entry: 'main.py', packages: [] }))
   for (const [path, content] of Object.entries(template.files)) await fs.write(path, content)
   const text = template.text[lang] ?? template.text.de
-  await saveMeta(fs, { journal: [], tasks: text.tasks, tasksDone: {} })
+  const tasks = text.tasks.map((task) => (typeof task === 'string' ? task : task.text))
+  const checks = text.tasks.map((task) => (typeof task === 'string' ? null : resolveCheck(task.check, template.files)))
+  await saveMeta(fs, { journal: [], tasks, tasksDone: {}, ...(checks.some((c) => c) ? { checks } : {}) })
+}
+
+/** A check from a template's JSON, with the baseline hash of `changed` checks filled in from the template's files. */
+export function resolveCheck(raw: unknown, files: Record<string, string>): Check | null {
+  const fill = (c: unknown): unknown => {
+    if (typeof c !== 'object' || c === null) return c
+    const r = c as Record<string, unknown>
+    if (r.type === 'changed' && typeof r.path === 'string' && typeof files[r.path] === 'string') return { ...r, hash: hashText(files[r.path] as string) }
+    if (r.type === 'all' && Array.isArray(r.of)) return { ...r, of: r.of.map(fill) }
+    return c
+  }
+  return parseCheck(fill(raw))
 }

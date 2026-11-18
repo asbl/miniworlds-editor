@@ -3,13 +3,15 @@ import { t, useLang } from '../i18n'
 import type { MiniworldsController, MiniworldsState } from '../miniworlds/controller'
 import { MiniworldsControls } from '../miniworlds/MiniworldsPanel'
 import { attachWorldTools, type WorldPoint } from '../miniworlds/worldTools'
-import type { ActorInfo } from '../miniworlds/scenario'
-import { attachInput } from '../runtime/input'
+import { GuidesOverlay } from '../miniworlds/GuidesOverlay'
+import { anyGuides, loadGuides, saveGuides, type Guides } from '../miniworlds/guides'
+import { Inspector } from '../miniworlds/Inspector'
+import { attachInput, canvasPoint } from '../runtime/input'
 import type { Runner } from '../runtime/runner'
 import type { TraceLocation } from '../runtime/traceback'
 import { Console } from './Console'
 import { openContextMenu } from './ContextMenu'
-import { infoDialog, openDialog } from './dialogs'
+import { infoDialog } from './dialogs'
 import { useRunnerState } from './hooks'
 import { Menu } from './Menu'
 import { openWorldWindow, type WorldWindow, type WorldWindowKind } from './worldWindow'
@@ -26,6 +28,8 @@ export interface TasksProps {
   items: string[]
   done: Record<string, boolean>
   onToggle: (index: number) => void
+  /** The task is ticked automatically when the work is done. */
+  hasCheck?: (index: number) => boolean
 }
 
 export function WorldPanel({ runner, onJump, miniworlds, tasks, name = '' }: { runner: Runner; onJump: (location: TraceLocation) => void; miniworlds?: MiniworldsProps; tasks?: TasksProps; name?: string }) {
@@ -37,7 +41,9 @@ export function WorldPanel({ runner, onJump, miniworlds, tasks, name = '' }: { r
   // where the world is shown: in this panel, full screen, or in a window/tab of its own
   const [popup, setPopup] = useState<WorldWindow | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
-  const [, redraw] = useState(0)
+  const [tick, redraw] = useState(0)
+  const [guides, setGuides] = useState<Guides>(loadGuides)
+  const [mouse, setMouse] = useState<WorldPoint | null>(null)
   const docked = !popup && !fullscreen
 
   // The canvas element is replaced with every new worker (it can be handed over only once): mount the current one.
@@ -78,6 +84,27 @@ export function WorldPanel({ runner, onJump, miniworlds, tasks, name = '' }: { r
     document.addEventListener('fullscreenchange', change)
     return () => document.removeEventListener('fullscreenchange', change)
   }, [])
+
+  // guide lines: remembered, and the controller fetches every actor only while directions or boxes are shown
+  const needsActors = guides.direction || guides.boxes
+  useEffect(() => {
+    saveGuides(guides)
+    controller?.setGuides(needsActors)
+  }, [guides, controller, needsActors])
+
+  // the mouse position in world pixels, shown next to the grid
+  useEffect(() => {
+    const canvas = runner.canvas
+    if (!guides.coords || !docked) return void setMouse(null)
+    const move = (e: PointerEvent) => setMouse(canvasPoint(e, canvas.getBoundingClientRect(), canvas))
+    const leave = () => setMouse(null)
+    canvas.addEventListener('pointermove', move)
+    canvas.addEventListener('pointerleave', leave)
+    return () => {
+      canvas.removeEventListener('pointermove', move)
+      canvas.removeEventListener('pointerleave', leave)
+    }
+  }, [runner, state.canvasGeneration, guides.coords, docked])
 
   // a window of its own: notice when it is closed (the canvas then comes back), and close it with this page
   useEffect(() => {
@@ -128,7 +155,6 @@ export function WorldPanel({ runner, onJump, miniworlds, tasks, name = '' }: { r
         { header: actor.cls },
         ...methods.map((m) => ({ text: `${m.name}(${m.params.map((p) => p.name).join(', ')})`, run: () => void controller.invokeMethod(actor.handle, m) })),
         '-',
-        { text: t('miniworlds.menu.inspect'), run: () => void inspect(actor) },
         { text: t('miniworlds.menu.delete'), danger: true, run: () => void controller.removeActor(actor.handle) },
       ])
     } else {
@@ -142,36 +168,6 @@ export function WorldPanel({ runner, onJump, miniworlds, tasks, name = '' }: { r
     }
   }
 
-  async function inspect(actor: ActorInfo) {
-    const data = await controller?.inspect(actor.handle)
-    if (!data) return
-    const table = (rows: Record<string, string>) => (
-      <table class="inspect">
-        <tbody>
-          {Object.entries(rows).map(([k, v]) => (
-            <tr key={k}>
-              <th>{k}</th>
-              <td>{v}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    )
-    await openDialog({
-      title: data.cls,
-      info: true,
-      body: (
-        <>
-          {Object.keys(data.fields).length > 0 ? table(data.fields) : <p class="muted">{t('miniworlds.inspect.noFields')}</p>}
-          <details>
-            <summary>{t('miniworlds.inspect.engine')}</summary>
-            {table(data.engine)}
-          </details>
-        </>
-      ),
-    })
-  }
-
   const bootText = state.phase === 'booting' ? t(`run.boot.${state.bootStep ?? 'pyodide'}` as const) : null
   const sel = docked ? miniworlds?.state.selected : null
   const canvas = runner.canvas
@@ -182,6 +178,13 @@ export function WorldPanel({ runner, onJump, miniworlds, tasks, name = '' }: { r
     { label: t('world.fullscreen'), checked: fullscreen, onSelect: () => void show('fullscreen') },
     { label: t('world.window'), checked: popup?.kind === 'window', onSelect: () => void show('window') },
     { label: t('world.tab'), checked: popup?.kind === 'tab', onSelect: () => void show('tab') },
+    { label: t('guides.coords'), divider: true, toggle: true, checked: guides.coords, onSelect: () => setGuides({ ...guides, coords: !guides.coords }) },
+    ...(controller
+      ? [
+          { label: t('guides.direction'), toggle: true, checked: guides.direction, onSelect: () => setGuides({ ...guides, direction: !guides.direction }) },
+          { label: t('guides.boxes'), toggle: true, checked: guides.boxes, onSelect: () => setGuides({ ...guides, boxes: !guides.boxes }) },
+        ]
+      : []),
   ]
 
   return (
@@ -196,12 +199,14 @@ export function WorldPanel({ runner, onJump, miniworlds, tasks, name = '' }: { r
             </span>
           )}
           {state.version && !mw && <span class="muted"> · miniworlds {state.version}</span>}
+          {mouse && <span class="mw-info muted mouse-pos"> · x {mouse.x}, y {mouse.y}</span>}
         </div>
-        <Menu label="⤢" title={t('world.show')} items={placeItems} align="right" />
+        <Menu label="⤢" title={t('world.view')} items={placeItems} align="right" />
       </div>
       <div class="world-stage" ref={stage}>
         <div class="world-wrap" hidden={popup !== null}>
           <div ref={slot} />
+          {docked && anyGuides(guides) && <GuidesOverlay canvas={runner.canvas} guides={guides} actors={mw?.actorList ?? []} tick={tick} />}
           {sel && (
             <div
               class="selection-box"
@@ -224,6 +229,7 @@ export function WorldPanel({ runner, onJump, miniworlds, tasks, name = '' }: { r
         )}
       </div>
       {miniworlds && <MiniworldsControls {...miniworlds} />}
+      {mw?.selected && <Inspector actor={mw.selected} inspection={mw.inspection} onClose={() => void controller?.select(null)} />}
       {tasks && tasks.items.length > 0 && (
         <details class="tasks" open>
           <summary>{t('tasks.title', { done: tasks.items.filter((_, i) => tasks.done[i]).length, total: tasks.items.length })}</summary>
@@ -233,6 +239,12 @@ export function WorldPanel({ runner, onJump, miniworlds, tasks, name = '' }: { r
                 <label>
                   <input type="checkbox" checked={!!tasks.done[i]} aria-label={t('tasks.itemDone', { n: i + 1 })} onChange={() => tasks.onToggle(i)} />
                   <span> {text}</span>
+                  {tasks.hasCheck?.(i) && (
+                    <span class="auto-check" title={t('tasks.auto')} aria-label={t('tasks.auto')}>
+                      {' '}
+                      ✦
+                    </span>
+                  )}
                 </label>
               </li>
             ))}

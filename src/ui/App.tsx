@@ -15,6 +15,8 @@ import { DialogHost, infoDialog, openDialog } from './dialogs'
 import { loadPreferences, savePreferences, type Preferences } from './preferences'
 import { Menu } from './Menu'
 import { ProjectView } from './ProjectView'
+import { collectShareContext, type ShareContext } from '../share/collect'
+import { ShareDialog } from '../share/ShareDialog'
 import {
   createStarterProject,
   duplicateProject,
@@ -46,6 +48,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
   const flush = useRef<(() => Promise<void>) | null>(null)
   const zipInput = useRef<HTMLInputElement>(null)
   const [update, setUpdate] = useState<PwaHandle | null>(null)
+  const [sharing, setSharing] = useState<ShareContext | null>(null)
   useEffect(() => registerServiceWorker((handle) => setUpdate(handle)), [])
 
   /** New projects pin the newest known engine version (so the update warning can work later). Offline: unpinned. */
@@ -99,7 +102,8 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
         }
       }),
     },
-    { label: t('project.exportZip'), divider: true, onSelect: guarded(async () => { await flush.current?.(); await exportProjectZip(store, current) }) },
+    { label: t('project.share'), divider: true, onSelect: guarded(async () => { await flush.current?.(); setSharing(await collectShareContext(await store.open(current), current, browserKeyValue())) }) },
+    { label: t('project.exportZip'), onSelect: guarded(async () => { await flush.current?.(); await exportProjectZip(store, current) }) },
     { label: t('project.importZip'), onSelect: () => zipInput.current?.click() },
     ...projects.map((p, i) => ({ label: p, checked: p === name, divider: i === 0, onSelect: guarded(() => show(p)) })),
   ]
@@ -171,6 +175,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
           if (file) guarded(async () => { await flush.current?.(); const n = await importProjectZip(store, file); if (n) await show(n) })()
         }}
       />
+      {sharing && <ShareDialog context={sharing} onClose={() => setSharing(null)} />}
       <DialogHost />
       <ContextMenuHost />
     </div>

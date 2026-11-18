@@ -3,10 +3,34 @@
  "level": "Beginner",
  "description": "Steer the player with the arrow keys or WASD and collect coins. A text counts the points.",
  "tasks": [
-  "Start with Run and collect all coins (arrow keys or WASD; the world has to be clicked to steer).",
-  "Change the player's speed (self.x += 3).",
-  "Create more coins: change the number in range(6).",
-  "Create a class Gegner that subtracts points when the player touches it.",
+  {
+   "text": "Start with Run and collect all coins (arrow keys or WASD; the world has to be clicked to steer).",
+   "check": {
+    "type": "gone",
+    "cls": "Muenze"
+   }
+  },
+  {
+   "text": "Change the player's speed (self.x += 3).",
+   "check": {
+    "type": "changed",
+    "path": "classes/Spieler.py"
+   }
+  },
+  {
+   "text": "Create more coins: change the number in range(6).",
+   "check": {
+    "type": "changed",
+    "path": "classes/Spielfeld.py"
+   }
+  },
+  {
+   "text": "Create a class Gegner that subtracts points when the player touches it.",
+   "check": {
+    "type": "class",
+    "name": "Gegner"
+   }
+  },
   "Show \"You won!\" when all coins are collected."
  ]
 }

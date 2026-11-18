@@ -3,10 +3,53 @@
  "level": "Beginner",
  "description": "A crab walks across the field and eats worms. Ideal for getting to know the editor: create actors, Act, call methods.",
  "tasks": [
-  "Right-click the world → \"New: Krabbe\" and \"New: Wurm\". Then press Act a few times.",
-  "Right-click the crab → call fressen(menge). What happens to the attribute gefressen? (Inspect …)",
-  "Change the crab's speed in the code (self.move(2)). What changes?",
-  "Create a class Hai with \"New class …\" that hunts the crab.",
-  "Give the crab an image: right-click the class in the diagram → \"Set image …\"."
+  {
+   "text": "Right-click the world → \"New: Krabbe\" and \"New: Wurm\". Then press Act a few times.",
+   "check": {
+    "type": "all",
+    "of": [
+     {
+      "type": "actors",
+      "cls": "Krabbe"
+     },
+     {
+      "type": "actors",
+      "cls": "Wurm"
+     },
+     {
+      "type": "frames",
+      "min": 3
+     }
+    ]
+   }
+  },
+  {
+   "text": "Click the crab: its properties appear below. Right-click the crab → call fressen(menge). What happens to the attribute gefressen?",
+   "check": {
+    "type": "called",
+    "method": "fressen"
+   }
+  },
+  {
+   "text": "Change the crab's speed in the code (self.move(2)). What changes?",
+   "check": {
+    "type": "changed",
+    "path": "classes/Krabbe.py"
+   }
+  },
+  {
+   "text": "Create a class Hai with \"New class …\" that hunts the crab.",
+   "check": {
+    "type": "class",
+    "name": "Hai"
+   }
+  },
+  {
+   "text": "Give the crab an image: right-click the class in the diagram → \"Set image …\".",
+   "check": {
+    "type": "image",
+    "cls": "Krabbe"
+   }
+  }
  ]
 }

@@ -1,5 +1,6 @@
 import type { Fs } from '../workspace'
 import { isTextPath } from '../project/search'
+import type { ErrorNote } from '../runtime/explain'
 
 /** What the session needs from the editor widget (CodeMirror in the app, a fake in tests). */
 export interface Surface {
@@ -7,8 +8,8 @@ export interface Surface {
   clear(): void
   forget(path: string): void
   reveal(line: number, column: number, length: number): void
-  /** Mark the failing line of the file currently shown (null clears). */
-  markError(line: number | null): void
+  /** Mark the failing line of the file currently shown (null clears), with the message under it when given. */
+  markError(line: number | null, note?: ErrorNote | null): void
   clearErrors(): void
 }
 

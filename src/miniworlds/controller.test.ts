@@ -102,6 +102,17 @@ describe('MiniworldsController', () => {
     expect(t.controller.state.selected?.cls).toBe('Krabbe')
   })
 
+  it('a tap released before the pick answers selects but does not leave a drag behind', async () => {
+    const krabbe = t.w.add('Krabbe', 100, 100)
+    const down = t.controller.pointerDown(100, 100)
+    await t.controller.pointerUp() // released while pick is still pending
+    await down
+    expect(t.controller.state.selected?.cls).toBe('Krabbe')
+    t.controller.pointerMove(200, 200)
+    await t.controller.pointerUp()
+    expect(t.w.actors[0]).toMatchObject({ x: krabbe.x, y: krabbe.y })
+  })
+
   it('clicking empty space clears the selection', async () => {
     t.w.add('Krabbe', 100, 100)
     await t.controller.pointerDown(100, 100)
@@ -169,6 +180,41 @@ describe('MiniworldsController', () => {
     expect(t.controller.state.classes).toHaveLength(2)
     expect(t.controller.interactive).toBe(false)
   })
+  describe('live inspection and guides', () => {
+    it('the selection follows the actor while the world runs and shows its fields', async () => {
+      const krabbe = t.w.add('Krabbe', 100, 100)
+      await t.controller.select(krabbe.handle)
+      expect(t.controller.state.inspection?.fields).toEqual({ zaehler: '3' })
+      await t.controller.togglePause() // run: the selection stays
+      expect(t.controller.state.selected?.handle).toBe(krabbe.handle)
+      krabbe.x = 140
+      await t.controller.poll()
+      expect(t.controller.state.selected?.x).toBe(140)
+      expect(t.controller.state.paused).toBe(false)
+    })
+
+    it('the selection ends when the actor is gone', async () => {
+      const krabbe = t.w.add('Krabbe', 100, 100)
+      await t.controller.select(krabbe.handle)
+      t.w.actors.splice(0, 1)
+      await t.controller.poll()
+      expect(t.controller.state.selected).toBeNull()
+      expect(t.controller.state.inspection).toBeNull()
+    })
+
+    it('asks the world for every actor only while guides are on', async () => {
+      t.w.add('Krabbe', 10, 10)
+      t.w.add('Krabbe', 20, 20)
+      const snapshot = vi.spyOn(t.w.client, 'snapshot')
+      await t.controller.poll()
+      expect(snapshot).not.toHaveBeenCalled()
+      expect(t.controller.state.actorList).toEqual([])
+      t.controller.setGuides(true)
+      await vi.waitFor(() => expect(t.controller.state.actorList).toHaveLength(2))
+      t.controller.setGuides(false)
+      expect(t.controller.state.actorList).toEqual([])
+    })
+  })
 })
 
 describe('MiniworldsController start setup', () => {
@@ -185,4 +231,5 @@ describe('MiniworldsController start setup', () => {
     t.controller.clearSetup()
     expect(t.meta().journal).toEqual([])
   })
+
 })

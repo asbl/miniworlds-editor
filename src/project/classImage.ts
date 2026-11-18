@@ -3,6 +3,8 @@ import type { ModelClass } from '../uml/model'
 const IMAGE_EXT = '(?:png|jpe?g|gif|bmp|webp)'
 const IMAGE_IN_CODE = new RegExp(`["']([\\w\\-./ ]+\\.${IMAGE_EXT})["']`, 'i')
 const COSTUME_LINE = new RegExp(`^(\\s*)self\\.add_costume\\(\\s*(["'])[^"']*\\.${IMAGE_EXT}\\2\\s*\\)\\s*$`, 'i')
+/** A world's background line: an image or a colour, anything inside the brackets. */
+const BACKGROUND_LINE = /^(\s*)self\.(?:add_background|add_bg|set_background|set_bg)\(.*\)\s*$/
 
 /** The first quoted image path in a class's source (the caller checks that the file exists). */
 export function classImagePath(classSource: string): string | null {
@@ -24,16 +26,18 @@ type ClassSpan = Pick<ModelClass, 'line' | 'end_line' | 'methods'>
  * An existing add_costume line is replaced, a missing `on_setup` is created. A one-line `def on_setup(self): …` is
  * not changed automatically (the caller tells the user).
  */
-export function setClassImage(source: string, cls: ClassSpan, path: string, size: [number, number] | null): ImageEdit {
+export function setClassImage(source: string, cls: ClassSpan, path: string, size: [number, number] | null, mode: 'costume' | 'background' = 'costume'): ImageEdit {
   const lines = source.split('\n')
-  const costume = (indent: string) => `${indent}self.add_costume("${path}")`
-  const sizeLine = (indent: string) => (size ? [`${indent}self.size = (${size[0]}, ${size[1]})`] : [])
+  const background = mode === 'background'
+  const costume = (indent: string) => `${indent}self.${background ? 'add_background' : 'add_costume'}("${path}")`
+  const sizeLine = (indent: string) => (size && !background ? [`${indent}self.size = (${size[0]}, ${size[1]})`] : [])
+  const existing = background ? BACKGROUND_LINE : COSTUME_LINE
 
   for (let i = cls.line - 1; i < cls.end_line && i < lines.length; i++) {
-    const found = COSTUME_LINE.exec(lines[i] as string)
+    const found = existing.exec(lines[i] as string)
     if (!found) continue
     const indent = found[1] as string
-    const hasSize = /^\s*self\.size\s*=/.test(lines[i + 1] ?? '')
+    const hasSize = !background && /^\s*self\.size\s*=/.test(lines[i + 1] ?? '')
     if (hasSize && size) lines.splice(i, 2, costume(indent), ...sizeLine(indent)) // replace costume and its size
     else if (!hasSize) lines.splice(i, 1, costume(indent), ...sizeLine(indent)) // add a size if we know one
     else lines.splice(i, 1, costume(indent)) // keep the existing size line

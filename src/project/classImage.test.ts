@@ -77,3 +77,23 @@ describe('setClassImage', () => {
     expect(r.ok && r.text).toBe('class Krabbe(mw.Actor):\n    def on_setup(self) -> None:\n        self.add_costume("images/k.png")\n        pass\n')
   })
 })
+
+describe('setClassImage as a world background', () => {
+  const world = 'class Spielfeld(mw.World):\n    def on_setup(self):\n        self.add_background((226, 238, 214))\n        self.punkte = 0\n'
+  it('replaces a colour background by the image, without a size line', () => {
+    const edit = setClassImage(world, span(world, 'Spielfeld'), 'images/wiese.png', [320, 240], 'background')
+    expect(edit).toEqual({ ok: true, text: world.replace('self.add_background((226, 238, 214))', 'self.add_background("images/wiese.png")') })
+  })
+  it('replaces an earlier image background and creates on_setup when missing', () => {
+    const again = 'class W(mw.World):\n    def on_setup(self):\n        self.add_background("images/a.png")\n'
+    expect(setClassImage(again, span(again, 'W'), 'images/b.png', null, 'background')).toMatchObject({ ok: true, text: expect.stringContaining('add_background("images/b.png")') })
+    const bare = 'class W(mw.World):\n    pass\n'
+    const made = setClassImage(bare, span(bare, 'W'), 'images/b.png', null, 'background')
+    expect(made.ok && made.text).toContain('    def on_setup(self):\n        self.add_background("images/b.png")')
+  })
+  it('does not touch an actor costume line', () => {
+    const actor = 'class A(mw.Circle):\n    def on_setup(self):\n        self.add_costume("images/a.png")\n'
+    const edit = setClassImage(actor, span(actor, 'A'), 'images/b.png', null, 'background')
+    expect(edit.ok && edit.text).toContain('add_costume("images/a.png")')
+  })
+})

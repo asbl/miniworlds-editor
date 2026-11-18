@@ -1,4 +1,5 @@
 import { t } from '../i18n'
+import { explainError } from './explain'
 import { STOP_TIMEOUT_MS } from './config'
 import type { BootStep, FileChanges, FromWorker, InputEvent, RpcReply, ToWorker } from './protocol'
 
@@ -6,7 +7,7 @@ export type Phase = 'idle' | 'booting' | 'ready' | 'running' | 'stopping'
 
 export interface ConsoleLine {
   id: number
-  kind: 'stdout' | 'stderr' | 'system'
+  kind: 'stdout' | 'stderr' | 'system' | 'help'
   text: string
 }
 
@@ -201,7 +202,11 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
         break
       case 'exit': {
         const { error, changed, deleted } = message
-        if (error) this.log('stderr', error)
+        if (error) {
+          this.log('stderr', error)
+          const help = explainError(error)
+          if (help) this.log('help', `💡 ${help}`)
+        }
         this.log('system', t(error ? 'run.crashed' : 'run.finished'))
         this.set({ phase: 'ready', scenarioReady: false })
         this.runWaiter?.resolve({ error, changed, deleted, stopped: false })
