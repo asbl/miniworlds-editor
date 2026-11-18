@@ -106,7 +106,7 @@ export function WorldPanel({ runner, onJump, miniworlds, tasks }: { runner: Runn
   const scale = canvas.width > 0 ? canvas.getBoundingClientRect().width / canvas.width : 1
 
   return (
-    <aside class={miniworlds?.state.armed ? 'world-panel armed' : 'world-panel'}>
+    <section class={miniworlds?.state.armed ? 'world-panel armed' : 'world-panel'} aria-label={t('a11y.world')}>
       <div class="world-stage">
         <div class="world-wrap">
           <div ref={slot} />
@@ -144,6 +144,6 @@ export function WorldPanel({ runner, onJump, miniworlds, tasks }: { runner: Runn
         </details>
       )}
       <Console lines={state.lines} onClear={() => runner.clearConsole()} onJump={onJump} />
-    </aside>
+    </section>
   )
 }

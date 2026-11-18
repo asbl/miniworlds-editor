@@ -12,6 +12,13 @@
   --warn-fg: #78350f;
   --hover: color-mix(in srgb, var(--fg) 8%, transparent);
   --selected: color-mix(in srgb, var(--accent) 20%, transparent);
+  --tok-keyword: #86198f;
+  --tok-string: #166534;
+  --tok-number: #1d4ed8;
+  --tok-comment: #5b6472;
+  --tok-function: #0e5a8a;
+  --tok-class: #8a4b08;
+  --tok-meta: #8a4b08;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -25,6 +32,13 @@
     --danger: #f87171;
     --warn-bg: #422006;
     --warn-fg: #fde68a;
+    --tok-keyword: #e0aaf2;
+    --tok-string: #8fd9a0;
+    --tok-number: #9cc3ff;
+    --tok-comment: #a1a9b6;
+    --tok-function: #7cc9f2;
+    --tok-class: #f2b872;
+    --tok-meta: #f2b872;
   }
 }
 * { box-sizing: border-box; }
@@ -40,7 +54,7 @@ input[type=text], input[type=search], select {
 
 .shell { display: flex; flex-direction: column; height: 100%; }
 .topbar { display: flex; align-items: center; gap: 8px; padding: 4px 10px; background: var(--panel); border-bottom: 1px solid var(--border); }
-.brand { margin-right: 8px; }
+.brand { margin: 0 8px 0 0; font-size: 14px; font-weight: 700; }
 .spacer { flex: 1; }
 
 .menu { position: relative; }
@@ -54,14 +68,16 @@ input[type=text], input[type=search], select {
 
 .project { position: relative; display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .body { display: flex; flex: 1; min-height: 0; }
+.project-bar { flex: none; display: flex; flex-direction: column; }
 .project.dragging .main { outline: 2px dashed var(--accent); outline-offset: -4px; }
 .drop-hint { position: absolute; inset: 0; display: grid; place-items: center; pointer-events: none; font-size: 18px; background: color-mix(in srgb, var(--bg) 70%, transparent); }
 .banner { position: absolute; left: 0; right: 0; top: 0; padding: 6px 12px; background: var(--warn-bg); color: var(--warn-fg); z-index: 5; }
 
 .sidebar { width: 250px; flex: none; display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--border); overflow: hidden; }
 .sidebar-tabs { display: flex; align-items: center; border-bottom: 1px solid var(--border); }
-.sidebar-tabs > button[role=tab] { padding: 8px 12px; color: var(--muted); border-radius: 0; }
-.sidebar-tabs > button[aria-selected=true] { color: var(--fg); box-shadow: inset 0 -2px var(--accent); }
+.sidebar-tabs .tab-list { display: contents; }
+.sidebar-tabs [role=tab] { padding: 8px 12px; color: var(--muted); border-radius: 0; }
+.sidebar-tabs [role=tab][aria-selected=true] { color: var(--fg); box-shadow: inset 0 -2px var(--accent); }
 .sidebar-tabs .menu { margin-left: auto; margin-right: 4px; }
 .badge { margin: 6px 8px 0; padding: 2px 8px; font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 10px; align-self: flex-start; }
 
@@ -90,10 +106,12 @@ input[type=text], input[type=search], select {
 
 .main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
 .tabs { display: flex; background: var(--panel); border-bottom: 1px solid var(--border); overflow-x: auto; min-height: 33px; }
+.tabs .tab-list { display: contents; }
 .tab { display: flex; align-items: center; border-right: 1px solid var(--border); flex: none; }
 .tab.active { background: var(--bg); box-shadow: inset 0 -2px var(--accent); }
-.tab-name { padding: 6px 4px 6px 12px; white-space: nowrap; }
-.tab-close { padding: 6px 10px; color: var(--muted); }
+.tab-name { padding: 6px 12px; white-space: nowrap; display: flex; align-items: center; gap: 2px; }
+.tab-close { padding: 0 2px 0 8px; margin-right: -2px; color: var(--muted); font-size: 16px; line-height: 1; }
+.tab-close:hover { color: var(--fg); }
 .editor { flex: 1; min-height: 0; }
 .editor[hidden] { display: none; }
 .editor .cm-editor { height: 100%; background: var(--bg); color: var(--fg); }
@@ -172,7 +190,7 @@ input[type=text], input[type=search], select {
 .mw-speed input { width: 80px; }
 .mw-info { font-size: 12px; color: var(--muted); }
 .mw-armed { color: var(--fg); background: var(--selected); padding: 2px 6px; border-radius: 4px; margin-top: 2px; }
-.gf h3 { margin: 0 0 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
+.gf h2 { margin: 0 0 4px; font-size: 12px; color: var(--muted); font-weight: 600; }
 .mw-class-buttons { display: flex; flex-wrap: wrap; gap: 4px; }
 .mw-class-buttons .count { opacity: 0.7; }
 .mw-setup { display: flex; flex-direction: column; gap: 4px; }
@@ -248,10 +266,36 @@ input[type=text], input[type=search], select {
 .cm-tooltip-autocomplete ul li[aria-selected] { background: var(--accent) !important; color: var(--accent-fg) !important; }
 .cm-diagnostic { font-size: 13px; }
 
-@media (max-width: 900px) {
-  .world-panel { width: 320px; }
+/* Narrow screens (tablets, Chromebooks in portrait, phones, small iframes): one pane at a time, chosen with .pane-tabs.
+   Keep the width in step with NARROW_QUERY in src/ui/useNarrow.ts. */
+.pane-tabs { display: flex; border-bottom: 1px solid var(--border); background: var(--panel); }
+.pane-tabs [role=tab] { flex: 1; padding: 10px 8px; border-radius: 0; color: var(--muted); font-weight: 600; }
+.pane-tabs [role=tab][aria-selected=true] { color: var(--fg); background: var(--bg); box-shadow: inset 0 -3px var(--accent); }
+@media (min-width: 901px) and (max-width: 1100px) {
+  .world-panel { width: 340px; }
 }
-@media (max-width: 640px) {
-  .sidebar { width: 160px; }
+@media (max-width: 900px) {
+  .body[data-pane] > * { display: none; }
+  .body[data-pane=files] > .sidebar,
+  .body[data-pane=editor] > .main,
+  .body[data-pane=world] > .world-panel { display: flex; }
+  .sidebar, .sidebar.wide, .world-panel { width: 100%; flex: 1; border: 0; }
+  .topbar, .toolbar { flex-wrap: wrap; }
+  #app { height: 100dvh; }
+}
+/* touch: comfortable targets */
+@media (pointer: coarse) {
+  button, .menu-button, .tab-name, .tab-close, .tree .row-main { min-height: 40px; }
+  .menu-items button { min-height: 44px; }
 }
 .shell.embed .brand { font-size: 0.9em; }
+/* editor chrome that follows the scheme (CodeMirror's defaults are light-only and fail the contrast rule on dark) */
+.editor .cm-activeLine { background: var(--hover); }
+.editor .cm-activeLineGutter { background: var(--hover); }
+.editor .cm-gutters { background: var(--panel); color: var(--muted); border-right: 1px solid var(--border); }
+.editor .cm-selectionBackground, .editor .cm-focused .cm-selectionBackground { background: var(--selected) !important; }
+.editor .cm-cursor { border-left-color: var(--fg); }
+@media (max-width: 480px) {
+  /* the name stays for assistive technology (it is the page's h1); the space goes to the menus */
+  .topbar .brand { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+}

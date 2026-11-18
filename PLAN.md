@@ -337,3 +337,13 @@ Umgesetzt und getestet (191 Vitest-Tests; Browsertests `test/pwa.py`, `test/embe
 `scripts/deploy.sh` baut, prüft und lädt hoch, `test/live.py` prüft die veröffentlichte Seite (Chromium und Firefox bestanden). Die Serverdateien liegen in `deploy/`. Ein Container-Healthcheck oder Monitoring (Uptime Kuma) ist noch nicht eingerichtet.
 
 Noch offen: Moodle-Einbindung (Testaktivität) und Anpassung der Repos `miniworlds-ide` und `miniworlds-moodle-web-player` (Schritte in `docs/deploy.md`, bewusst nicht angefasst); Embed ohne Lauf-/Konsolen-Nachrichten und ohne Service Worker; S6 (Safari/Chromebook auf echten Geräten); miniworlds-Wheels spiegeln (voll offline ohne PyPI-Erstzugriff); Audio, `input()`.
+
+### Stand nach Meilenstein 5: Tablets und Barrierefreiheit (2026-11-18)
+
+Anlass: Überprüfung der Live-Seite (Tablet 820 px: Editor nur 250 px breit, Handy: Editor unsichtbar; axe: 6 Verstöße). Umgesetzt und getestet (`test/responsive.py`, `test/a11y.py`; Chromium und Firefox):
+- **Schmale Bildschirme (≤ 900 px, auch kleine iframes):** ein Bereich nach dem anderen (Tabs „Dateien · Editor · Welt“). Start (Strg+Enter oder Knopf) zeigt die Welt mit Konsole, ein Datei-Klick oder ein Link in der Konsole zeigt den Editor; Rückkehr zu breit stellt die Spalten wieder her. Werkzeugleisten brechen um, Zeichenfläche passt in den Bildschirm, bei Touch (`pointer: coarse`) mindestens 40 px hohe Ziele.
+- **Barrierefreiheit:** axe-core meldet in Hell und Dunkel, breit und schmal, mit Menü, Dialog, Klassenansicht und laufender miniworlds-Ansicht keine Verstöße mehr. Dafür: `h1`, Landmarks (`header`, `section` mit Namen, ein `main`), korrekte Tab-Listen (Dateileiste, Seitenleiste, Bereiche), Editor mit Namen „Quelltext von …“, Überschriftenebenen.
+  Der Schließen-Knopf der Dateitabs ist kein eigenes Bedienelement mehr (verschachtelt war nicht erlaubt): Entf schließt den fokussierten Tab, das ×, der Mittelklick und das Menü bleiben für Maus und Touch.
+- **Dunkles Schema:** CodeMirrors Standardfarben fielen im Dunkeln durch den Kontrasttest; Syntaxfarben und Editorfläche folgen jetzt Variablen (`--tok-*`) beider Schemata.
+- Nicht berührt: Safari/Chromebook auf echten Geräten (S6), Speicherbedarf (ca. 460 MB nach dem Boot gemessen), `input()`, Verlauf/Schnappschüsse.
+

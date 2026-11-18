@@ -105,7 +105,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
   return (
     <div class="shell">
       <header class="topbar">
-        <strong class="brand">{t('app.title')}</strong>
+        <h1 class="brand">{t('app.title')}</h1>
         {name && <Menu label={`${t('project.menu')}: ${name} ▾`} items={projectItems} />}
         <span class="spacer" />
         {config.links.length > 0 && (
@@ -123,7 +123,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
         />
       </header>
       {update && (
-        <div class="notice" role="status">
+        <div class="notice" role="status" aria-label={t('pwa.reload')}>
           <span>{t(update.kind === 'waiting' ? 'pwa.update' : 'pwa.stale')}</span>
           <button type="button" class="primary" onClick={() => void update.applyUpdate(() => flush.current?.() ?? Promise.resolve())}>
             {t('pwa.reload')}

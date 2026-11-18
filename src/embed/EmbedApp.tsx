@@ -116,7 +116,7 @@ export function EmbedApp({ config, runner: injected, catalog: injectedCatalog, l
   return (
     <div class="shell embed">
       <header class="topbar">
-        <strong class="brand">{t('app.title')}</strong>
+        <h1 class="brand">{t('app.title')}</h1>
         <span class="spacer" />
         <Menu label={`🌐 ${LANG_NAMES[lang]} ▾`} title={t('lang.label')} align="right" items={LANGS.map((l) => ({ label: LANG_NAMES[l], checked: l === lang, onSelect: () => setLang(l) }))} />
       </header>

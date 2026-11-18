@@ -77,7 +77,7 @@ export function MiniworldsControls({ controller, state, onReset, onInsert }: Pro
       </div>
 
       <section class="mw-classes" aria-label={t('miniworlds.classes')}>
-        <h3>{t('miniworlds.classes')}</h3>
+        <h2>{t('miniworlds.classes')}</h2>
         {actorClasses.length === 0 && <p class="muted small">{t('miniworlds.noClasses')}</p>}
         <div class="mw-class-buttons">
           {actorClasses.map((c) => (

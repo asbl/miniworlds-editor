@@ -18,6 +18,7 @@ import { isImagePath, isTextPath } from '../project/search'
 import type { Catalog } from '../packages/catalog'
 import { useCachedVersions } from '../pwa/offline'
 import { useOnline } from '../pwa/useOnline'
+import { useNarrow } from './useNarrow'
 import { updateStatus } from '../packages/versions'
 import type { Runner } from '../runtime/runner'
 import { runtimeConfig, useProgram } from './useProgram'
@@ -82,6 +83,9 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   const [imageFor, setImageFor] = useState<string | null>(null)
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null)
+  // narrow screens (tablets, phones): one pane at a time instead of three columns
+  const narrow = useNarrow()
+  const [pane, setPane] = useState<'files' | 'editor' | 'world'>('editor')
 
   const refresh = useCallback(async () => setEntries(await fs.list()), [fs])
   const { settings, loaded: settingsLoaded, update: updateSettings } = useSettings(fs, kind, projectName, session)
@@ -327,11 +331,17 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
     setSearchSignal((n) => n + 1)
   }
 
+  /** Run from the user's own action: on a narrow screen show what happens (the world and the console). */
+  function runProgram() {
+    if (narrow) setPane('world')
+    return program.run()
+  }
+
   function onKeyDown(event: KeyboardEvent) {
     const mod = event.ctrlKey || event.metaKey
     if (mod && event.key === 'Enter') {
       event.preventDefault()
-      void (program.busy ? program.stop() : program.run())
+      void (program.busy ? program.stop() : runProgram())
     } else if (mod && event.key.toLowerCase() === 's') {
       event.preventDefault()
       if (state.active) void session?.save(state.active)
@@ -439,13 +449,14 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
         }
       }}
     >
+      <section class="project-bar" aria-label={t('a11y.project', { name: projectName })}>
       <div class="toolbar" role="toolbar" aria-label={t('run.toolbar')}>
         {program.busy ? (
           <button type="button" class="run stop" onClick={() => void program.stop()} disabled={program.state.phase === 'stopping'} title="Ctrl+Enter">
             ■ {t('run.stop')}
           </button>
         ) : (
-          <button type="button" class="run" onClick={() => void program.run()} disabled={!session} title="Ctrl+Enter">
+          <button type="button" class="run" onClick={() => void runProgram()} disabled={!session} title="Ctrl+Enter">
             ▶ {t('run.run')}
           </button>
         )}
@@ -507,18 +518,35 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
           </button>
         </div>
       )}
-      <div class="body">
-      <aside class={tab === 'classes' ? 'sidebar wide' : 'sidebar'}>
-        <div class="sidebar-tabs" role="tablist">
-          <button type="button" role="tab" aria-selected={tab === 'files'} onClick={() => setTab('files')}>
-            {t('files.title')}
-          </button>
-          <button type="button" role="tab" aria-selected={tab === 'classes'} onClick={() => setTab('classes')}>
-            {t('uml.title')}
-          </button>
-          <button type="button" role="tab" aria-selected={tab === 'search'} onClick={openSearch} title="Ctrl+Shift+F">
-            {t('search.title')}
-          </button>
+      {narrow && (
+        <div class="pane-tabs" role="tablist" aria-label={t('a11y.panes')}>
+          {(['files', 'editor', 'world'] as const).map((p) => (
+            <button key={p} type="button" role="tab" aria-selected={pane === p} onClick={() => setPane(p)}>
+              {t(`pane.${p}` as const)}
+            </button>
+          ))}
+        </div>
+      )}
+      {memoryOnly && (
+        <div class="banner" role="alert">
+          {t('project.memoryWarning')}
+        </div>
+      )}
+      </section>
+      <main class="body" data-pane={narrow ? pane : undefined}>
+      <section class={tab === 'classes' ? 'sidebar wide' : 'sidebar'} aria-label={t('a11y.sidebar')}>
+        <div class="sidebar-tabs">
+          <div class="tab-list" role="tablist" aria-label={t('a11y.sidebar')}>
+            <button type="button" role="tab" aria-selected={tab === 'files'} onClick={() => setTab('files')}>
+              {t('files.title')}
+            </button>
+            <button type="button" role="tab" aria-selected={tab === 'classes'} onClick={() => setTab('classes')}>
+              {t('uml.title')}
+            </button>
+            <button type="button" role="tab" aria-selected={tab === 'search'} onClick={openSearch} title="Ctrl+Shift+F">
+              {t('search.title')}
+            </button>
+          </div>
           {tab === 'files' && <Menu label="+" title={t('files.newFile')} items={addMenu} align="right" />}
         </div>
         {kind === 'legacy' && <p class="badge">{t('project.legacyBadge')}</p>}
@@ -558,7 +586,10 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
             entries={entries}
             active={active}
             dirty={state.dirty}
-            onOpen={(p) => void session?.open(p)}
+            onOpen={(p) => {
+              setPane('editor')
+              void session?.open(p)
+            }}
             onRename={(p) => void renameEntry(p)}
             onDelete={(p) => void deleteEntry(p)}
           />
@@ -575,12 +606,27 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
             if (input.files) void addFiles(input.files).then(() => (input.value = ''))
           }}
         />
-      </aside>
-      <main class="main">
-        <div class="tabs" role="tablist">
+      </section>
+      <div class="main">
+        <div class="tabs">
+          <div class="tab-list" role="tablist" aria-label={t('a11y.fileTabs')}>
           {state.open.map((path) => (
-            <div key={path} role="tab" aria-selected={path === active} class={path === active ? 'tab active' : 'tab'}>
-              <button type="button" class="tab-name" onClick={() => void session?.show(path)} onAuxClick={(e) => e.button === 1 && void session?.close(path)}>
+            <div key={path} class={path === active ? 'tab active' : 'tab'}>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={path === active}
+                aria-keyshortcuts="Delete"
+                class="tab-name"
+                onClick={() => void session?.show(path)}
+                onAuxClick={(e) => e.button === 1 && void session?.close(path)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Delete') {
+                    e.preventDefault()
+                    void session?.close(path)
+                  }
+                }}
+              >
                 {path}
                 {state.dirty.has(path) && (
                   <span class="dot" role="img" aria-label={t('tabs.unsaved')}>
@@ -588,12 +634,22 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
                     ●
                   </span>
                 )}
-              </button>
-              <button type="button" class="tab-close" aria-label={t('tabs.close', { path })} onClick={() => void session?.close(path)}>
-                ×
+                {/* not a second control inside the tab: a mouse and touch convenience; the keyboard closes with Delete, the middle button too */}
+                <span
+                  class="tab-close"
+                  aria-hidden="true"
+                  title={t('tabs.close', { path })}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    void session?.close(path)
+                  }}
+                >
+                  ×
+                </span>
               </button>
             </div>
           ))}
+          </div>
           <span class="spacer" />
           {languageState.ruff && active && active.endsWith('.py') && (
             <button type="button" class="format-button" title={t('assist.formatTitle')} onClick={() => void host.current?.format()}>
@@ -619,10 +675,13 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
           )}
           <span>{state.dirty.size > 0 ? t('status.saving') : t('status.saved')}</span>
         </div>
-      </main>
+      </div>
       <WorldPanel
         runner={runner}
-        onJump={(loc) => void program.jumpTo(loc)}
+        onJump={(loc) => {
+          setPane('editor') // a link in the console: show the line it points to
+          void program.jumpTo(loc)
+        }}
         tasks={{
           items: metaApi.meta.tasks,
           done: metaApi.meta.tasksDone,
@@ -634,12 +693,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
             : undefined
         }
       />
-      </div>
-      {memoryOnly && (
-        <div class="banner" role="alert">
-          {t('project.memoryWarning')}
-        </div>
-      )}
+      </main>
       {dragging && <div class="drop-hint">{t('files.dropHint')}</div>}
       {imageFor && (
         <ImageDialog

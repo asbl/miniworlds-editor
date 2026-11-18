@@ -2,11 +2,12 @@ import { basicSetup } from 'codemirror'
 import { Decoration, EditorView, keymap } from '@codemirror/view'
 import { Compartment, EditorSelection, EditorState, StateEffect, StateField, type Extension } from '@codemirror/state'
 import { indentUnit } from '@codemirror/language'
+import { codeHighlighting } from './highlight'
 import { indentWithTab } from '@codemirror/commands'
 import { python } from '@codemirror/lang-python'
 import { diagnosticCount, openLintPanel } from '@codemirror/lint'
 import type { Assist } from '../language/assist'
-import type { Lang } from '../i18n'
+import { t, type Lang } from '../i18n'
 import { assistExtensions, forceLinting } from './assistExtensions'
 import type { Surface } from './session'
 
@@ -91,9 +92,12 @@ export class EditorHost implements Surface {
       extensions: [
         basicSetup,
         python(),
+        codeHighlighting,
         errorLine,
         this.assistExt,
         this.language.of(this.phrases()),
+        // the editing area is a text box for assistive technology: it needs a name (and the file it shows)
+        EditorView.contentAttributes.of(() => ({ 'aria-label': t('a11y.editor', { path }, this.lang) })),
         indentUnit.of('    '),
         EditorState.tabSize.of(4),
         keymap.of([indentWithTab, { key: 'Shift-Alt-f', run: () => (void this.format(), true) }]),
