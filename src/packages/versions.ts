@@ -19,9 +19,9 @@ export interface PyPiProject {
 
 /** Support level of an engine version inside the editor. */
 export type EngineTier =
-  /** Runs, with Greenfoot view and code hints (ScenarioHost, class_model, code_hints). */
+  /** Runs, with Miniworlds view and code hints (ScenarioHost, class_model, code_hints). */
   | 'full'
-  /** Runs, but without the Greenfoot view and miniworlds hints. */
+  /** Runs, but without the Miniworlds view and miniworlds hints. */
   | 'basic'
   /** Cannot run in the browser. */
   | 'unsupported'

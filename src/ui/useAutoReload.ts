@@ -13,7 +13,7 @@ export interface SyntaxProblem {
 const DELAY_MS = 900
 
 /**
- * Greenfoot view: after a pause in typing, check the code and reload the world (the start setup is replayed).
+ * Miniworlds view: after a pause in typing, check the code and reload the world (the start setup is replayed).
  * A syntax error leaves the running world alone and is reported instead.
  */
 export function useAutoReload(opts: { enabled: boolean; session: Session | null; runner: Runner; fs: Fs; reload: () => void }) {

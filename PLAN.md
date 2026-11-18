@@ -202,9 +202,9 @@ Entscheidungen:
 1. **Editor-Kern:** Tabs, Dateibaum, CM6, Projektformen, OPFS + ZIP, DE/EN, Suchen/Ersetzen. **Umgesetzt (2026-11-17)**, siehe „Stand Meilenstein 1“.
 2. **Run + Konsole + Pakete:** Pyodide-Runner, Fehler → Code-Sprung, `micropip`-Dialog, Versionswahl + Update-Warnung. **Umgesetzt (2026-11-17)**, siehe „Stand Meilenstein 2“.
 3. **Greenfoot-Ansicht** als Panel (Port von `gf-host`, `gf-uml`, `gf-assist`, `gf-images`, `gf-journal`); **umgesetzt (2026-11-17)** bis auf `gf-assist` (gehört zu Meilenstein 4), siehe „Stand Meilenstein 3“.
-4. **Language Service** nach Ergebnis von S2.
+4. **Language Service** (jedi, miniworlds-Hinweise, ruff): **umgesetzt (2026-11-17)**, siehe „Stand Meilenstein 4“. Ein Typprüfer (ty/Pyrefly/basedpyright) bleibt zurückgestellt.
 5. **Release:** PWA, Hosting (statisch), CI mit Tests, Moodle-iframe; der Editor ersetzt die `miniworlds-ide`-Startseite
-   (Deployment unter miniworlds.opencoding.de); danach Migration des alten Greenfoot-Clients.
+   (Deployment unter miniworlds.opencoding.de); danach Migration des alten Greenfoot-Clients. **Technik umgesetzt (2026-11-18)**, siehe „Stand Meilenstein 5“; Deployment und Ablösung der alten Seiten stehen noch aus (`docs/deploy.md`).
 6. **Später:** Desktop-Hülle (Tauri), Remote-Dateiablage für Klassen, Debugger, Plugin-API.
 
 ### Stand Meilenstein 1 (2026-11-17)
@@ -254,7 +254,7 @@ Bekannte Lücken:
 
 ### Stand Meilenstein 3 (2026-11-17)
 
-Umgesetzt und getestet (151 Vitest-Tests; Browsertests `test/greenfoot.py` und `test/templates.py` in Chromium und Firefox; App 207 KB gzip):
+Umgesetzt und getestet (151 Vitest-Tests; Browsertests `test/miniworlds.py` und `test/templates.py` in Chromium und Firefox; App 207 KB gzip):
 - **Ansicht „Greenfoot“** (Umschalter neben „Programm“, pro Projekt gemerkt; braucht miniworlds ≥ 4.4.0.15): Der Runner startet die Welt pausiert unter dem `ScenarioHost`
   (`run { scenario: true }`), Befehle laufen als Request/Reply zum Worker (`rpc`, typisiert in `ScenarioClient`). Act, Run/Pause, Tempo (1/8×…8×), Reset, Schrittzähler.
 - **Welt-Interaktion** (nur pausiert; läuft die Welt, gehören Maus und Tastatur dem Programm): Figur platzieren (Klasse „bewaffnen“, Shift = mehrfach, Esc = abbrechen; Konstruktor-Werte werden einmal abgefragt),
@@ -273,6 +273,26 @@ Hinweise und Grenzen:
 - **Noch offen für Funktionsgleichheit mit dem alten Client:** Autovervollständigung und Hinweise (Meilenstein 4), Offline/Service Worker und Einbetten in Moodle per `postMessage` (Meilenstein 5). Danach kann der Client aus `miniworlds-moodle-web-player/greenfoot/` abgelöst werden.
 - „Klasse umbenennen“ als Refactoring fehlt weiterhin (Meilenstein 1 vermerkt).
 
+### Stand Meilenstein 4 (2026-11-17)
+
+Umgesetzt und getestet (164 Vitest-Tests; Browsertest `test/assist.py` in Chromium und Firefox; Shell 219 KB gzip, dazu **lazy** das ruff-WASM mit 3,5 MB gzip; `scripts/size.mjs` prüft beides getrennt: Shell ≤ 2 MB, Lazy ≤ 5 MB):
+- **Eigener Language-Worker** (`src/language/`), getrennt von der Welt: ein zweites, leichtes Pyodide (nur `jedi`, miniworlds-Wheel ohne Abhängigkeiten; Heap 24 → 42 MB) plus ruff-WASM.
+  Er startet nach dem Welt-Worker (sonst konkurrieren beide um das Netz), spätestens nach 6 s, und startet bei einem Versionswechsel neu (Hinweise und API sind versionsabhängig). Jede Anfrage antwortet im Fehlerfall mit „nichts“, nie mit einer Ausnahme.
+  Ein Test (`completion still works while the world is stuck`) beweist: Auch bei einer Endlosschleife im Programm bleibt die Hilfe schnell.
+- **Autovervollständigung** (jedi, CodeMirror `autocompletion`): Basisklassen aus miniworlds, eigene Klassen, Importe zwischen Dateien (die Projektdateien werden gespiegelt), Präfix-Rangfolge, Methoden bekommen Klammern (`self.move()`, mit überschreibbarer schließender Klammer).
+  `self.world.` kann jedi nicht herleiten: Die Liste kommt wie im alten Client aus dem **API-Index** von miniworlds, den der Welt-Worker berechnet (der Light-Worker kann pygame nicht importieren) und an den Language-Worker weiterreicht.
+- **Hinweise:** Die miniworlds-Hinweise (`code_hints`: Tippfehler wie `self.mov`, vergessenes `self`, fehlendes `run()`, Deutsch, mit „Übernehmen“-Aktion) und **ruff** (undefinierte Namen, ungenutzte Importe und Variablen, Syntaxfehler) erscheinen als Unterstreichung, Rand-Symbol, Panel
+  (Klick auf den Zähler in der Statusleiste) und Fix-Aktionen. Überschneiden sich beide, gewinnt der miniworlds-Hinweis. Die häufigsten ruff-Regeln sind ins Deutsche übersetzt; `from classes.X import X` in `main.py` wird **nicht** als „ungenutzt“ gemeldet (die miniworlds-Ansicht braucht diese Importe).
+- **Hover** zeigt Signatur und Dokumentation (jedi); **Formatieren** (ruff, Alt+Umschalt+F oder Knopf) formatiert die Datei.
+- **Namensänderung:** In der Oberfläche heißt die frühere „Greenfoot-Ansicht“ jetzt **miniworlds-Ansicht** (im Singular „miniworld“ für die laufende Welt). Die Projektdatei heißt `miniworlds.json`; die alte `greenfoot.json` wird weiter gelesen und beim nächsten Speichern ersetzt. Intern heißt jetzt alles „miniworlds“ (Ordner `src/miniworlds`, `MiniworldsController`, i18n-Schlüssel `miniworlds.*`, CSS-Präfix `mw-`); der gespeicherte Ansichtswert „greenfoot“ früherer Versionen wird weiter erkannt. „Greenfoot“ bleibt in diesem Plan der Name des Vorbilds und des alten Clients.
+
+Grenzen und Ideen:
+- Die miniworlds-Hinweise sind nur deutsch (Upstream), ruff nur teilweise übersetzt; ein Typprüfer fehlt.
+- Keine Signaturhilfe beim Tippen von `(` (jedi könnte `get_signatures`).
+- Der API-Index kommt noch vom Welt-Worker; upstream wäre ein je Version veröffentlichter Index besser (siehe Anforderungen an miniworlds in S2). Gleiches gilt für `miniworlds.tools` ohne pygame importierbar (statt Stub-Modul in `assist.py`).
+- Für Versionen vor 4.4.0.15 (ohne `code_hints`) gibt es nur jedi und ruff.
+- Das ruff-WASM wird beim ersten Start geladen (3,5 MB); für Offline muss es der Service Worker (Meilenstein 5) mitcachen.
+
 ## 6. Risiken
 
 1. FPS-Einbruch, wenn Welt, CM6 und Language Service denselben Thread teilen (in S3 bestätigt: ~28 statt ~57 FPS bei hoher UI-Last) → Worker-Runner. Neues Risiko: Polyfill-Schicht für SDL im Worker ist fragil, Audio fehlt.
@@ -287,3 +307,21 @@ Hinweise und Grenzen:
 - Die Java-/Block-Varianten der alten `miniworlds-ide` (H5P-Python-, Miniworlds- und Java-IDEs, jeweils Text und Blocks) bleiben vorerst auf den alten H5P-Seiten erreichbar und werden vom neuen Editor aus **verlinkt**. Andreas zieht sie später auf h5p.opencoding.de oder eine andere URL um; die Link-Ziele sind dann anzupassen (Konfiguration, nicht hartcodieren).
 - Framework (Preact, Svelte, Lit, Vanilla) – im Spike S1 entscheiden.
 - Schulrechner-Diagnose (Browser, WASM, OPFS, Proxy) – wenn der Test ansteht.
+
+### Stand Meilenstein 5 (2026-11-18)
+
+Umgesetzt und getestet (189 Vitest-Tests; Browsertests `test/pwa.py`, `test/embed.py`, `test/selfhost.py` und alle älteren in Chromium, die neuen auch in Firefox; Shell 265 KB gzip inkl. Icons, Hintergrund-WASM 3,5 MB):
+- **Audit der Meilenstein-4-Änderungen** (vorab, 9 Funde, alle behoben und getestet): Worker-Nachrichtenkette überlebt Fehler in `sync`/`api`; ruff bleibt nutzbar, wenn der Python-Teil nicht lädt (offline; Statusleiste „nur Grundprüfung“, automatischer neuer Versuch bei `online`);
+  `saveMeta` schreibt `miniworlds.json` vor dem Löschen der alten Datei; Umlaute und Emojis in Vervollständigung und Hover (Unicode-Wortmuster, jedi zählt Codepunkte); überholte Anfragen werden im Worker nicht mehr gerechnet, Timer werden beim Verwerfen gelöscht;
+  Format, Vervollständigung, Hover und Statusanzeige nur für `.py`; kein Neustart eines laufenden „neueste Version“-Boots, wenn die Welt später eine konkrete Version meldet (der Worker meldet die installierte Version); Pfadprüfung beim Spiegeln des Projekts in den Language-Worker;
+  unveränderte Projekte werden nicht erneut gesendet und nicht neu geschrieben; Größenbudget heißt jetzt ehrlich „Hintergrund“ (ruff lädt direkt nach dem Start, nicht erst bei Gebrauch).
+- **Interne Umbenennung:** Ordner `src/miniworlds`, `MiniworldsController`/`MiniworldsMeta`/…, i18n-Schlüssel `miniworlds.*`, CSS-Präfix `mw-`, Testskript `test/miniworlds.py`. Der gespeicherte Ansichtswert „greenfoot“ und die Datei `greenfoot.json` werden weiter gelesen.
+- **PWA:** `manifest.webmanifest`, Icons (SVG, PNG 192/512, maskable), Service Worker `src/pwa/sw.js` mit Build-Plugin (`scripts/pwaPlugin.ts`: Liste aller Dateien + Hash als Version). App-Dateien werden vorab gecacht (cache-first), Pyodide und Wheels zur Laufzeit (cache-first), PyPI-Metadaten und `config.json` network-first.
+  Eine neue Version wartet, bis der Nutzer „Neu laden“ wählt (kein Wechsel unter laufender Arbeit); alte Caches werden gelöscht; offene Tabs prüfen stündlich. Getestet: Start und Programmlauf **ohne Server** (Chromium und Firefox), Update-Ablauf.
+  Im Versionsmenü sind ohne Netz die nicht geladenen Versionen gesperrt („offline nicht verfügbar“); installierte Versionen merkt sich `src/pwa/offline.ts`.
+- **Laufzeit-Konfiguration** `config.json` (`pyodideBase`, `links` für „Weitere Editoren“, `embedOrigins`), tolerant gelesen, nur http(s)-Links. Build mit relativer Basis (läuft in jedem Ordner).
+- **Selbst-Hosting:** `npm run selfhost` lädt Pyodide-Kern und die vom Editor benutzten Pakete (micropip, numpy, pygame-ce, jedi, parso; 11 Dateien) mit Prüfsummen, legt sie nach `dist/pyodide/…` und stellt `config.json` um. Test: mit Selbst-Hosting kein einziger Aufruf von jsDelivr.
+- **Einbetten per postMessage** (`?embed=1`, `docs/embed.md`): `load` / `get-files` hinein, `ready` / `loaded` / `files` / `change` / `error` hinaus; Projekt nur im Arbeitsspeicher (kein Zugriff auf die gespeicherten Projekte des Besuchers), Antworten nur an den Ursprung des Absenders, optionale Liste erlaubter Seiten, Pfad- und Größenprüfung. Getestet über zwei Ursprünge.
+- **Doku und CI:** `docs/deploy.md`, `docs/embed.md`, `.github/workflows/ci.yml` (Unit, Build, Größe, Browsertests in Chromium).
+
+Noch offen: Deployment unter miniworlds.opencoding.de und Anpassung der Repos `miniworlds-ide` und `miniworlds-moodle-web-player` (Schritte in `docs/deploy.md`, bewusst nicht angefasst); Embed ohne Lauf-/Konsolen-Nachrichten und ohne Service Worker; S6 (Safari/Chromebook auf echten Geräten); miniworlds-Wheels spiegeln (voll offline ohne PyPI-Erstzugriff); Audio, `input()`.

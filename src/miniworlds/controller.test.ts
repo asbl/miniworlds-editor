@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { GreenfootController, type GreenfootEnv } from './controller'
+import { MiniworldsController, type MiniworldsEnv } from './controller'
 import { fakeWorld } from './fakeWorld'
-import { emptyMeta, type GreenfootMeta } from './meta'
+import { emptyMeta, type MiniworldsMeta } from './meta'
 import type { ScenarioClient } from './scenario'
 
-function setup(initial: Array<[string, number, number]> = [], meta: GreenfootMeta = emptyMeta()) {
+function setup(initial: Array<[string, number, number]> = [], meta: MiniworldsMeta = emptyMeta()) {
   const w = fakeWorld(initial, [
     { name: 'Krabbe', base: 'Circle', is_actor: true },
     { name: 'Spielfeld', base: 'World', is_actor: false },
@@ -13,18 +13,18 @@ function setup(initial: Array<[string, number, number]> = [], meta: GreenfootMet
   const notes: string[] = []
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const ask = vi.fn<(request: any) => Promise<string[] | null>>(async () => [])
-  const env: GreenfootEnv = {
+  const env: MiniworldsEnv = {
     getMeta: () => current,
     setMeta: (m) => void (current = m),
     note: (t) => void notes.push(t),
     ui: { askValues: ask as never },
     text: (key, p) => `${key}:${JSON.stringify(p ?? {})}`,
   }
-  const controller = new GreenfootController(w.client as unknown as ScenarioClient, env)
+  const controller = new MiniworldsController(w.client as unknown as ScenarioClient, env)
   return { w, controller, notes, ask, meta: () => current }
 }
 
-describe('GreenfootController', () => {
+describe('MiniworldsController', () => {
   let t: ReturnType<typeof setup>
   beforeEach(async () => {
     t = setup()
@@ -171,7 +171,7 @@ describe('GreenfootController', () => {
   })
 })
 
-describe('GreenfootController start setup', () => {
+describe('MiniworldsController start setup', () => {
   it('replays the journal when the world is ready and says so', async () => {
     const t = setup([], { journal: [{ op: 'place', cls: 'Krabbe', x: 10, y: 10 }, { op: 'move', cls: 'Wurm', n: 0, x: 1, y: 1 }], tasks: [], tasksDone: {} })
     await t.controller.onReady()

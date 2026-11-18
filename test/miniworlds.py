@@ -1,7 +1,7 @@
-"""Browser test of the Greenfoot view (milestone 3): act/run/pause, placing, dragging, menus, start setup, reload.
+"""Browser test of the miniworlds view (milestone 3): act/run/pause, placing, dragging, menus, start setup, reload.
 
 Needs network (Pyodide CDN, miniworlds from PyPI), `npm run build && npx vite preview --port 4173`, Python with Playwright.
-Usage:  python test/greenfoot.py [chromium|firefox]
+Usage:  python test/miniworlds.py [chromium|firefox]
 """
 import re, sys, time
 from playwright.sync_api import sync_playwright
@@ -30,7 +30,7 @@ def eventually(fn, timeout=30000, step=150):
 
 
 def info(page):
-    return page.inner_text(".gf-info")
+    return page.inner_text(".mw-info")
 
 
 def actors(page):
@@ -94,23 +94,23 @@ with sync_playwright() as p:
     page.wait_for_selector(".cm-content")
     check("python boots", eventually(lambda: "Bereit" in page.inner_text(".world-status"), 120000))
 
-    # --- greenfoot view starts the world paused
-    page.get_by_role("button", name="Greenfoot").click()
+    # --- miniworlds view starts the world paused
+    page.get_by_role("button", name="miniworlds", exact=True).click()
     page.click(".toolbar .run")
     check("world is ready and paused at step 0", eventually(lambda: "Schritt 0" in info(page), 40000), info(page))
     check("starter world has one actor", actors(page) == 1, info(page))
-    check("actor classes offered", "Neu Figur()" in page.inner_text(".gf-class-buttons"))
-    check("world classes are not offered as actors", "Spielfeld" not in page.inner_text(".gf-class-buttons"))
+    check("actor classes offered", "Neu Figur()" in page.inner_text(".mw-class-buttons"))
+    check("world classes are not offered as actors", "Spielfeld" not in page.inner_text(".mw-class-buttons"))
 
     # --- act / run / pause / speed
     page.get_by_role("button", name="Act", exact=True).click()
     check("act advances one frame", eventually(lambda: frame(page) == 1), info(page))
-    check("act keeps it paused", "Run" in page.locator(".gf-controls").inner_text())
+    check("act keeps it paused", "Run" in page.locator(".mw-controls").inner_text())
     page.get_by_role("button", name="Run").click()
     check("run lets frames pass", eventually(lambda: frame(page) > 20, 15000), info(page))
     check("act disabled while running", page.get_by_role("button", name="Act", exact=True).is_disabled())
     page.get_by_role("button", name="Pause").click()
-    eventually(lambda: "Run" in page.locator(".gf-controls").inner_text())
+    eventually(lambda: "Run" in page.locator(".mw-controls").inner_text())
     f1 = frame(page)
     page.wait_for_timeout(600)
     check("pause stops the frames", frame(page) == f1, f"{f1} -> {frame(page)}")
@@ -124,12 +124,12 @@ with sync_playwright() as p:
     menu_click(page, "Neu: Figur")
     check("context menu creates an actor", eventually(lambda: actors(page) == 2), info(page))
     check("created actor is selected", eventually(lambda: page.locator(".selection-box").count() == 1))
-    page.locator(".gf-class-buttons button", has_text="Neu Figur()").click()
+    page.locator(".mw-class-buttons button", has_text="Neu Figur()").click()
     check("arming shows a hint", eventually(lambda: "Klicke in die Welt" in page.inner_text(".gf"), 5000))
     px, py = at(page, 300, 80)
     page.mouse.click(px, py)
     check("click places the armed class", eventually(lambda: actors(page) == 3), info(page))
-    page.locator(".gf-class-buttons button", has_text="Neu Figur()").click()
+    page.locator(".mw-class-buttons button", has_text="Neu Figur()").click()
     page.wait_for_function("document.querySelector('.gf')?.innerText.includes('Klicke in die Welt')")  # arming is asynchronous
     page.keyboard.down("Shift")
     page.mouse.click(*at(page, 320, 200))
@@ -169,23 +169,23 @@ with sync_playwright() as p:
     check("delete removes the actor", eventually(lambda: actors(page) == 4), info(page))
 
     # --- start setup is remembered and replayed on reset
-    check("journal file is written", eventually(lambda: "greenfoot.json" in page.locator(".tree").inner_text(), 5000))
-    check("setup steps counted", re.search(r"Startaufstellung: \d+ Schritte", page.inner_text(".gf-setup")) is not None, page.inner_text(".gf-setup"))
+    check("journal file is written", eventually(lambda: "miniworlds.json" in page.locator(".tree").inner_text(), 5000))
+    check("setup steps counted", re.search(r"Startaufstellung: \d+ Schritte", page.inner_text(".mw-setup")) is not None, page.inner_text(".mw-setup"))
     page.get_by_role("button", name="Reset").click()
     check("reset replays the setup", eventually(lambda: "Startaufstellung wiederhergestellt" in console(page), 40000), console(page)[-300:])
     check("same number of actors after reset", eventually(lambda: actors(page) == 4, 10000), info(page))
     page.get_by_role("button", name="Aufstellung leeren").click()
     check("clearing the setup reloads the plain world", eventually(lambda: actors(page) == 1, 40000), info(page))
-    check("journal file is gone when empty", eventually(lambda: "greenfoot.json" not in page.locator(".tree").inner_text(), 5000))
+    check("journal file is gone when empty", eventually(lambda: "miniworlds.json" not in page.locator(".tree").inner_text(), 5000))
 
     # --- late edits (after the first frame) are not recorded
     page.get_by_role("button", name="Act", exact=True).click()
     eventually(lambda: frame(page) == 1)
     right_click(page, 50, 50)
     menu_click(page, "Neu: Figur")
-    check("late edit is flagged", eventually(lambda: "zählen nicht dazu" in page.inner_text(".gf-setup"), 5000), page.inner_text(".gf-setup"))
+    check("late edit is flagged", eventually(lambda: "zählen nicht dazu" in page.inner_text(".mw-setup"), 5000), page.inner_text(".mw-setup"))
     page.get_by_role("button", name="Als Start merken").click()
-    check("keep-as-start stores the world", eventually(lambda: "Startaufstellung: 3 Schritte" in page.inner_text(".gf-setup"), 5000), page.inner_text(".gf-setup"))
+    check("keep-as-start stores the world", eventually(lambda: "Startaufstellung: 3 Schritte" in page.inner_text(".mw-setup"), 5000), page.inner_text(".mw-setup"))
 
     # --- insert generated code into the editor
     page.locator(".tree .row-main", has_text="main.py").click()
@@ -253,9 +253,9 @@ with sync_playwright() as p:
     page.locator(".tab-name", has_text="main.py").click()
     check("subclass is imported by main.py", eventually(lambda: "from classes.Hai import Hai" in page.inner_text(".cm-content"), 5000))
 
-    # --- program view still works and hides the greenfoot controls
+    # --- program view still works and hides the miniworlds controls
     page.get_by_role("button", name="Programm", exact=True).click()
-    check("greenfoot controls hidden in program view", eventually(lambda: page.locator(".gf").count() == 0, 5000))
+    check("miniworlds controls hidden in program view", eventually(lambda: page.locator(".gf").count() == 0, 5000))
 
     check("no page errors", not [e for e in errors if "Failed to load resource" not in e], errors[:5])
     browser.close()

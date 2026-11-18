@@ -1,9 +1,9 @@
 import type { Lang } from '../i18n'
-import { saveMeta } from '../greenfoot/meta'
+import { saveMeta } from '../miniworlds/meta'
 import { MANIFEST_FILE, serializeManifest } from '../project/manifest'
 import type { Fs } from '../workspace'
 
-/** Project templates (from the Greenfoot web client's scenarios, split into one class per file). */
+/** Project templates (from the Miniworlds web client's scenarios, split into one class per file). */
 export interface TemplateText {
   title: string
   level: string
@@ -45,7 +45,7 @@ export interface TemplateRequest {
   miniworlds: string | null
 }
 
-/** Writes a project from a template: files, project.toml and the tasks (in greenfoot.json). */
+/** Writes a project from a template: files, project.toml and the tasks (in miniworlds.json). */
 export async function createFromTemplate(fs: Fs, { template, lang, name, miniworlds }: TemplateRequest): Promise<void> {
   await fs.write(MANIFEST_FILE, serializeManifest({ name, miniworlds, entry: 'main.py', packages: [] }))
   for (const [path, content] of Object.entries(template.files)) await fs.write(path, content)

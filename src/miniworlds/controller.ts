@@ -1,9 +1,9 @@
 import { append, fromWorld, keyFor, replay, roundPoint, type Op } from './journal'
-import type { GreenfootMeta } from './meta'
+import type { MiniworldsMeta } from './meta'
 import { speedFactor, SPEED_MAX, SPEED_MIN, type ActorInfo, type ClassInfo, type Inspection, type MethodInfo, type ParamInfo, type ScenarioClient } from './scenario'
 
 /** Dialogs the controller needs; the UI layer provides them (tests use scripted answers). */
-export interface GreenfootUi {
+export interface MiniworldsUi {
   /**
    * Ask for the values of `params` (constructor or method arguments). Resolves with the texts, or null when cancelled.
    * `validate` runs on submit and may keep the dialog open by returning an error text.
@@ -11,17 +11,17 @@ export interface GreenfootUi {
   askValues(request: { title: string; params: ParamInfo[]; submit: 'create' | 'call'; validate?: (texts: string[]) => Promise<string | null> }): Promise<string[] | null>
 }
 
-export interface GreenfootEnv {
-  getMeta(): GreenfootMeta
-  setMeta(meta: GreenfootMeta): void
+export interface MiniworldsEnv {
+  getMeta(): MiniworldsMeta
+  setMeta(meta: MiniworldsMeta): void
   /** Message for the console. */
   note(text: string, kind?: 'system' | 'stderr'): void
-  ui: GreenfootUi
+  ui: MiniworldsUi
   /** Texts for notes (the controller does not know the language). */
   text(key: 'replayed' | 'replayedSkipped' | 'setupKept', params?: Record<string, string | number>): string
 }
 
-export interface GreenfootState {
+export interface MiniworldsState {
   /** The scenario world exists and answers commands. */
   active: boolean
   frame: number
@@ -37,7 +37,7 @@ export interface GreenfootState {
   lateEdit: boolean
 }
 
-const INITIAL: GreenfootState = {
+const INITIAL: MiniworldsState = {
   active: false,
   frame: 0,
   paused: true,
@@ -57,15 +57,15 @@ const messageOf = (error: unknown) => (error instanceof Error ? error.message : 
  * The Greenfoot-style behaviour on top of a running world: act/run/pause, placing, dragging, deleting, calling
  * methods, and recording the hand-made start setup. No DOM, no framework; components render `state`.
  */
-export class GreenfootController {
-  state: GreenfootState = { ...INITIAL }
+export class MiniworldsController {
+  state: MiniworldsState = { ...INITIAL }
   private listeners = new Set<() => void>()
   private drag: { handle: string; dx: number; dy: number; pending: [number, number] | null; inflight: boolean; moved: boolean } | null = null
   private busy = false
 
   constructor(
     private client: ScenarioClient,
-    private env: GreenfootEnv,
+    private env: MiniworldsEnv,
   ) {}
 
   subscribe(listener: () => void): () => void {
@@ -73,7 +73,7 @@ export class GreenfootController {
     return () => void this.listeners.delete(listener)
   }
 
-  private set(patch: Partial<GreenfootState>): void {
+  private set(patch: Partial<MiniworldsState>): void {
     this.state = { ...this.state, ...patch }
     this.listeners.forEach((l) => l())
   }
@@ -124,7 +124,7 @@ export class GreenfootController {
     if (!this.state.active || this.busy) return
     try {
       const s = await this.client.status()
-      const patch: Partial<GreenfootState> = { frame: s.frame, paused: s.paused, fps: s.fps, actors: s.actors, byClass: s.by_class }
+      const patch: Partial<MiniworldsState> = { frame: s.frame, paused: s.paused, fps: s.fps, actors: s.actors, byClass: s.by_class }
       this.set(patch)
       await this.refreshSelection()
     } catch {
@@ -272,7 +272,7 @@ export class GreenfootController {
   }
 
   /** Sends pending positions one at a time, so moves never overlap and the last one wins. */
-  private async flushDrag(d: NonNullable<GreenfootController['drag']>): Promise<void> {
+  private async flushDrag(d: NonNullable<MiniworldsController['drag']>): Promise<void> {
     d.inflight = true
     try {
       while (d.pending) {

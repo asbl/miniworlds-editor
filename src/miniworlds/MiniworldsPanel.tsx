@@ -1,11 +1,11 @@
 import { t, useLang } from '../i18n'
 import { infoDialog, openDialog } from '../ui/dialogs'
-import type { GreenfootController, GreenfootState } from './controller'
+import type { MiniworldsController, MiniworldsState } from './controller'
 import { SPEED_MAX, SPEED_MIN, speedLabel } from './scenario'
 
 interface Props {
-  controller: GreenfootController
-  state: GreenfootState
+  controller: MiniworldsController
+  state: MiniworldsState
   /** Restart the program (stop, then start again with the remembered start setup). */
   onReset: () => void
   /** Insert generated code at the editor's cursor. */
@@ -13,7 +13,7 @@ interface Props {
 }
 
 /** Controls under the world: Act / Run / Pause, speed, Reset, creating actors, start setup, "save the world". */
-export function GreenfootControls({ controller, state, onReset, onInsert }: Props) {
+export function MiniworldsControls({ controller, state, onReset, onInsert }: Props) {
   useLang()
   const actorClasses = state.classes.filter((c) => c.is_actor)
   const steps = controller.setupSteps
@@ -21,33 +21,33 @@ export function GreenfootControls({ controller, state, onReset, onInsert }: Prop
   async function saveWorld() {
     let code = ''
     try {
-      code = (await controller.exportCode()) || t('greenfoot.export.empty')
+      code = (await controller.exportCode()) || t('miniworlds.export.empty')
     } catch (error) {
       return void (await infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
     }
     await openDialog({
-      title: t('greenfoot.export.title'),
-      message: t('greenfoot.export.hint'),
+      title: t('miniworlds.export.title'),
+      message: t('miniworlds.export.hint'),
       body: <pre class="export-code">{code}</pre>,
       info: true,
       extra: [
-        { label: t('greenfoot.export.copy'), onClick: () => void navigator.clipboard?.writeText(code) },
-        { label: t('greenfoot.export.insert'), onClick: () => onInsert(code + '\n'), close: true },
+        { label: t('miniworlds.export.copy'), onClick: () => void navigator.clipboard?.writeText(code) },
+        { label: t('miniworlds.export.insert'), onClick: () => onInsert(code + '\n'), close: true },
       ],
     })
   }
 
   return (
     <div class="gf">
-      <div class="gf-controls">
+      <div class="mw-controls">
         <button type="button" disabled={!state.active || !state.paused} onClick={() => void controller.act()}>
-          {t('greenfoot.act')}
+          {t('miniworlds.act')}
         </button>
         <button type="button" disabled={!state.active} class="primary-ish" onClick={() => void controller.togglePause()}>
-          {state.paused ? `▶ ${t('greenfoot.run')}` : `❚❚ ${t('greenfoot.pause')}`}
+          {state.paused ? `▶ ${t('miniworlds.run')}` : `❚❚ ${t('miniworlds.pause')}`}
         </button>
-        <label class="gf-speed">
-          <span>{t('greenfoot.speed')}</span>
+        <label class="mw-speed">
+          <span>{t('miniworlds.speed')}</span>
           <input
             type="range"
             min={SPEED_MIN}
@@ -61,25 +61,25 @@ export function GreenfootControls({ controller, state, onReset, onInsert }: Prop
           <output>{speedLabel(state.speedIndex)}</output>
         </label>
         <button type="button" onClick={onReset} disabled={!state.active}>
-          ↻ {t('greenfoot.reset')}
+          ↻ {t('miniworlds.reset')}
         </button>
       </div>
 
-      <div class="gf-info" role="status">
+      <div class="mw-info" role="status">
         {state.active ? (
           <>
-            {t('greenfoot.frame', { n: state.frame })} · {t('greenfoot.actors', { n: state.actors })}
+            {t('miniworlds.frame', { n: state.frame })} · {t('miniworlds.actors', { n: state.actors })}
           </>
         ) : (
-          t('greenfoot.starting')
+          t('miniworlds.starting')
         )}
-        {state.armed && <div class="gf-armed">{t('greenfoot.armed', { cls: state.armed.cls })}</div>}
+        {state.armed && <div class="mw-armed">{t('miniworlds.armed', { cls: state.armed.cls })}</div>}
       </div>
 
-      <section class="gf-classes" aria-label={t('greenfoot.classes')}>
-        <h3>{t('greenfoot.classes')}</h3>
-        {actorClasses.length === 0 && <p class="muted small">{t('greenfoot.noClasses')}</p>}
-        <div class="gf-class-buttons">
+      <section class="mw-classes" aria-label={t('miniworlds.classes')}>
+        <h3>{t('miniworlds.classes')}</h3>
+        {actorClasses.length === 0 && <p class="muted small">{t('miniworlds.noClasses')}</p>}
+        <div class="mw-class-buttons">
           {actorClasses.map((c) => (
             <button
               type="button"
@@ -88,27 +88,27 @@ export function GreenfootControls({ controller, state, onReset, onInsert }: Prop
               disabled={!state.active}
               onClick={() => void controller.arm(state.armed?.cls === c.name ? null : c.name)}
             >
-              {t('greenfoot.new', { cls: c.name })}
+              {t('miniworlds.new', { cls: c.name })}
               {state.byClass[c.name] ? <span class="count"> {state.byClass[c.name]}×</span> : null}
             </button>
           ))}
         </div>
       </section>
 
-      <section class="gf-setup" aria-label={t('greenfoot.start')}>
+      <section class="mw-setup" aria-label={t('miniworlds.start')}>
         <span class="small">
-          {steps > 0 ? t('greenfoot.startSteps', { n: steps }) : t('greenfoot.startEmpty')}
-          {state.lateEdit && ` — ${t('greenfoot.lateEdit')}`}
+          {steps > 0 ? t('miniworlds.startSteps', { n: steps }) : t('miniworlds.startEmpty')}
+          {state.lateEdit && ` — ${t('miniworlds.lateEdit')}`}
         </span>
-        <div class="gf-setup-buttons">
+        <div class="mw-setup-buttons">
           <button type="button" disabled={!state.active || !state.paused} onClick={() => void controller.keepSetup()}>
-            {t('greenfoot.keep')}
+            {t('miniworlds.keep')}
           </button>
           <button type="button" disabled={steps === 0} onClick={() => (controller.clearSetup(), onReset())}>
-            {t('greenfoot.clear')}
+            {t('miniworlds.clear')}
           </button>
           <button type="button" disabled={!state.active} onClick={() => void saveWorld()}>
-            {t('greenfoot.saveWorld')}
+            {t('miniworlds.saveWorld')}
           </button>
         </div>
       </section>

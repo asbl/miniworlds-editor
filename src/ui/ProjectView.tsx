@@ -3,8 +3,10 @@ import type { Workspace, FileEntry } from '../workspace'
 import { renamePath, uniquePath } from '../workspace'
 import { t, useLang } from '../i18n'
 import { addImport, canSubclass, classNameProblem, classPath, classSource, removeImport, subclassSource, CLASS_DIR, type BaseClass, type ClassKind } from '../project/classes'
+import { useLanguage } from '../language/useLanguage'
+import type { LanguageService } from '../language/service'
 import { ImageDialog } from './ImageDialog'
-import { imageSize, mimeOf } from '../greenfoot/imageLibrary'
+import { imageSize, mimeOf } from '../miniworlds/imageLibrary'
 import { classImagePath, fitSize, setClassImage } from '../project/classImage'
 import { classSource as modelClassSource } from '../uml/model'
 import { UmlDiagram } from '../uml/UmlDiagram'
@@ -14,6 +16,9 @@ import { openContextMenu } from './ContextMenu'
 import { detectKind, ENTRY_DEFAULT } from '../project/manifest'
 import { isImagePath, isTextPath } from '../project/search'
 import type { Catalog } from '../packages/catalog'
+import { offlineVersions, rememberInstalled } from '../pwa/offline'
+import { useOnline } from '../pwa/useOnline'
+import { browserKeyValue } from '../project/settings'
 import { updateStatus } from '../packages/versions'
 import type { Runner } from '../runtime/runner'
 import { runtimeConfig, useProgram } from './useProgram'
@@ -21,7 +26,7 @@ import { useSettings } from './useSettings'
 import { useCatalog } from './hooks'
 import { PackagesDialog } from './PackagesDialog'
 import { WorldPanel } from './WorldPanel'
-import { useGreenfoot, useGreenfootMeta } from '../greenfoot/useGreenfoot'
+import { useMiniworlds, useMiniworldsMeta } from '../miniworlds/useMiniworlds'
 import { engineTier } from '../packages/versions'
 import { useAutoReload } from './useAutoReload'
 import { useAutoReloadSetting, useMode } from './useMode'
@@ -48,11 +53,14 @@ interface Props {
   projectName: string
   runner: Runner
   catalog: Catalog
+  language: LanguageService
   /** The parent calls this to flush unsaved edits before export, switching projects, etc. */
   registerFlush: (flush: (() => Promise<void>) | null) => void
+  /** The project belongs to a page that embeds the editor: no "saved in the browser" notes. */
+  embedded?: boolean
 }
 
-export function ProjectView({ workspace, projectName, runner, catalog, registerFlush }: Props) {
+export function ProjectView({ workspace, projectName, runner, catalog, language, registerFlush, embedded = false }: Props) {
   const lang = useLang()
   const { fs } = workspace
   const [entries, setEntries] = useState<FileEntry[]>([])
@@ -71,6 +79,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
   const state = useSessionState(session)
   const kind = detectKind(entries)
   const [showPackages, setShowPackages] = useState(false)
+  const [problems, setProblems] = useState(0)
   const [imageFor, setImageFor] = useState<string | null>(null)
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null)
@@ -80,18 +89,33 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
   const { data: versions, status: catalogStatus } = useCatalog(catalog)
   const [mode, setMode] = useMode(projectName)
   const [autoReload, setAutoReload] = useAutoReloadSetting()
-  // The Greenfoot view needs the ScenarioHost, which exists from miniworlds 4.4.0.15 on.
+  // The Miniworlds view needs the ScenarioHost, which exists from miniworlds 4.4.0.15 on.
   const effectiveVersion = settings.miniworlds ?? versions?.latest ?? null
-  const greenfootSupported = effectiveVersion === null || engineTier(effectiveVersion) === 'full'
-  const view = mode === 'greenfoot' && greenfootSupported ? 'greenfoot' : 'program'
+  const miniworldsSupported = effectiveVersion === null || engineTier(effectiveVersion) === 'full'
+  const view = mode === 'miniworlds' && miniworldsSupported ? 'miniworlds' : 'program'
   const program = useProgram({ runner, catalog, fs, session, host, settings, settingsLoaded, mode: view, refresh })
-  const metaApi = useGreenfootMeta(fs, refresh)
+  const metaApi = useMiniworldsMeta(fs, refresh)
   metaFlush.current = metaApi.flush
-  const gf = useGreenfoot(runner, metaApi)
-  const reloader = useAutoReload({ enabled: view === 'greenfoot' && autoReload, session, runner, fs, reload: () => void program.run() })
+  const gf = useMiniworlds(runner, metaApi)
+  const reloader = useAutoReload({ enabled: view === 'miniworlds' && autoReload, session, runner, fs, reload: () => void program.run() })
   const installedVersion = program.state.version
-  const modelSupported = installedVersion ? engineTier(installedVersion) === 'full' : greenfootSupported
+  // an installed version is in the Service Worker's cache from now on: it stays usable without network
+  useEffect(() => {
+    if (installedVersion) rememberInstalled(browserKeyValue(), installedVersion)
+  }, [installedVersion])
+  const modelSupported = installedVersion ? engineTier(installedVersion) === 'full' : miniworldsSupported
   const classModel = useClassModel({ runner, session, fs, supported: modelSupported, ready: installedVersion !== null && program.state.phase !== 'booting', fileSignal: entries })
+  const languageState = useLanguage({
+    language,
+    runner,
+    fs,
+    session,
+    host,
+    installedVersion,
+    configuredVersion: settings.miniworlds ?? versions?.latest ?? null,
+    hasApiIndex: modelSupported,
+    fileSignal: entries,
+  })
   // "changed since the world was started": remember each class's source when the world becomes ready
   const modelRef = useRef(classModel)
   modelRef.current = classModel
@@ -134,7 +158,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
   }
 
   const cursorClass = classModel.model && cursor ? classAtLine(classModel.model, cursor.path, cursor.line) : null
-  async function switchView(next: 'program' | 'greenfoot') {
+  async function switchView(next: 'program' | 'miniworlds') {
     if (next === mode) return
     if (program.busy) await program.stop()
     setMode(next)
@@ -145,6 +169,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
     let sess: Session | null = null
     const editor = new EditorHost(mount.current as HTMLElement, (path, text) => sess?.edit(path, text), lang, (path, line) => setCursor({ path, line }))
     host.current = editor
+    editor.onProblems = setProblems
     sess = new Session(fs, editor)
     setSession(sess)
     registerFlush(async () => {
@@ -328,22 +353,30 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
 
   const pinned = settings.miniworlds
   const update = pinned ? updateStatus(pinned, versions?.latest ?? null) : null
+  const online = useOnline()
+  const noNetwork = !online || catalogStatus === 'offline' // the Service Worker may still answer PyPI from its cache
+  const offlineNow = noNetwork ? offlineVersions(browserKeyValue()) : []
   const versionItems: MenuItem[] = [
     { label: t('version.newestAuto') + (versions?.latest ? ` (${versions.latest})` : ''), checked: pinned === null, onSelect: () => void changeVersion(null) },
     ...(pinned && !versions?.versions.some((v) => v.version === pinned)
       ? [{ label: pinned, checked: true, divider: true, onSelect: () => void changeVersion(pinned) }]
       : []),
-    ...(versions?.versions ?? []).map((v, i) => ({
-      label: v.tier === 'basic' ? `${v.version} · ${t('version.basic')}` : v.version,
-      checked: pinned === v.version,
-      divider: i === 0,
-      onSelect: () => void changeVersion(v.version),
-    })),
+    ...(versions?.versions ?? []).map((v, i) => {
+      const unavailable = noNetwork && !offlineNow.includes(v.version)
+      const label = v.tier === 'basic' ? `${v.version} · ${t('version.basic')}` : v.version
+      return {
+        label: unavailable ? `${label} · ${t('version.notOffline')}` : label,
+        checked: pinned === v.version,
+        divider: i === 0,
+        disabled: unavailable,
+        onSelect: () => void changeVersion(v.version),
+      }
+    }),
   ]
 
   const active = state.active
   const showBinary = active !== null && !isTextPath(active)
-  const memoryOnly = workspace.kind === 'memory'
+  const memoryOnly = workspace.kind === 'memory' && !embedded
 
   // ---- class diagram ----
   function baseOf(info: ModelClass | null, name: string): BaseClass | null {
@@ -430,18 +463,18 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
           </button>
           <button
             type="button"
-            aria-pressed={view === 'greenfoot'}
-            disabled={!greenfootSupported}
-            title={greenfootSupported ? undefined : t('mode.needsFull')}
-            onClick={() => void switchView('greenfoot')}
+            aria-pressed={view === 'miniworlds'}
+            disabled={!miniworldsSupported}
+            title={miniworldsSupported ? undefined : t('mode.needsFull')}
+            onClick={() => void switchView('miniworlds')}
           >
-            {t('mode.greenfoot')}
+            {t('mode.miniworlds')}
           </button>
         </div>
-        {view === 'greenfoot' && (
+        {view === 'miniworlds' && (
           <label class="inline small">
             <input type="checkbox" checked={autoReload} onChange={(e) => setAutoReload(e.currentTarget.checked)} />
-            <span>{t('greenfoot.autoReload')}</span>
+            <span>{t('miniworlds.autoReload')}</span>
           </label>
         )}
         <span class="spacer" />
@@ -451,7 +484,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
           items={versionItems}
           align="right"
         />
-        {catalogStatus === 'offline' && <span class="muted small">{t('version.offline')}</span>}
+        {noNetwork && <span class="muted small">{t('version.offline')}</span>}
         <button type="button" onClick={() => setShowPackages(true)}>
           {t('packages.button')}
           {settings.packages.length > 0 ? ` (${settings.packages.length})` : ''}
@@ -471,9 +504,9 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
           </button>
         </div>
       )}
-      {reloader.problem && view === 'greenfoot' && (
+      {reloader.problem && view === 'miniworlds' && (
         <div class="notice error" role="alert">
-          <span>{t('greenfoot.syntaxError', { path: reloader.problem.path, line: reloader.problem.line, message: reloader.problem.message })}</span>
+          <span>{t('miniworlds.syntaxError', { path: reloader.problem.path, line: reloader.problem.line, message: reloader.problem.message })}</span>
           <button type="button" onClick={() => void program.jumpTo({ path: reloader.problem?.path ?? '', line: reloader.problem?.line ?? 1 })}>
             {t('console.jump')}
           </button>
@@ -566,12 +599,29 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
               </button>
             </div>
           ))}
+          <span class="spacer" />
+          {languageState.ruff && active && active.endsWith('.py') && (
+            <button type="button" class="format-button" title={t('assist.formatTitle')} onClick={() => void host.current?.format()}>
+              {t('assist.format')}
+            </button>
+          )}
         </div>
         <div class="editor" ref={mount} hidden={active === null || showBinary} />
         {showBinary && active && <BinaryViewer fs={fs} path={active} />}
         {active === null && <p class="empty">{t('tabs.none')}</p>}
         <div class="status">
-          <span>{t(memoryOnly ? 'status.storage.memory' : 'status.storage.opfs')}</span>
+          <span>{embedded ? '' : t(memoryOnly ? 'status.storage.memory' : 'status.storage.opfs')}</span>
+          {active && active.endsWith('.py') && (
+            <button type="button" class="status-problems" onClick={() => host.current?.openProblems()} disabled={languageState.phase !== 'ready'}>
+              {languageState.phase === 'booting' || languageState.phase === 'idle'
+                ? t('assist.booting')
+                : languageState.phase === 'error'
+                  ? t('assist.error')
+                  : problems > 0
+                    ? `⚠ ${t('assist.problems', { n: problems })}`
+                    : `✓ ${t('assist.noProblems')}${languageState.python ? '' : ` (${t('assist.partial')})`}`}
+            </button>
+          )}
           <span>{state.dirty.size > 0 ? t('status.saving') : t('status.saved')}</span>
         </div>
       </main>
@@ -583,8 +633,8 @@ export function ProjectView({ workspace, projectName, runner, catalog, registerF
           done: metaApi.meta.tasksDone,
           onToggle: (i) => metaApi.setMeta({ ...metaApi.meta, tasksDone: { ...metaApi.meta.tasksDone, [i]: !metaApi.meta.tasksDone[i] } }),
         }}
-        greenfoot={
-          view === 'greenfoot'
+        miniworlds={
+          view === 'miniworlds'
             ? { controller: gf.controller, state: gf.state, onReset: () => void program.run(), onInsert: (code) => host.current?.insertText(code) }
             : undefined
         }

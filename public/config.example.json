@@ -1,0 +1,7 @@
+{
+  "pyodideBase": "./pyodide/v0.29.3/full/",
+  "links": [
+    { "label": "Miniworlds Blocks", "url": "https://miniworlds.opencoding.de/?ide=miniworldsBlocks" }
+  ],
+  "embedOrigins": ["https://moodle.example.org"]
+}

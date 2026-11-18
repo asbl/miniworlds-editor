@@ -4,7 +4,10 @@ import { Compartment, EditorSelection, EditorState, StateEffect, StateField, typ
 import { indentUnit } from '@codemirror/language'
 import { indentWithTab } from '@codemirror/commands'
 import { python } from '@codemirror/lang-python'
+import { diagnosticCount, openLintPanel } from '@codemirror/lint'
+import type { Assist } from '../language/assist'
 import type { Lang } from '../i18n'
+import { assistExtensions, forceLinting } from './assistExtensions'
 import type { Surface } from './session'
 
 /** Texts of CodeMirror's search panel etc.; English is built in. */
@@ -59,6 +62,14 @@ export class EditorHost implements Surface {
   private states = new Map<string, EditorState>()
   private current: string | null = null
   private language = new Compartment()
+  private assist: Assist | null = null
+  private assistExt = assistExtensions(
+    () => this.assist,
+    () => this.current,
+  )
+  /** Number of problems in the file shown (hints and lint). */
+  onProblems: (count: number) => void = () => {}
+  private lastCount = -1
 
   constructor(
     parent: HTMLElement,
@@ -81,13 +92,19 @@ export class EditorHost implements Surface {
         basicSetup,
         python(),
         errorLine,
+        this.assistExt,
         this.language.of(this.phrases()),
         indentUnit.of('    '),
         EditorState.tabSize.of(4),
-        keymap.of([indentWithTab]),
+        keymap.of([indentWithTab, { key: 'Shift-Alt-f', run: () => (void this.format(), true) }]),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && this.current === path) {
             this.onChange(path, update.state.doc.toString())
+          }
+          const count = diagnosticCount(update.state)
+          if (this.current === path && count !== this.lastCount) {
+            this.lastCount = count
+            this.onProblems(count)
           }
           if ((update.selectionSet || update.docChanged) && this.current === path) {
             this.onCursor(path, update.state.doc.lineAt(update.state.selection.main.head).number)
@@ -102,6 +119,8 @@ export class EditorHost implements Surface {
     this.current = path
     this.view.setState(this.states.get(path) ?? this.createState(path, text))
     this.onCursor(path, this.view.state.doc.lineAt(this.view.state.selection.main.head).number)
+    this.lastCount = diagnosticCount(this.view.state)
+    this.onProblems(this.lastCount)
     this.view.focus()
   }
 
@@ -109,6 +128,8 @@ export class EditorHost implements Surface {
     if (this.current) this.states.set(this.current, this.view.state)
     this.current = null
     this.view.setState(EditorState.create({ doc: '', extensions: [this.language.of(this.phrases())] }))
+    this.lastCount = 0
+    this.onProblems(0)
   }
 
   forget(path: string): void {
@@ -124,6 +145,32 @@ export class EditorHost implements Surface {
     const to = Math.min(from + length, row.to)
     this.view.dispatch({ selection: EditorSelection.single(from, to), effects: EditorView.scrollIntoView(from, { y: 'center' }) })
     this.view.focus()
+  }
+
+  /** Connect the language service; existing and new editors use it from now on. */
+  setAssist(assist: Assist | null): void {
+    this.assist = assist
+    this.relint()
+  }
+
+  /** Ask for fresh hints now (the engine API or the service became available). */
+  relint(): void {
+    if (this.current) forceLinting(this.view)
+  }
+
+  openProblems(): void {
+    openLintPanel(this.view)
+  }
+
+  /** Format the file shown with ruff; false when nothing was done. */
+  async format(): Promise<boolean> {
+    if (!this.current?.endsWith('.py')) return false
+    const before = this.view.state.doc.toString()
+    const after = await this.assist?.format(before)
+    if (after == null || after === before || this.view.state.doc.toString() !== before) return false
+    const head = Math.min(this.view.state.selection.main.head, after.length)
+    this.view.dispatch({ changes: { from: 0, to: before.length, insert: after }, selection: { anchor: head } })
+    return true
   }
 
   /** Insert text at the cursor (or replace the selection) of the file shown. */

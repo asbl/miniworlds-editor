@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""One-off conversion of the Greenfoot web client's single-file scenarios into the editor's project format.
+"""One-off conversion of the Miniworlds web client's single-file scenarios into the editor's project format.
 
     python3 scripts/split_scenarios.py <path-to>/greenfoot/scenarios
 
 Every top-level class becomes classes/<Name>.py (with the imports it needs); main.py keeps the remaining statements and
-imports every class (the Greenfoot view only sees classes whose module has been loaded). Refuses scenarios whose classes import each other in a cycle. scenario.json is copied as scenario.de.json; scenario.en.json (hand-written) is kept.
+imports every class (the Miniworlds view only sees classes whose module has been loaded). Refuses scenarios whose classes import each other in a cycle. scenario.json is copied as scenario.de.json; scenario.en.json (hand-written) is kept.
 The result is committed under src/templates/; this script documents how it was made.
 """
 import ast
@@ -66,7 +66,7 @@ def convert(folder: Path) -> None:
 
     main_used = set().union(*(used_names(n) for n in rest)) if rest else set()
     head = [text(i) for i in imports if any(a in main_used for a in import_aliases(i))]
-    # import every class, used in main.py or not: the Greenfoot view only sees classes whose module has been loaded
+    # import every class, used in main.py or not: the Miniworlds view only sees classes whose module has been loaded
     head += [f"from classes.{n} import {n}" for n in sorted(names)]
     (target / "main.py").write_text("\n".join(head) + "\n\n" + "\n".join(text(n) for n in rest) + "\n", encoding="utf-8")
     meta = json.loads((folder / "scenario.json").read_text(encoding="utf-8"))

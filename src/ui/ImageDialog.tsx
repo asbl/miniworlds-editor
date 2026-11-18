@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
-import { LIBRARY, libraryBytes, libraryDataUrl, mimeOf } from '../greenfoot/imageLibrary'
+import { LIBRARY, libraryBytes, libraryDataUrl, mimeOf } from '../miniworlds/imageLibrary'
 import { t, useLang } from '../i18n'
 import { isImagePath } from '../project/search'
 import { uniquePath, type Fs } from '../workspace'

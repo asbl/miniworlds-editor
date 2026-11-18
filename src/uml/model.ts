@@ -59,7 +59,7 @@ export function signatures(model: ClassModel, files: Record<string, string>): Re
   return Object.fromEntries(model.classes.map((c) => [c.name, classSource(c, files)]))
 }
 
-/** Classes whose code differs from the loaded program ("not compiled" in Greenfoot). */
+/** Classes whose code differs from the loaded program ("not compiled" in Miniworlds). */
 export function staleClasses(model: ClassModel, files: Record<string, string>, loaded: Record<string, string> | null): Set<string> {
   const stale = new Set<string>()
   if (!loaded) return stale

@@ -1,13 +1,23 @@
 import { useCallback, useState } from 'preact/hooks'
 
-export type ViewMode = 'program' | 'greenfoot'
+export type ViewMode = 'program' | 'miniworlds'
 const key = (project: string) => `miniworlds-editor.mode.${project}`
 
-/** Per-project view choice (plain program or Greenfoot view), remembered in the browser. */
+/** Set the remembered view of a project before it is shown (embedding page asks for a view). */
+export function rememberMode(project: string, mode: ViewMode): void {
+  try {
+    localStorage.setItem(key(project), mode)
+  } catch {
+    /* the project then opens in the view it had */
+  }
+}
+
+/** Per-project view choice (plain program or Miniworlds view), remembered in the browser. */
 export function useMode(project: string): [ViewMode, (mode: ViewMode) => void] {
   const [mode, setModeState] = useState<ViewMode>(() => {
     try {
-      return localStorage.getItem(key(project)) === 'greenfoot' ? 'greenfoot' : 'program'
+      const value = localStorage.getItem(key(project)) // 'greenfoot' = value of earlier versions
+      return value === 'miniworlds' || value === 'greenfoot' ? 'miniworlds' : 'program'
     } catch {
       return 'program'
     }

@@ -1,9 +1,13 @@
 import { render } from 'preact'
+import { loadAppConfig } from './config/appConfig'
+import { EmbedApp } from './embed/EmbedApp'
 import { App } from './ui/App'
 import { createBrowserStore } from './workspace'
 import { getLang } from './i18n'
 import './style.css'
 
 document.documentElement.lang = getLang()
-const store = await createBrowserStore()
-render(<App store={store} />, document.getElementById('app') as HTMLElement)
+const config = await loadAppConfig()
+const root = document.getElementById('app') as HTMLElement
+if (new URLSearchParams(location.search).get('embed') === '1') render(<EmbedApp config={config} />, root)
+else render(<App store={await createBrowserStore()} config={config} />, root)

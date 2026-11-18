@@ -1,5 +1,5 @@
 import { canvasPoint } from '../runtime/input'
-import type { GreenfootController } from './controller'
+import type { MiniworldsController } from './controller'
 
 export type WorldPoint = { x: number; y: number }
 
@@ -9,7 +9,7 @@ export type WorldPoint = { x: number; y: number }
  */
 export function attachWorldTools(
   canvas: HTMLCanvasElement,
-  controller: GreenfootController,
+  controller: MiniworldsController,
   onContextMenu: (event: MouseEvent, point: WorldPoint) => void,
 ): () => void {
   const point = (e: MouseEvent): WorldPoint => canvasPoint(e, canvas.getBoundingClientRect(), canvas)

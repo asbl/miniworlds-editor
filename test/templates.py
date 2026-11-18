@@ -67,18 +67,18 @@ with sync_playwright() as p:
     check("tasks panel shows the tasks", eventually(lambda: "Aufgaben (0/5)" in page.locator(".tasks").inner_text(), 10000), page.locator(".tasks").inner_text() if page.locator(".tasks").count() else "no panel")
     page.locator(".tasks input[type=checkbox]").first.check()
     check("ticking a task updates the counter", eventually(lambda: "Aufgaben (1/5)" in page.locator(".tasks").inner_text(), 5000))
-    check("task state is stored in greenfoot.json", eventually(lambda: "greenfoot.json" in tree(page), 5000), tree(page))
+    check("task state is stored in miniworlds.json", eventually(lambda: "miniworlds.json" in tree(page), 5000), tree(page))
     page.wait_for_timeout(700)  # the debounced save has run
     page.reload()
     page.wait_for_selector(".cm-content")
     check("task tick survives a reload", eventually(lambda: "Aufgaben (1/5)" in page.locator(".tasks").inner_text(), 10000))
 
-    # --- greenfoot view with the template
+    # --- miniworlds view with the template
     check("python boots", eventually(lambda: "Bereit" in page.inner_text(".world-status"), 120000))
-    page.get_by_role("button", name="Greenfoot", exact=True).click()
+    page.get_by_role("button", name="miniworlds", exact=True).click()
     page.click(".toolbar .run")
-    check("template world is ready", eventually(lambda: "Schritt 0" in page.inner_text(".gf-info"), 40000), page.inner_text(".gf-info"))
-    check("both actor classes can be created", all(n in page.inner_text(".gf-class-buttons") for n in ("Neu Krabbe()", "Neu Wurm()")), page.inner_text(".gf-class-buttons"))
+    check("template world is ready", eventually(lambda: "Schritt 0" in page.inner_text(".mw-info"), 40000), page.inner_text(".mw-info"))
+    check("both actor classes can be created", all(n in page.inner_text(".mw-class-buttons") for n in ("Neu Krabbe()", "Neu Wurm()")), page.inner_text(".mw-class-buttons"))
 
     # --- set a class image from the diagram's context menu
     page.get_by_role("tab", name="Klassen").click()
@@ -86,7 +86,7 @@ with sync_playwright() as p:
     page.locator(".uml-box", has=page.locator(".uml-name", has_text="Krabbe")).locator(".uml-head").click(button="right")
     page.locator(".context-menu").get_by_role("menuitem", name="Bild festlegen").click()
     dialog = page.locator("dialog[open]")
-    check("image dialog offers the library", dialog.locator(".imgcard").count() >= 6)
+    check("image dialog offers the library", eventually(lambda: dialog.locator(".imgcard").count() >= 6, 5000))
     dialog.get_by_role("button", name="Stern").click()
     page.wait_for_selector("dialog[open]", state="detached")
     page.get_by_role("tab", name="Dateien").click()
@@ -97,7 +97,7 @@ with sync_playwright() as p:
     page.get_by_role("tab", name="Klassen").click()
     check("class box shows the thumbnail", eventually(lambda: page.locator(".uml-box", has=page.locator(".uml-name", has_text="Krabbe")).locator("img.uml-img").count() == 1, 10000))
     starts = page.inner_text(".console-lines").count("Programm gestartet")
-    check("world reloads with the image and stays healthy", eventually(lambda: "Schritt 0" in page.inner_text(".gf-info") and "Traceback" not in page.inner_text(".console-lines"), 40000), page.inner_text(".console-lines")[-300:])
+    check("world reloads with the image and stays healthy", eventually(lambda: "Schritt 0" in page.inner_text(".mw-info") and "Traceback" not in page.inner_text(".console-lines"), 40000), page.inner_text(".console-lines")[-300:])
 
     # --- english UI creates the english task texts
     page.locator(".menu-button", has_text="Deutsch").click()

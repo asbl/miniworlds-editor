@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
+import { DEFAULT_CONFIG, type AppConfig } from '../config/appConfig'
+import { registerServiceWorker, type PwaHandle } from '../pwa/register'
 import { LANGS, LANG_NAMES, setLang, t, useLang } from '../i18n'
 import type { ProjectStore, Workspace } from '../workspace'
+import { createBrowserLanguageService } from '../language/browser'
+import type { LanguageService } from '../language/service'
 import { Catalog } from '../packages/catalog'
 import { browserKeyValue } from '../project/settings'
 import { createBrowserRunner } from '../runtime/browser'
@@ -21,8 +25,17 @@ import {
   rememberProject,
 } from './projectOps'
 
-export function App({ store, runner: injected, catalog: injectedCatalog }: { store: ProjectStore; runner?: Runner; catalog?: Catalog }) {
-  const runner = useMemo(() => injected ?? createBrowserRunner(), [injected])
+interface AppProps {
+  store: ProjectStore
+  config?: AppConfig
+  runner?: Runner
+  catalog?: Catalog
+  language?: LanguageService
+}
+
+export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog: injectedCatalog, language: injectedLanguage }: AppProps) {
+  const runner = useMemo(() => injected ?? createBrowserRunner(config.pyodideBase), [injected, config.pyodideBase])
+  const language = useMemo(() => injectedLanguage ?? createBrowserLanguageService(config.pyodideBase), [injectedLanguage, config.pyodideBase])
   const catalog = useMemo(() => injectedCatalog ?? new Catalog(browserKeyValue()), [injectedCatalog])
   const lang = useLang()
   const [projects, setProjects] = useState<string[]>([])
@@ -30,6 +43,8 @@ export function App({ store, runner: injected, catalog: injectedCatalog }: { sto
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
   const flush = useRef<(() => Promise<void>) | null>(null)
   const zipInput = useRef<HTMLInputElement>(null)
+  const [update, setUpdate] = useState<PwaHandle | null>(null)
+  useEffect(() => registerServiceWorker((handle) => setUpdate(handle)), [])
 
   /** New projects pin the newest known engine version (so the update warning can work later). Offline: unpinned. */
   async function newestVersion(): Promise<string | null> {
@@ -93,6 +108,13 @@ export function App({ store, runner: injected, catalog: injectedCatalog }: { sto
         <strong class="brand">{t('app.title')}</strong>
         {name && <Menu label={`${t('project.menu')}: ${name} ▾`} items={projectItems} />}
         <span class="spacer" />
+        {config.links.length > 0 && (
+          <Menu
+            label={`${t('links.menu')} ▾`}
+            align="right"
+            items={config.links.map((link) => ({ label: `${link.label} ↗`, onSelect: () => void window.open(link.url, '_blank', 'noopener') }))}
+          />
+        )}
         <Menu
           label={`🌐 ${LANG_NAMES[lang]} ▾`}
           title={t('lang.label')}
@@ -100,7 +122,18 @@ export function App({ store, runner: injected, catalog: injectedCatalog }: { sto
           items={LANGS.map((l) => ({ label: LANG_NAMES[l], checked: l === lang, onSelect: () => setLang(l) }))}
         />
       </header>
-      {workspace && name && <ProjectView key={name} workspace={workspace} projectName={name} runner={runner} catalog={catalog} registerFlush={(f) => (flush.current = f)} />}
+      {update && (
+        <div class="notice" role="status">
+          <span>{t('pwa.update')}</span>
+          <button type="button" class="primary" onClick={() => update.applyUpdate()}>
+            {t('pwa.reload')}
+          </button>
+          <button type="button" onClick={() => setUpdate(null)}>
+            {t('version.later')}
+          </button>
+        </div>
+      )}
+      {workspace && name && <ProjectView key={name} workspace={workspace} projectName={name} runner={runner} catalog={catalog} language={language} registerFlush={(f) => (flush.current = f)} />}
       <input
         ref={zipInput}
         type="file"

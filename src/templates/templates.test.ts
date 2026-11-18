@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { detectKind } from '../project/manifest'
 import { MemoryFs } from '../workspace'
-import { loadMeta } from '../greenfoot/meta'
+import { loadMeta } from '../miniworlds/meta'
 import { createFromTemplate, loadTemplates, TEMPLATES } from './index'
 
 describe('templates', () => {
@@ -31,7 +31,7 @@ describe('templates', () => {
     }
   })
 
-  it('main.py imports every class (the Greenfoot view only sees classes whose module was loaded)', () => {
+  it('main.py imports every class (the Miniworlds view only sees classes whose module was loaded)', () => {
     for (const t of TEMPLATES) {
       for (const path of Object.keys(t.files)) {
         const m = /^classes\/(\w+)\.py$/.exec(path)

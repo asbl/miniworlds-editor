@@ -97,7 +97,7 @@ describe('replay', () => {
   })
 })
 
-describe('greenfoot.json', () => {
+describe('miniworlds.json', () => {
   it('reads what the old web client wrote', () => {
     const old = JSON.stringify({ journal: [{ op: 'place', cls: 'Krabbe', x: 1, y: 2, args: [] }], tasks: ['A', 'B'], tasksDone: { 0: true, 1: false } })
     expect(parseMeta(old)).toEqual({ journal: [{ op: 'place', cls: 'Krabbe', x: 1, y: 2, args: [] }], tasks: ['A', 'B'], tasksDone: { 0: true } })
@@ -117,7 +117,26 @@ describe('greenfoot.json', () => {
     await saveMeta(fs, meta)
     expect(await loadMeta(fs)).toEqual(meta)
     await saveMeta(fs, emptyMeta())
-    expect(await fs.exists('greenfoot.json')).toBe(false)
+    expect(await fs.exists('miniworlds.json')).toBe(false)
     expect(await loadMeta(fs)).toEqual(emptyMeta())
+  })
+  it('still reads the old name greenfoot.json and replaces it on the next save', async () => {
+    const fs = new MemoryFs()
+    await fs.write('greenfoot.json', JSON.stringify({ journal: [{ op: 'clear' }], tasks: ['T'], tasksDone: {} }))
+    const meta = await loadMeta(fs)
+    expect(meta.tasks).toEqual(['T'])
+    await saveMeta(fs, meta)
+    expect(await fs.exists('greenfoot.json')).toBe(false)
+    expect(await fs.exists('miniworlds.json')).toBe(true)
+    expect(await loadMeta(fs)).toEqual(meta)
+  })
+  it('keeps the old file when writing the new one fails', async () => {
+    const fs = new MemoryFs()
+    await fs.write('greenfoot.json', JSON.stringify({ journal: [], tasks: ['T'], tasksDone: {} }))
+    fs.write = async () => {
+      throw new Error('quota')
+    }
+    await expect(saveMeta(fs, { journal: [], tasks: ['T'], tasksDone: {} })).rejects.toThrow('quota')
+    expect(await fs.exists('greenfoot.json')).toBe(true)
   })
 })

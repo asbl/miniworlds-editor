@@ -29,8 +29,8 @@ interface Args {
   host: { current: EditorHost | null }
   settings: ProjectSettings
   settingsLoaded: boolean
-  /** `greenfoot` starts the world paused under the ScenarioHost; `program` runs it like a normal program. */
-  mode: 'program' | 'greenfoot'
+  /** `miniworlds` starts the world paused under the ScenarioHost; `program` runs it like a normal program. */
+  mode: 'program' | 'miniworlds'
   refresh: () => Promise<void>
 }
 
@@ -95,7 +95,7 @@ export function useProgram({ runner, catalog, fs, session, host, settings, setti
       for (const e of entries) files[e.path] = await fs.readBytes(e.path)
       await catalogReady(catalog)
       config.current = runtimeConfig(settings, catalog)
-      const running = runner.run(files, entry, config.current, { scenario: mode === 'greenfoot' })
+      const running = runner.run(files, entry, config.current, { scenario: mode === 'miniworlds' })
       runner.canvas.focus()
       const result = await running
       await applyChanges(result)

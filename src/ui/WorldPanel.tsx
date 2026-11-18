@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'preact/hooks'
 import { t, useLang } from '../i18n'
-import type { GreenfootController, GreenfootState } from '../greenfoot/controller'
-import { GreenfootControls } from '../greenfoot/GreenfootPanel'
-import { attachWorldTools, type WorldPoint } from '../greenfoot/worldTools'
-import type { ActorInfo } from '../greenfoot/scenario'
+import type { MiniworldsController, MiniworldsState } from '../miniworlds/controller'
+import { MiniworldsControls } from '../miniworlds/MiniworldsPanel'
+import { attachWorldTools, type WorldPoint } from '../miniworlds/worldTools'
+import type { ActorInfo } from '../miniworlds/scenario'
 import { attachInput } from '../runtime/input'
 import type { Runner } from '../runtime/runner'
 import type { TraceLocation } from '../runtime/traceback'
@@ -12,25 +12,25 @@ import { openContextMenu } from './ContextMenu'
 import { openDialog } from './dialogs'
 import { useRunnerState } from './hooks'
 
-export interface GreenfootProps {
-  controller: GreenfootController
-  state: GreenfootState
+export interface MiniworldsProps {
+  controller: MiniworldsController
+  state: MiniworldsState
   onReset: () => void
   onInsert: (code: string) => void
 }
 
-/** Right-hand panel: the world's canvas (lives in the worker), Greenfoot controls when in that view, and the console. */
+/** Right-hand panel: the world's canvas (lives in the worker), Miniworlds controls when in that view, and the console. */
 export interface TasksProps {
   items: string[]
   done: Record<string, boolean>
   onToggle: (index: number) => void
 }
 
-export function WorldPanel({ runner, onJump, greenfoot, tasks }: { runner: Runner; onJump: (location: TraceLocation) => void; greenfoot?: GreenfootProps; tasks?: TasksProps }) {
+export function WorldPanel({ runner, onJump, miniworlds, tasks }: { runner: Runner; onJump: (location: TraceLocation) => void; miniworlds?: MiniworldsProps; tasks?: TasksProps }) {
   useLang()
   const state = useRunnerState(runner)
   const slot = useRef<HTMLDivElement>(null)
-  const controller = greenfoot?.controller
+  const controller = miniworlds?.controller
 
   // The canvas element is replaced with every new worker (it can be handed over only once): mount the current one.
   useEffect(() => {
@@ -56,16 +56,16 @@ export function WorldPanel({ runner, onJump, greenfoot, tasks }: { runner: Runne
         { header: actor.cls },
         ...methods.map((m) => ({ text: `${m.name}(${m.params.map((p) => p.name).join(', ')})`, run: () => void controller.invokeMethod(actor.handle, m) })),
         '-',
-        { text: t('greenfoot.menu.inspect'), run: () => void inspect(actor) },
-        { text: t('greenfoot.menu.delete'), danger: true, run: () => void controller.removeActor(actor.handle) },
+        { text: t('miniworlds.menu.inspect'), run: () => void inspect(actor) },
+        { text: t('miniworlds.menu.delete'), danger: true, run: () => void controller.removeActor(actor.handle) },
       ])
     } else {
       await controller.select(null)
       const classes = controller.state.classes.filter((c) => c.is_actor)
       openContextMenu(event.clientX, event.clientY, [
-        { header: t('greenfoot.menu.here') },
-        ...classes.map((c) => ({ text: t('greenfoot.menu.new', { cls: c.name }), run: () => void controller.createAt(c.name, point.x, point.y) })),
-        ...(classes.length === 0 ? [{ header: t('greenfoot.menu.noClasses') }] : []),
+        { header: t('miniworlds.menu.here') },
+        ...classes.map((c) => ({ text: t('miniworlds.menu.new', { cls: c.name }), run: () => void controller.createAt(c.name, point.x, point.y) })),
+        ...(classes.length === 0 ? [{ header: t('miniworlds.menu.noClasses') }] : []),
       ])
     }
   }
@@ -90,9 +90,9 @@ export function WorldPanel({ runner, onJump, greenfoot, tasks }: { runner: Runne
       info: true,
       body: (
         <>
-          {Object.keys(data.fields).length > 0 ? table(data.fields) : <p class="muted">{t('greenfoot.inspect.noFields')}</p>}
+          {Object.keys(data.fields).length > 0 ? table(data.fields) : <p class="muted">{t('miniworlds.inspect.noFields')}</p>}
           <details>
-            <summary>{t('greenfoot.inspect.engine')}</summary>
+            <summary>{t('miniworlds.inspect.engine')}</summary>
             {table(data.engine)}
           </details>
         </>
@@ -101,12 +101,12 @@ export function WorldPanel({ runner, onJump, greenfoot, tasks }: { runner: Runne
   }
 
   const bootText = state.phase === 'booting' ? t(`run.boot.${state.bootStep ?? 'pyodide'}` as const) : null
-  const sel = greenfoot?.state.selected
+  const sel = miniworlds?.state.selected
   const canvas = runner.canvas
   const scale = canvas.width > 0 ? canvas.getBoundingClientRect().width / canvas.width : 1
 
   return (
-    <aside class={greenfoot?.state.armed ? 'world-panel armed' : 'world-panel'}>
+    <aside class={miniworlds?.state.armed ? 'world-panel armed' : 'world-panel'}>
       <div class="world-stage">
         <div class="world-wrap">
           <div ref={slot} />
@@ -127,7 +127,7 @@ export function WorldPanel({ runner, onJump, greenfoot, tasks }: { runner: Runne
         {bootText ?? t(`run.state.${state.phase === 'booting' ? 'idle' : state.phase}` as const)}
         {state.version && <span class="muted"> · miniworlds {state.version}</span>}
       </div>
-      {greenfoot && <GreenfootControls {...greenfoot} />}
+      {miniworlds && <MiniworldsControls {...miniworlds} />}
       {tasks && tasks.items.length > 0 && (
         <details class="tasks" open>
           <summary>{t('tasks.title', { done: tasks.items.filter((_, i) => tasks.done[i]).length, total: tasks.items.length })}</summary>

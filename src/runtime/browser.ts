@@ -2,9 +2,9 @@ import { PYODIDE_BASE } from './config'
 import { Runner, type WorkerLike } from './runner'
 
 /** The editor's runner: real module Worker, real canvas. */
-export function createBrowserRunner(): Runner {
+export function createBrowserRunner(pyodideBase: string = PYODIDE_BASE): Runner {
   return new Runner({
-    pyodideBase: PYODIDE_BASE,
+    pyodideBase,
     createWorker: () => new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike,
     createCanvas: () => {
       const canvas = document.createElement('canvas')

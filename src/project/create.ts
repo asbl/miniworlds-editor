@@ -16,7 +16,7 @@ export interface NewProject {
   actorVar: string
 }
 
-/** Same starter world as the Greenfoot scenarios "leer", in one file. */
+/** Same starter world as the Miniworlds scenarios "leer", in one file. */
 export function legacySource({ worldName, actorName, worldVar, actorVar }: Pick<NewProject, 'worldName' | 'actorName' | 'worldVar' | 'actorVar'>): string {
   return `import miniworlds as mw
 

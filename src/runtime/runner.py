@@ -13,6 +13,7 @@ import js
 ROOT = "/project"
 _tasks = []
 _host = None  # ScenarioHost while a Greenfoot-style run is active
+_api_json = None  # miniworlds' API index (built once; the language worker needs it, it cannot import pygame)
 _mouse = {"pos": (0, 0), "buttons": (False, False, False)}
 
 
@@ -221,6 +222,13 @@ def rpc(name, args_json="[]"):
             from miniworlds.tools import class_model
 
             return json.dumps({"ok": True, "value": class_model.analyze(args[0])})
+        if name == "api":
+            global _api_json
+            if _api_json is None:
+                from miniworlds.tools import api_index
+
+                _api_json = json.dumps(api_index.build_index())
+            return json.dumps({"ok": True, "value": _api_json})
         if name == "check":
             for path, source in args[0].items():
                 try:
