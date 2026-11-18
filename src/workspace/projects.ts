@@ -26,6 +26,7 @@ export function validateProjectName(raw: string): string {
 export class MemoryStore implements ProjectStore {
   readonly kind = 'memory'
   private projects = new Map<string, MemoryFs>()
+  private histories = new Map<string, MemoryFs>()
 
   async list() {
     return [...this.projects.keys()].sort((a, b) => a.localeCompare(b))
@@ -34,10 +35,13 @@ export class MemoryStore implements ProjectStore {
     const key = validateProjectName(name)
     let fs = this.projects.get(key)
     if (!fs) this.projects.set(key, (fs = new MemoryFs()))
-    return { kind: this.kind, fs }
+    let history = this.histories.get(key)
+    if (!history) this.histories.set(key, (history = new MemoryFs()))
+    return { kind: this.kind, fs, history }
   }
   async remove(name: string) {
     this.projects.delete(name)
+    this.histories.delete(name)
   }
   async exists(name: string) {
     return this.projects.has(name)
@@ -60,10 +64,16 @@ export class OpfsStore implements ProjectStore {
     return names.sort((a, b) => a.localeCompare(b))
   }
   async open(name: string): Promise<Workspace> {
-    return { kind: this.kind, fs: (await OpfsFs.open(validateProjectName(name))) as Fs }
+    const valid = validateProjectName(name)
+    return { kind: this.kind, fs: (await OpfsFs.open(valid)) as Fs, history: (await OpfsFs.open(valid, 'history').catch(() => undefined)) as Fs | undefined }
   }
   async remove(name: string) {
     await (await this.dir()).removeEntry(name, { recursive: true })
+    try {
+      await (await (await navigator.storage.getDirectory()).getDirectoryHandle('history')).removeEntry(name, { recursive: true })
+    } catch {
+      /* no history */
+    }
   }
   async exists(name: string) {
     try {

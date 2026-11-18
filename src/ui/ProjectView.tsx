@@ -19,6 +19,11 @@ import type { Catalog } from '../packages/catalog'
 import { useCachedVersions } from '../pwa/offline'
 import { useOnline } from '../pwa/useOnline'
 import { useNarrow } from './useNarrow'
+import { HistoryDialog } from '../history/HistoryDialog'
+import { HistoryPanel } from '../history/HistoryPanel'
+import { readTexts, restoreAll, restoreFile } from '../history/restore'
+import { useHistory } from '../history/useHistory'
+import type { Snapshot } from '../history/history'
 import { updateStatus } from '../packages/versions'
 import type { Runner } from '../runtime/runner'
 import { runtimeConfig, useProgram } from './useProgram'
@@ -65,7 +70,8 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   const { fs } = workspace
   const [entries, setEntries] = useState<FileEntry[]>([])
   const [session, setSession] = useState<Session | null>(null)
-  const [tab, setTab] = useState<'files' | 'search' | 'classes'>('files')
+  const [tab, setTab] = useState<'files' | 'search' | 'classes' | 'history'>('files')
+  const [viewing, setViewing] = useState<{ snapshot: Snapshot; old: Record<string, string>; current: Record<string, string> } | null>(null)
   const [details, setDetails] = useState(true)
   const [cursor, setCursor] = useState<{ path: string; line: number } | null>(null)
   const [pickedClass, setPickedClass] = useState<string | null>(null)
@@ -88,6 +94,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   const [pane, setPane] = useState<'files' | 'editor' | 'world'>('editor')
 
   const refresh = useCallback(async () => setEntries(await fs.list()), [fs])
+  const historyApi = useHistory(workspace, fs, session)
   const { settings, loaded: settingsLoaded, update: updateSettings } = useSettings(fs, kind, projectName, session)
   const { data: versions, status: catalogStatus } = useCatalog(catalog)
   const [mode, setMode] = useMode(projectName)
@@ -310,6 +317,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
 
   async function deleteEntry(path: string) {
     if (!(await confirmDialog(t('files.delete'), t('files.deleteConfirm', { path })))) return
+    await historyApi.record('before-delete')
     try {
       await fs.remove(path)
       await session?.removed(path)
@@ -326,14 +334,76 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
     }
   }
 
+  async function openSnapshot(snapshot: Snapshot) {
+    if (!historyApi.history || !session) return
+    try {
+      setViewing({ snapshot, old: await historyApi.history.read(snapshot.id), current: await readTexts(fs, session) })
+    } catch (error) {
+      await report(error)
+    }
+  }
+
+  async function saveVersion() {
+    const values = await openDialog({
+      title: t('history.save'),
+      message: t('history.saveHint'),
+      fields: [{ kind: 'text', key: 'name', label: t('history.saveName'), initial: '' }],
+      validate: (v) => (String(v.name).trim() === '' ? t('project.invalidName') : null),
+    })
+    if (values) await historyApi.record('manual', String(values.name).trim())
+  }
+
+  async function labelVersion(snapshot: Snapshot) {
+    const values = await openDialog({ title: t('history.rename'), fields: [{ kind: 'text', key: 'name', label: t('history.saveName'), initial: snapshot.label ?? '' }] })
+    if (!values || !historyApi.history) return
+    await historyApi.history.label(snapshot.id, String(values.name))
+    await historyApi.reload()
+    setViewing(null)
+  }
+
+  async function removeVersion(snapshot: Snapshot) {
+    if (!historyApi.history || !(await confirmDialog(t('history.delete'), t('history.deleteConfirm')))) return
+    await historyApi.history.remove(snapshot.id)
+    await historyApi.reload()
+    setViewing(null)
+  }
+
+  async function restoreOne(path: string) {
+    if (!viewing || !historyApi.history || !session) return
+    try {
+      await restoreFile({ fs, session, history: historyApi.history }, viewing.snapshot.id, path)
+      await refresh()
+      await historyApi.reload()
+      setViewing({ ...viewing, current: await readTexts(fs, session) })
+      await infoDialog(t('history.title'), t('history.restored', { path }))
+    } catch (error) {
+      await report(error)
+    }
+  }
+
+  async function restoreEverything() {
+    if (!viewing || !historyApi.history || !session) return
+    if (!(await confirmDialog(t('history.restoreAll'), t('history.restoreAllConfirm'), false))) return
+    try {
+      await restoreAll({ fs, session, history: historyApi.history }, viewing.snapshot.id)
+      await refresh()
+      await historyApi.reload()
+      setViewing(null)
+      await infoDialog(t('history.title'), t('history.restoredAll'))
+    } catch (error) {
+      await report(error)
+    }
+  }
+
   function openSearch() {
     setTab('search')
     setSearchSignal((n) => n + 1)
   }
 
   /** Run from the user's own action: on a narrow screen show what happens (the world and the console). */
-  function runProgram() {
+  async function runProgram() {
     if (narrow) setPane('world')
+    await historyApi.record('run') // the state that is about to run: what "it worked a minute ago" refers to
     return program.run()
   }
 
@@ -546,6 +616,9 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
             <button type="button" role="tab" aria-selected={tab === 'search'} onClick={openSearch} title="Ctrl+Shift+F">
               {t('search.title')}
             </button>
+            <button type="button" role="tab" aria-selected={tab === 'history'} onClick={() => (setTab('history'), void historyApi.reload())}>
+              {t('history.title')}
+            </button>
           </div>
           {tab === 'files' && <Menu label="+" title={t('files.newFile')} items={addMenu} align="right" />}
         </div>
@@ -593,6 +666,8 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
             onRename={(p) => void renameEntry(p)}
             onDelete={(p) => void deleteEntry(p)}
           />
+        ) : tab === 'history' ? (
+          <HistoryPanel snapshots={historyApi.snapshots} available={historyApi.history !== null} onOpen={(s) => void openSnapshot(s)} onSave={() => void saveVersion()} />
         ) : (
           session && <SearchPanel session={session} focusSignal={searchSignal} onChanged={() => void refresh()} />
         )}
@@ -707,6 +782,18 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
           })()}
           onChoose={(path) => void applyImage(imageFor, path)}
           onClose={() => setImageFor(null)}
+        />
+      )}
+      {viewing && (
+        <HistoryDialog
+          snapshot={viewing.snapshot}
+          old={viewing.old}
+          current={viewing.current}
+          onRestoreFile={(path) => void restoreOne(path)}
+          onRestoreAll={() => void restoreEverything()}
+          onLabel={() => void labelVersion(viewing.snapshot)}
+          onRemove={() => void removeVersion(viewing.snapshot)}
+          onClose={() => setViewing(null)}
         />
       )}
       {showPackages && (

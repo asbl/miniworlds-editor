@@ -4,10 +4,11 @@ import { type Fs, type FileEntry, normalizePath } from './types'
 export class OpfsFs implements Fs {
   constructor(private root: FileSystemDirectoryHandle) {}
 
-  static async open(projectName: string): Promise<OpfsFs> {
+  /** A project's folder (`projects/<name>`), or with another `area` the folder of that name in it (`history/<name>`). */
+  static async open(projectName: string, area = 'projects'): Promise<OpfsFs> {
     const base = await navigator.storage.getDirectory()
-    const projects = await base.getDirectoryHandle('projects', { create: true })
-    return new OpfsFs(await projects.getDirectoryHandle(projectName, { create: true }))
+    const parent = await base.getDirectoryHandle(area, { create: true })
+    return new OpfsFs(await parent.getDirectoryHandle(projectName, { create: true }))
   }
 
   static isSupported(): boolean {

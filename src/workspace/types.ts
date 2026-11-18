@@ -25,6 +25,11 @@ export interface Workspace {
   /** Which backend is active, e.g. "opfs" or "memory". */
   readonly kind: string
   readonly fs: Fs
+  /**
+   * Storage for the project's history (snapshots), separate from the files so that it never shows up in the file tree,
+   * the search, the run or an export. Absent where there is none (tests).
+   */
+  readonly history?: Fs
 }
 
 export function normalizePath(path: string): string {

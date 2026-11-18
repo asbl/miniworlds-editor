@@ -299,3 +299,40 @@ input[type=text], input[type=search], select {
   /* the name stays for assistive technology (it is the page's h1); the space goes to the menus */
   .topbar .brand { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
+
+/* history */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.history { display: flex; flex-direction: column; overflow: auto; min-height: 0; }
+.history-tools { padding: 8px; }
+.history-tools button { width: 100%; border: 1px solid var(--border); padding: 6px; }
+.history-note { padding: 8px 12px; }
+.history-day { margin: 8px 0 2px; padding: 0 10px; font-size: 12px; color: var(--muted); font-weight: 600; text-transform: none; }
+.history-list { list-style: none; margin: 0; padding: 0; }
+.history-row { display: flex; align-items: baseline; gap: 8px; width: 100%; text-align: left; padding: 5px 10px; border-radius: 0; }
+.history-time { font-variant-numeric: tabular-nums; color: var(--muted); flex: none; }
+.history-what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-what.named { font-weight: 600; }
+.history-size { flex: none; }
+.history-dialog { width: min(860px, calc(100vw - 24px)); }
+.history-dialog h2 { margin: 0 0 2px; }
+.history-body { display: grid; grid-template-columns: minmax(150px, 230px) 1fr; gap: 10px; margin-top: 8px; height: min(52vh, 440px); }
+.history-files { list-style: none; margin: 0; padding: 0; overflow: auto; border: 1px solid var(--border); border-radius: 4px; }
+.history-file { display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 5px 8px; border-radius: 0; text-align: left; }
+.history-file.selected { background: var(--selected); }
+.history-path { word-break: break-all; }
+.history-status { font-size: 11px; color: var(--muted); }
+.history-status.changed { color: var(--warn-fg); background: var(--warn-bg); padding: 0 5px; border-radius: 8px; }
+.history-status.missing, .history-status.new { color: var(--fg); font-weight: 600; }
+.history-diff { overflow: auto; border: 1px solid var(--border); border-radius: 4px; background: var(--bg); }
+.history-hint { margin: 6px 8px; }
+.hunk { margin: 0 0 8px; padding: 4px 0; font: 12px/1.45 ui-monospace, monospace; border-top: 1px dashed var(--border); }
+.dl { display: flex; white-space: pre-wrap; word-break: break-all; }
+.dl .dn { width: 4ch; flex: none; text-align: right; padding-right: 6px; color: var(--muted); }
+.dl .dm { width: 2ch; flex: none; text-align: center; }
+.dl.add { background: color-mix(in srgb, #16a34a 22%, transparent); }
+.dl.del { background: color-mix(in srgb, #dc2626 22%, transparent); }
+.history-buttons { flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .history-body { grid-template-columns: 1fr; height: 60vh; }
+  .history-files { max-height: 22vh; }
+}

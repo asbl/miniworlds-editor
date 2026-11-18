@@ -99,6 +99,7 @@ export async function promptRenameProject(store: ProjectStore, current: string):
   const from = await store.open(current)
   const to = await store.open(name)
   await copyAll(from.fs, to.fs)
+  if (from.history && to.history) await copyAll(from.history, to.history).catch(() => {}) // the history moves with the project
   await store.remove(current)
   return name
 }

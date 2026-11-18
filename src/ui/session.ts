@@ -57,6 +57,11 @@ export class Session {
     return () => void this.editListeners.delete(listener)
   }
 
+  /** Files were changed from outside the editor (restore): tell what reacts to edits (class diagram, hints). */
+  externalChange(): void {
+    this.editListeners.forEach((l) => l())
+  }
+
   /** Called by the editor on every change. */
   edit(path: string, text: string): void {
     this.editListeners.forEach((l) => l())
