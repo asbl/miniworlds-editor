@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { renameClass } from './renameClass'
+import { findNameClash, renameClass } from './renameClass'
 
 const files = {
   'main.py': 'from classes.Figur import Figur\nfrom classes.Spielfeld import Spielfeld\n\nwelt = Spielfeld(400, 300)\nfigur = Figur((200, 150))  # Figur\nprint("Figur", f"{Figur}")\nwelt.run()\n',
@@ -56,5 +56,34 @@ describe('renameClass', () => {
 
   it('has no move when the class does not live in its own file', () => {
     expect(renameClass({ 'main.py': 'class Figur:\n    pass\nFigur()\n' }, 'Figur', 'Held').move).toBeNull()
+  })
+})
+
+describe('findNameClash', () => {
+  const texts = {
+    'main.py': 'import random\nfrom classes.Figur import Figur\n\nzahl = 3\n\n\ndef start(tempo):\n    return tempo\n',
+    'classes/Figur.py': 'class Figur:\n    def act(self):\n        self.Held = 1  # Held\n        print("Hund")\n',
+  }
+
+  it('finds variables, functions, parameters and imports', () => {
+    expect(findNameClash(texts, 'zahl')).toEqual({ kind: 'used', path: 'main.py', line: 4 })
+    expect(findNameClash(texts, 'start')).toEqual({ kind: 'used', path: 'main.py', line: 7 })
+    expect(findNameClash(texts, 'tempo')).toEqual({ kind: 'used', path: 'main.py', line: 7 })
+    expect(findNameClash(texts, 'random')).toEqual({ kind: 'used', path: 'main.py', line: 1 })
+  })
+
+  it('finds a class that exists under that name in some file', () => {
+    expect(findNameClash(texts, 'Figur')).toEqual({ kind: 'used', path: 'main.py', line: 2 })
+  })
+
+  it('refuses the names of Python itself', () => {
+    expect(findNameClash(texts, 'list')).toEqual({ kind: 'builtin' })
+    expect(findNameClash(texts, 'print')).toEqual({ kind: 'builtin' })
+  })
+
+  it('ignores attributes, strings and comments, and names that are free', () => {
+    expect(findNameClash(texts, 'Held')).toBeNull()
+    expect(findNameClash(texts, 'Hund')).toBeNull()
+    expect(findNameClash(texts, 'Katze')).toBeNull()
   })
 })

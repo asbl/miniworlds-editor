@@ -138,6 +138,10 @@ export class EditorHost implements Surface {
     private onCursor: (path: string, line: number) => void = () => {},
   ) {
     this.view = new EditorView({ parent, state: EditorState.create({ doc: '', extensions: [this.language.of(this.phrases())] }) })
+    // a long line makes the scroll area scroll sideways; keyboard users need a way in (WCAG 2.1.1, axe: scrollable-region-focusable)
+    this.view.scrollDOM.tabIndex = 0
+    this.view.scrollDOM.setAttribute('role', 'region')
+    this.view.scrollDOM.setAttribute('aria-label', t('a11y.editorScroll', undefined, this.lang))
   }
 
   private phrases() {

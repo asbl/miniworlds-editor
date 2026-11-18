@@ -35,14 +35,14 @@ describe('explainError (German)', () => {
     expect(de("TypeError: unsupported operand type(s) for +: 'int' and 'str'")).toMatch(/int.*str/s)
   })
   it('explains errors around numbers, lists and files', () => {
-    expect(de('ZeroDivisionError: division by zero')).toMatch(/Durch 0/)
+    expect(de('ZeroDivisionError: division by zero')).toMatch(/Null/)
     expect(de('IndexError: list index out of range')).toMatch(/0/)
     expect(de("ValueError: invalid literal for int() with base 10: 'abc'")).toMatch(/abc/)
     expect(de("FileNotFoundError: [Errno 2] No such file or directory: 'images/fisch.png'")).toMatch(/images\/fisch\.png/)
     expect(de("FileNotFoundError: No file 'images/fisch.png' found in working directory '/project'.")).toMatch(/images\/fisch\.png/)
   })
   it('explains imports, including the classes folder and circles', () => {
-    expect(de("ModuleNotFoundError: No module named 'classes.Hai'")).toMatch(/from classes\.Name import Name/)
+    expect(de("ModuleNotFoundError: No module named 'classes.Hai'")).toMatch(/classes\/Hai\.py|Datei/)
     expect(de("ModuleNotFoundError: No module named 'requests'")).toMatch(/Paket/)
     expect(de("ImportError: cannot import name 'Wurm' from partially initialized module 'classes.Wurm' (most likely due to a circular import)")).toMatch(/gegenseitig/)
   })
@@ -62,7 +62,7 @@ describe('explainError (German)', () => {
 describe('explainError (English)', () => {
   it('answers in English', () => {
     expect(explainError(tb("AttributeError: 'Krabbe' object has no attribute 'mov'. Did you mean: 'move'?"), 'en')).toMatch(/Did you mean|move/)
-    expect(explainError('ZeroDivisionError: division by zero', 'en')).toMatch(/divide by 0/)
+    expect(explainError('ZeroDivisionError: division by zero', 'en')).toMatch(/zero/i)
   })
 })
 

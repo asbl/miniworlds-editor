@@ -42,7 +42,7 @@ with sync_playwright() as p:
     set_main(page, 'x = 10\nprint(x / 0)\n')
     page.click(".toolbar .run")
     check("another run adds another hint", eventually(lambda: page.locator(".line.hint").count() == 2 and "Null" in page.locator(".line.hint").nth(1).inner_text(), 30000), console(page)[-300:])
-    page.locator(".console-head button").click()
+    page.get_by_role("button", name="Konsole leeren").click()
 
     # --- 2. guide lines and 3. inspector (miniworlds view)
     page.get_by_role("button", name="miniworlds", exact=True).click()
