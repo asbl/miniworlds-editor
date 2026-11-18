@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { AppConfig } from '../config/appConfig'
 import { LANG_NAMES, LANGS, setLang, t, useLang } from '../i18n'
+import { isLowMemory } from '../config/memory'
 import { createBrowserLanguageService } from '../language/browser'
 import type { LanguageService } from '../language/service'
 import { Catalog } from '../packages/catalog'
@@ -39,7 +40,7 @@ interface Props {
  */
 export function EmbedApp({ config, runner: injected, catalog: injectedCatalog, language: injectedLanguage, win }: Props) {
   const runner = useMemo(() => injected ?? createBrowserRunner(config.pyodideBase), [injected, config.pyodideBase])
-  const language = useMemo(() => injectedLanguage ?? createBrowserLanguageService(config.pyodideBase), [injectedLanguage, config.pyodideBase])
+  const language = useMemo(() => injectedLanguage ?? createBrowserLanguageService(config.pyodideBase, isLowMemory(config.lowMemory)), [injectedLanguage, config.pyodideBase, config.lowMemory])
   const catalog = useMemo(() => injectedCatalog ?? new Catalog(browserKeyValue()), [injectedCatalog])
   const lang = useLang()
   const [workspace, setWorkspace] = useState<Workspace | null>(null)

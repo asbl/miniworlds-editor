@@ -232,6 +232,7 @@ export const de = {
   'pwa.stale': 'Der Editor wurde in einem anderen Tab aktualisiert. Bitte neu laden, damit alles zusammenpasst.',
   'pwa.reload': 'Neu laden',
   'version.notOffline': 'offline nicht verfügbar',
+  'assist.dormant': 'Editor-Hilfen ruhen (sparen Speicher), Klick zum Starten',
   'assist.partial': 'nur Grundprüfung, ohne Vervollständigung',
   'assist.booting': 'Editor-Hilfen werden geladen …',
   'assist.error': 'Editor-Hilfen nicht verfügbar',

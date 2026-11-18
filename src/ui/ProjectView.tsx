@@ -663,8 +663,10 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
         <div class="status">
           <span>{embedded ? '' : t(memoryOnly ? 'status.storage.memory' : 'status.storage.opfs')}</span>
           {active && active.endsWith('.py') && (
-            <button type="button" class="status-problems" onClick={() => host.current?.openProblems()} disabled={languageState.phase !== 'ready'}>
-              {languageState.phase === 'booting' || languageState.phase === 'idle'
+            <button type="button" class="status-problems" onClick={() => (languageState.phase === 'dormant' ? language.wake() : host.current?.openProblems())} disabled={languageState.phase !== 'ready' && languageState.phase !== 'dormant'}>
+              {languageState.phase === 'dormant'
+                ? t('assist.dormant')
+                : languageState.phase === 'booting' || languageState.phase === 'idle'
                 ? t('assist.booting')
                 : languageState.phase === 'error'
                   ? t('assist.error')

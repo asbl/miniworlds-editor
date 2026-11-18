@@ -1,4 +1,5 @@
 import { PYODIDE_BASE } from '../runtime/config'
+import type { LowMemorySetting } from './memory'
 
 export interface ExternalLink {
   label: string
@@ -17,9 +18,11 @@ export interface AppConfig {
    * the editor's origin, so "every page" is a decision for the operator, not a default.
    */
   embedOrigins: string[] | null
+  /** The editor help (second Python, ~130 MB) sleeps while nobody edits: "auto" = on devices with 4 GB or less, true/false forces. */
+  lowMemory: LowMemorySetting
 }
 
-export const DEFAULT_CONFIG: AppConfig = { pyodideBase: PYODIDE_BASE, links: [], embedOrigins: [] }
+export const DEFAULT_CONFIG: AppConfig = { pyodideBase: PYODIDE_BASE, links: [], embedOrigins: [], lowMemory: 'auto' }
 
 const isHttpUrl = (value: string): boolean => /^https?:\/\//i.test(value)
 
@@ -57,6 +60,7 @@ export function parseAppConfig(raw: unknown, page: string): AppConfig {
       return isHttpUrl(url) && link.label.trim() ? [{ label: link.label.trim(), url }] : []
     })
   }
+  if (typeof r.lowMemory === 'boolean') config.lowMemory = r.lowMemory
   if ('embedOrigins' in r) {
     // present but unusable (a string, numbers …) stays "nobody": a typo must not open the door
     const list = Array.isArray(r.embedOrigins) ? r.embedOrigins : []

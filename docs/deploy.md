@@ -54,6 +54,7 @@ Liegt neben `index.html` und lässt sich ändern, ohne neu zu bauen (Vorlage: `c
 |---|---|
 | `pyodideBase` | Wo Pyodide herkommt. Vorgabe: jsDelivr. Mit `npm run selfhost` automatisch `./pyodide/v0.29.3/full/`. |
 | `links` | `[{ "label": "…", "url": "https://…" }]`: Menü „Weitere Editoren“ (z. B. die Java- und Block-Varianten der `miniworlds-ide`). Nur `http(s)`. |
+| `lowMemory` | `"auto"` (Vorgabe), `true` oder `false`. Auf Geräten mit höchstens 4 GB RAM (`navigator.deviceMemory`, nur Chromium; sonst gilt das Gerät als geräumig) läuft das zweite Python der Editor-Hilfen nur, solange jemand tippt; es startet beim ersten Tippen, bei Vervollständigung oder Klick auf die Statusanzeige und schläft nach 5 Minuten ohne Nutzung wieder ein. Spart etwa 130 MB. |
 | `embedOrigins` | Seiten, die den Editor einbetten dürfen, siehe `docs/embed.md`. **Ohne Eintrag darf niemand**; `["*"]` erlaubt alle. |
 
 ## Offline und Updates

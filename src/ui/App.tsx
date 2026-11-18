@@ -3,6 +3,7 @@ import { DEFAULT_CONFIG, type AppConfig } from '../config/appConfig'
 import { registerServiceWorker, type PwaHandle } from '../pwa/register'
 import { LANGS, LANG_NAMES, setLang, t, useLang } from '../i18n'
 import type { ProjectStore, Workspace } from '../workspace'
+import { isLowMemory } from '../config/memory'
 import { createBrowserLanguageService } from '../language/browser'
 import type { LanguageService } from '../language/service'
 import { Catalog } from '../packages/catalog'
@@ -35,7 +36,7 @@ interface AppProps {
 
 export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog: injectedCatalog, language: injectedLanguage }: AppProps) {
   const runner = useMemo(() => injected ?? createBrowserRunner(config.pyodideBase), [injected, config.pyodideBase])
-  const language = useMemo(() => injectedLanguage ?? createBrowserLanguageService(config.pyodideBase), [injectedLanguage, config.pyodideBase])
+  const language = useMemo(() => injectedLanguage ?? createBrowserLanguageService(config.pyodideBase, isLowMemory(config.lowMemory)), [injectedLanguage, config.pyodideBase, config.lowMemory])
   const catalog = useMemo(() => injectedCatalog ?? new Catalog(browserKeyValue()), [injectedCatalog])
   const lang = useLang()
   const [projects, setProjects] = useState<string[]>([])

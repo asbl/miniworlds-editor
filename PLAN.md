@@ -345,5 +345,12 @@ Anlass: Überprüfung der Live-Seite (Tablet 820 px: Editor nur 250 px breit, Ha
 - **Barrierefreiheit:** axe-core meldet in Hell und Dunkel, breit und schmal, mit Menü, Dialog, Klassenansicht und laufender miniworlds-Ansicht keine Verstöße mehr. Dafür: `h1`, Landmarks (`header`, `section` mit Namen, ein `main`), korrekte Tab-Listen (Dateileiste, Seitenleiste, Bereiche), Editor mit Namen „Quelltext von …“, Überschriftenebenen.
   Der Schließen-Knopf der Dateitabs ist kein eigenes Bedienelement mehr (verschachtelt war nicht erlaubt): Entf schließt den fokussierten Tab, das ×, der Mittelklick und das Menü bleiben für Maus und Touch.
 - **Dunkles Schema:** CodeMirrors Standardfarben fielen im Dunkeln durch den Kontrasttest; Syntaxfarben und Editorfläche folgen jetzt Variablen (`--tok-*`) beider Schemata.
-- Nicht berührt: Safari/Chromebook auf echten Geräten (S6), Speicherbedarf (ca. 460 MB nach dem Boot gemessen), `input()`, Verlauf/Schnappschüsse.
+- Nicht berührt: Safari/Chromebook auf echten Geräten (S6), `input()`.
+
+### Speicherbedarf (2026-11-18)
+
+Gemessen mit `test/memory.py` (PSS aller Chromium-Prozesse, Mittel mehrerer Läufe, Schwankung etwa ±30 MB; Chromium unter Linux): Der Editor belegt nach dem Start ca. **450–470 MB über dem leeren Browser**: Seite und Oberfläche 120–140 MB, Welt-Python (CPython, numpy, pygame, SDL, Zeichenfläche) ca. 300 MB, Editor-Hilfen (zweites Python mit jedi und ruff) ca. 130 MB. ruff allein ca. 25 MB, die jedi-Aufwärmung ca. 20 MB, beides im Rauschen; also gibt es dort wenig zu holen.
+- **Niedrig-Speicher-Modus** (`lowMemory` in `config.json`, automatisch ab `deviceMemory` ≤ 4): Das zweite Python startet erst beim ersten Tippen (oder Vervollständigung, Hover, Klick auf die Statusanzeige) und schläft nach 5 Minuten ohne Nutzung wieder ein; Dateien nur ansehen und Programme starten braucht es nicht. Gemessen **327 statt 461 MB** ohne Tippen (−29 %), nach dem Tippen 421 statt 469 MB. Hinweise erscheinen in diesem Modus erst nach der ersten Eingabe.
+- **Verworfen:** Vorab-Download von numpy, pygame und der miniworlds-Wheels parallel zu Pyodide für den Kaltstart. Messung (3 Läufe je Variante, lokales Netz): 13,0/13,0/12,4 s mit gegenüber 14,3/12,8/13,2 s ohne, also kein belastbarer Gewinn; der Kaltstart (ca. 13 s, warm ca. 3 s) ist CPU-gebunden (Kompilieren von Pyodide, Importe), nicht Netz-gebunden. Auf einem langsamen Schulnetz kann das anders sein; ohne Messung dort bleibt der Code draußen.
+- Noch nicht gemessen: Chromebook mit 4 GB (S6).
 

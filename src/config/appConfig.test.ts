@@ -23,6 +23,11 @@ describe('app config', () => {
       { label: 'Rel', url: 'https://example.org/blocks/' },
     ])
   })
+  it('reads lowMemory as auto or a boolean', () => {
+    expect(parseAppConfig({}, PAGE).lowMemory).toBe('auto')
+    expect(parseAppConfig({ lowMemory: true }, PAGE).lowMemory).toBe(true)
+    expect(parseAppConfig({ lowMemory: 'yes' }, PAGE).lowMemory).toBe('auto')
+  })
   it('keeps embed origins as plain origins', () => {
     expect(parseAppConfig({ embedOrigins: ['https://moodle.example/some/path', 'ftp://x', 'nonsense', 4] }, PAGE).embedOrigins).toEqual(['https://moodle.example'])
     expect(parseAppConfig({ embedOrigins: [] }, PAGE).embedOrigins).toEqual([]) // an empty list means: nobody

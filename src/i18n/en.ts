@@ -233,6 +233,7 @@ export const en: Record<keyof typeof de, string> = {
   'pwa.stale': 'The editor was updated in another tab. Please reload so everything matches.',
   'pwa.reload': 'Reload',
   'version.notOffline': 'not available offline',
+  'assist.dormant': 'Editor help is asleep (saves memory), click to start',
   'assist.partial': 'basic checks only, no completion',
   'assist.booting': 'Loading editor help …',
   'assist.error': 'Editor help not available',

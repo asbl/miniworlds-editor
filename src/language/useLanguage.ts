@@ -10,6 +10,7 @@ import type { LanguageService, LanguageState } from './service'
 
 const FALLBACK_BOOT_MS = 6000
 const SYNC_DELAY_MS = 300
+const IDLE_SLEEP_MS = 5 * 60 * 1000
 
 interface Args {
   language: LanguageService
@@ -34,8 +35,8 @@ export function useLanguage({ language, runner, fs, session, host, installedVers
 
   // 1. boot: right after the world worker (they would compete for the network), but not much later if that one is slow
   useEffect(() => {
-    if (installedVersion !== null) return void language.ensure(installedVersion)
-    const timer = setTimeout(() => void language.ensure(configuredVersion), FALLBACK_BOOT_MS)
+    if (installedVersion !== null) return void language.prepare(installedVersion)
+    const timer = setTimeout(() => language.prepare(configuredVersion), FALLBACK_BOOT_MS)
     return () => clearTimeout(timer)
   }, [language, installedVersion, configuredVersion])
 
@@ -46,6 +47,12 @@ export function useLanguage({ language, runner, fs, session, host, installedVers
     }
     window.addEventListener('online', retry)
     return () => window.removeEventListener('online', retry)
+  }, [language])
+
+  // low-memory mode: free the second Python again when nobody has used the editor help for a while
+  useEffect(() => {
+    const timer = setInterval(() => language.sleepIfIdle(IDLE_SLEEP_MS), 30_000)
+    return () => clearInterval(timer)
   }, [language])
 
   // 2. the engine's API index (needs the real package, so it comes from the world worker)

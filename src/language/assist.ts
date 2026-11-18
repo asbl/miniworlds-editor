@@ -10,6 +10,9 @@ export interface Assist {
   /** Problems of one file: miniworlds hints (they know the whole project) plus ruff. */
   lint(path: string, source: string): Promise<Issue[]>
   format(source: string): Promise<string | null>
+  /** Low-memory mode: the editor help sleeps; editing wakes it. */
+  wake(): void
+  dormant(): boolean
 }
 
 export interface AssistDeps {
@@ -29,6 +32,7 @@ export function createAssist({ service, files, lang }: AssistDeps): Assist {
       return h && h.doc ? { name: h.name, doc: h.doc } : null
     },
     async lint(path, source) {
+      if (service.dormant) return [] // looking at a file is no reason to start the help
       const lines = source.split('\n')
       const [engine, ruff] = await Promise.all([
         service.state.hints ? files().then((all) => service.hints({ ...all, [path]: source })) : Promise.resolve([]),
@@ -38,5 +42,7 @@ export function createAssist({ service, files, lang }: AssistDeps): Assist {
       return mergeIssues(own, ruffToIssues(ruff, lines, lang(), () => t('assist.fixRuff')))
     },
     format: (source) => service.format(source),
+    wake: () => service.wake(),
+    dormant: () => service.dormant,
   }
 }

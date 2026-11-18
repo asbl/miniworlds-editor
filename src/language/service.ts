@@ -7,7 +7,8 @@ export interface LanguageWorkerLike {
   onerror: ((event: { message?: string }) => void) | null
 }
 
-export type LanguagePhase = 'idle' | 'booting' | 'ready' | 'error'
+/** `dormant`: low-memory mode, the worker is not running (yet, or any more) and starts when it is needed. */
+export type LanguagePhase = 'idle' | 'dormant' | 'booting' | 'ready' | 'error'
 
 export interface LanguageState {
   phase: LanguagePhase
@@ -47,6 +48,10 @@ export class LanguageService {
   /** A concrete version requested while the "newest" boot was still running. */
   private wanted: string | null = null
   private lastVersion: string | null = null
+  /** Low-memory mode: the second Python (about 130 MB) only runs while the user works on the code. */
+  private lazy = false
+  private prepared: string | null | undefined = undefined
+  private lastUsed = Date.now()
   private installed: string | null = null
   private lastApi: string | null = null
   private lastFiles: Record<string, string> | null = null
@@ -64,6 +69,37 @@ export class LanguageService {
     this.listeners.forEach((l) => l())
   }
 
+  setLazy(lazy: boolean): void {
+    this.lazy = lazy
+  }
+
+  /** In lazy mode the worker is not running (yet): nothing to answer, and no reason to start one just to look. */
+  get dormant(): boolean {
+    return this.lazy && this.worker === null && this.state.phase === 'dormant'
+  }
+
+  /** Engine version to use. Eager mode boots now; lazy mode only remembers it until `wake()`. */
+  prepare(miniworlds: string | null): void {
+    if (!this.lazy) return void this.ensure(miniworlds)
+    this.prepared = miniworlds
+    if (this.worker) void this.ensure(miniworlds) // already running: follow the version
+    else if (this.state.phase === 'idle') this.set({ phase: 'dormant' })
+  }
+
+  /** Start the worker if it sleeps (editing, completion and hover call this). */
+  wake(): void {
+    this.lastUsed = Date.now()
+    if (this.dormant && this.prepared !== undefined) void this.ensure(this.prepared)
+  }
+
+  /** Free the memory again after the user stopped editing. */
+  sleepIfIdle(idleMs: number): boolean {
+    if (!this.lazy || this.state.phase !== 'ready' || Date.now() - this.lastUsed < idleMs) return false
+    this.discard()
+    this.set({ phase: 'dormant', hints: false, ruff: false, python: false })
+    return true
+  }
+
   /**
    * Boot for this engine version (null = newest). A different version restarts the worker (API and hints are version-specific).
    * A worker that already boots "newest" is kept when a concrete version is asked for while it has not finished yet:
@@ -77,6 +113,7 @@ export class LanguageService {
     }
     this.wanted = null
     this.lastVersion = miniworlds
+    this.lastUsed = Date.now()
     this.discard()
     const worker = this.env.createWorker()
     this.worker = worker
@@ -155,6 +192,7 @@ export class LanguageService {
   }
 
   private async request<T>(name: Extract<ToLanguage, { type: 'req' }>['name'], ...args: unknown[]): Promise<T | null> {
+    this.wake()
     if (!(await (this.ready ?? Promise.resolve(false)))) return null
     const worker = this.worker
     if (!worker || this.state.phase !== 'ready') return null

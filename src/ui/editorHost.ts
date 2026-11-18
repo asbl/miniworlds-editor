@@ -103,6 +103,7 @@ export class EditorHost implements Surface {
         keymap.of([indentWithTab, { key: 'Shift-Alt-f', run: () => (void this.format(), true) }]),
         EditorView.updateListener.of((update) => {
           if (update.docChanged && this.current === path) {
+            this.assist?.wake()
             this.onChange(path, update.state.doc.toString())
           }
           const count = diagnosticCount(update.state)
