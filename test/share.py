@@ -121,6 +121,14 @@ with sync_playwright() as p:
     check("a broken link says so and leads back", "funktioniert nicht" in bad.inner_text(".play-problem") and bad.locator(".play-problem a").count() == 1, bad.inner_text(".play-problem"))
     bad.close()
 
+    # --- a game link typed into the address bar of an open editor (only the part after # changes) opens the play page
+    open_editor = ctx.new_page()
+    open_editor.goto(URL)
+    open_editor.wait_for_selector(".cm-content", timeout=30000)
+    open_editor.evaluate("location.hash = 'play=nonsense'")
+    check("a link pasted into an open editor opens the play page", eventually(lambda: open_editor.locator(".play-problem").count() == 1, 15000))
+    open_editor.close()
+
     check("no page errors in the editor", not errors, str(errors[:3]))
     check("no page errors on the play pages", not perrors and not (BROWSER == "chromium" and merrors), str((perrors + (merrors if BROWSER == "chromium" else []))[:3]))
     browser.close()

@@ -25,6 +25,7 @@ import { ImportGuide, Welcome, type ImportActions } from './welcome/Welcome'
 import { ProjectView } from './ProjectView'
 import { collectShareContext, type ShareContext } from '../share/collect'
 import { ShareDialog } from '../share/ShareDialog'
+import { isPlayHash } from '../share/payload'
 import {
   createStarterProject,
   createTemplateProject,
@@ -195,6 +196,19 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     pickFiles: () => filesInput.current?.click(),
     dropFiles: (files) => void guarded(async () => showMade(await importProjectDropped(store, files)))(),
   }
+
+  // A game link pasted into the address bar of an open editor only changes the part after `#`: the page does not reload by
+  // itself. Save the work, then reload, so that the play page opens (the editor's own copy is untouched).
+  useEffect(() => {
+    const changed = () => {
+      if (!isPlayHash(location.hash)) return
+      void (async () => {
+        try { await flush.current?.() } finally { location.reload() }
+      })()
+    }
+    window.addEventListener('hashchange', changed)
+    return () => window.removeEventListener('hashchange', changed)
+  }, [])
 
   const guarded = (action: () => Promise<void>) => () =>
     void action().catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
