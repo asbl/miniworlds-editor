@@ -1,0 +1,20 @@
+[
+  {"id": "keyDown", "group": "key", "applies": ["actor", "world"], "param": "key", "method": "on_key_down_{key}", "code": "def on_key_down_{key}(self):\n    ${1:pass}"},
+  {"id": "keyHeld", "group": "key", "applies": ["actor", "world"], "param": "key", "method": "on_key_pressed_{key}", "code": "def on_key_pressed_{key}(self):\n    ${1:pass}"},
+  {"id": "keyUp", "group": "key", "applies": ["actor", "world"], "param": "key", "method": "on_key_up_{key}", "code": "def on_key_up_{key}(self):\n    ${1:pass}"},
+  {"id": "keyAny", "group": "key", "applies": ["actor", "world"], "method": "on_key_down", "code": "def on_key_down(self, keys):\n    if \"${1:left}\" in keys:\n        ${2:pass}"},
+  {"id": "clicked", "group": "mouse", "applies": ["actor"], "method": "on_clicked_left", "code": "def on_clicked_left(self, position):\n    ${1:pass}"},
+  {"id": "clickedRight", "group": "mouse", "applies": ["actor"], "method": "on_clicked_right", "code": "def on_clicked_right(self, position):\n    ${1:pass}"},
+  {"id": "mouseEnter", "group": "mouse", "applies": ["actor"], "method": "on_mouse_enter", "code": "def on_mouse_enter(self, position):\n    ${1:pass}"},
+  {"id": "mouseLeave", "group": "mouse", "applies": ["actor"], "method": "on_mouse_leave", "code": "def on_mouse_leave(self, position):\n    ${1:pass}"},
+  {"id": "worldClick", "group": "mouse", "applies": ["world"], "method": "on_mouse_left", "code": "def on_mouse_left(self, position):\n    ${1:pass}"},
+  {"id": "worldMove", "group": "mouse", "applies": ["world"], "method": "on_mouse_motion", "code": "def on_mouse_motion(self, position):\n    ${1:pass}"},
+  {"id": "touchClass", "group": "sense", "applies": ["actor"], "param": "class", "method": "on_detecting_{cls}", "code": "def on_detecting_{cls}(self, other):\n    ${1:pass}"},
+  {"id": "touchAny", "group": "sense", "applies": ["actor"], "method": "on_detecting_actor", "code": "def on_detecting_actor(self, other):\n    ${1:pass}"},
+  {"id": "leaveClass", "group": "sense", "applies": ["actor"], "param": "class", "method": "on_not_detecting_{cls}", "code": "def on_not_detecting_{cls}(self, other):\n    ${1:pass}"},
+  {"id": "border", "group": "sense", "applies": ["actor"], "method": "on_detecting_borders", "code": "def on_detecting_borders(self, borders):\n    ${1:self.bounce_from_border(borders)}"},
+  {"id": "offWorld", "group": "sense", "applies": ["actor"], "method": "on_detecting_not_on_world", "code": "def on_detecting_not_on_world(self):\n    ${1:self.remove()}"},
+  {"id": "act", "group": "time", "applies": ["actor", "world"], "method": "act", "code": "def act(self):\n    ${1:pass}"},
+  {"id": "setup", "group": "time", "applies": ["actor", "world"], "method": "on_setup", "code": "def on_setup(self):\n    ${1:pass}"},
+  {"id": "message", "group": "time", "applies": ["actor", "world"], "param": "message", "method": "on_message", "code": "def on_message(self, message):\n    if message == \"{message}\":\n        ${1:pass}"}
+]

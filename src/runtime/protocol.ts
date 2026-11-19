@@ -11,6 +11,13 @@ export type RpcReply<T = unknown> = { ok: true; value: T } | { ok: false; error:
 
 import type { AudioMessage } from './audio'
 
+/** One batch of the event trace: methods the engine called (path, line, class, method, how often) and inputs nobody answered. */
+export interface TraceBatch {
+  calls: [path: string, line: number, cls: string, method: string, count: number][]
+  /** Event name (`key_down_w`, `mouse_left_down`), the key/click methods that do exist, how often. */
+  ignored: [event: string, existing: string[], count: number][]
+}
+
 export type BootStep = 'pyodide' | 'packages' | 'miniworlds' | 'extra'
 
 export type ToWorker =
@@ -58,6 +65,9 @@ export type FromWorker =
   | { type: 'installed'; requirement: string; ok: boolean; error?: string }
   /** The program waits in `input()`. `via`: where the answer must go (to the worker, or to the Service Worker that holds a blocking request). */
   | { type: 'input-request'; id: string; prompt: string; via: 'worker' | 'service-worker' }
+  | ({ type: 'trace' } & TraceBatch)
+  /** The program's window changed size (a world of another size, a control panel next to it): the canvas follows. */
+  | { type: 'canvas-size'; width: number; height: number }
   /** Scenario mode: the world exists and is paused, commands are accepted. */
   | { type: 'scenario-ready' }
   | { type: 'rpc-result'; id: number; reply: RpcReply }

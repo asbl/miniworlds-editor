@@ -239,6 +239,20 @@ describe('Runner', () => {
     expect(runner.state.scenarioReady).toBe(false)
   })
 
+  it('follows the size of the program window and forwards trace batches', async () => {
+    const { runner, workers } = setup()
+    await bootReady(runner, workers)
+    expect(runner.state.canvasSize).toEqual({ width: 400, height: 300 })
+    workers[0]?.emit({ type: 'canvas-size', width: 600, height: 200 })
+    expect(runner.state.canvasSize).toEqual({ width: 600, height: 200 })
+    const seen: number[] = []
+    const off = runner.subscribeTrace((batch) => seen.push(batch.calls.length))
+    workers[0]?.emit({ type: 'trace', calls: [['a.py', 1, 'A', 'act', 3]], ignored: [] })
+    off()
+    workers[0]?.emit({ type: 'trace', calls: [], ignored: [] })
+    expect(seen).toEqual([1])
+  })
+
   it('answers rpc calls by id and fails pending ones when the worker goes away', async () => {
     const { runner, workers } = setup()
     await bootReady(runner, workers)

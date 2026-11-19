@@ -13,6 +13,7 @@ import { t, type Lang } from '../i18n'
 import { assistExtensions, forceLinting } from './assistExtensions'
 import type { ErrorNote } from '../runtime/explain'
 import type { Surface } from './session'
+import { numberTools } from '../live/scrub'
 
 /** Texts of CodeMirror's search panel etc.; English is built in. */
 const PHRASES: Record<Lang, Record<string, string>> = {
@@ -112,6 +113,22 @@ const errorLine: Extension = [
   ]),
 ]
 
+/** A method the engine just called: its line glows for a moment (and stays lit while it keeps being called). */
+const flashLine = StateEffect.define<number | null>()
+const flashField = StateField.define<DecorationSet>({
+  create: () => Decoration.none,
+  update(deco, tr) {
+    if (tr.docChanged) deco = Decoration.none
+    for (const effect of tr.effects) {
+      if (!effect.is(flashLine)) continue
+      if (effect.value === null || effect.value < 1 || effect.value > tr.state.doc.lines) return Decoration.none
+      return Decoration.set([Decoration.line({ class: 'cm-fired-line' }).range(tr.state.doc.line(effect.value).from)])
+    }
+    return deco
+  },
+  provide: (field) => EditorView.decorations.from(field),
+})
+
 /**
  * One CodeMirror view, one EditorState per open file (keeps undo history and
  * cursor per tab). Imperative on purpose: the UI framework only mounts it.
@@ -128,6 +145,9 @@ export class EditorHost implements Surface {
   )
   /** Number of problems in the file shown (hints and lint). */
   onProblems: (count: number) => void = () => {}
+  /** A number was changed with the slider, the keys or the colour picker: apply it to the running world. */
+  onNumberChange: () => void = () => {}
+  private numbers = numberTools(() => this.onNumberChange())
   private lastCount = -1
 
   constructor(
@@ -156,6 +176,8 @@ export class EditorHost implements Surface {
         python(),
         codeHighlighting,
         errorLine,
+        flashField,
+        this.numbers,
         this.assistExt,
         this.language.of(this.phrases()),
         // the editing area is a text box for assistive technology: it needs a name (and the file it shows)
@@ -271,6 +293,19 @@ export class EditorHost implements Surface {
   /** Mark (or with null clear) the failing line of the file currently shown, with the message under it when given. */
   markError(line: number | null, note: ErrorNote | null = null): void {
     this.view.dispatch({ effects: setErrorLine.of(line === null ? null : { line, note }) })
+  }
+
+  private flashTimer: ReturnType<typeof setTimeout> | null = null
+
+  /** Let the line of a method glow (only when its file is the one shown); it fades about half a second after the last call. */
+  flash(path: string, line: number): void {
+    if (this.current !== path) return
+    this.view.dispatch({ effects: flashLine.of(line) })
+    if (this.flashTimer) clearTimeout(this.flashTimer)
+    this.flashTimer = setTimeout(() => {
+      this.flashTimer = null
+      this.view.dispatch({ effects: flashLine.of(null) })
+    }, 500)
   }
 
   /** Remove the error mark in every open file (called when the program starts again). */

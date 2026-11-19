@@ -369,11 +369,50 @@ def setup(has_audio, remote_audio=False):
             _remote_audio(pygame)
         else:
             _silence_audio(pygame)
+    real_set_mode = pygame.display.set_mode
+
+    def set_mode(*args, **kwargs):
+        surface = real_set_mode(*args, **kwargs)
+        try:
+            width, height = surface.get_size()
+            js._mw_canvas_size(width, height)  # the canvas has to be as big as the window (a toolbar widens it)
+        except Exception:  # noqa: BLE001 - never break the program over this
+            pass
+        return surface
+
+    pygame.display.set_mode = set_mode
     pygame.mouse.get_pos = lambda: _mouse["pos"]
     pygame.mouse.get_pressed = lambda num_buttons=3, **k: _mouse["buttons"][:num_buttons]
 
     builtins.input = _input
     sys.stdin = _Stdin()
+
+
+def _sources():
+    """Text of the project's .py files as the program is about to read them (the live patch compares against it)."""
+    found = {}
+    for folder, _dirs, names in os.walk(ROOT):
+        for name in names:
+            if name.endswith(".py"):
+                full = os.path.join(folder, name)
+                try:
+                    with open(full, encoding="utf-8") as handle:
+                        found[os.path.relpath(full, ROOT)] = handle.read()
+                except (OSError, UnicodeDecodeError):
+                    pass
+    return found
+
+
+def _diagnostics():
+    """Event trace and live patch; a failure here (old engine, odd setup) must never keep a program from running."""
+    try:
+        import mw_live
+        import mw_trace
+
+        mw_live.start(_sources(), ROOT)
+        mw_trace.install(_notify, ROOT)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def reset_project():
@@ -433,6 +472,8 @@ async def run(entry, scenario=False):
     _audio_notice_sent = False  # one hint per run
     reset_audio()
     _purge_modules()
+    _reset_engine()  # a program that crashed never reached stop(): its window (and size) must not leak into this run
+    _diagnostics()
     me = asyncio.current_task()
     before = set(asyncio.all_tasks())
     ready = None
@@ -480,6 +521,15 @@ async def run(entry, scenario=False):
         _notify("scenario-ready")
 
 
+def _reset_engine():
+    try:
+        from miniworlds.base.app import App
+
+        App.reset()
+    except Exception:  # noqa: BLE001 - older engine versions
+        pass
+
+
 def _release_host():
     global _host
     _host = None
@@ -517,6 +567,15 @@ def rpc(name, args_json="[]"):
                 except SyntaxError as e:
                     return json.dumps({"ok": True, "value": {"path": path, "line": e.lineno or 1, "message": e.msg}})
             return json.dumps({"ok": True, "value": None})
+        if name == "trace":
+            import mw_trace
+
+            mw_trace.enable(args[0])
+            return json.dumps({"ok": True, "value": None})
+        if name == "live":
+            import mw_live
+
+            return json.dumps({"ok": True, "value": mw_live.apply(args[0])})
         raise ValueError(f"Unknown request: {name}")
     except Exception as error:  # reported to the UI, never fatal
         return json.dumps({"ok": False, "error": f"{type(error).__name__}: {error}"})

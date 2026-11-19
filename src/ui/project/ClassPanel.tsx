@@ -13,6 +13,10 @@ import type { FileEntry, Fs } from '../../workspace'
 import { openContextMenu } from '../ContextMenu'
 import { infoDialog } from '../dialogs'
 import { ImageDialog } from '../ImageDialog'
+import { CostumeDialog } from '../CostumeDialog'
+import { ToolbarDialog } from '../ToolbarDialog'
+import { readToolbar, setToolbar, type ToolbarSpec } from '../../project/classToolbar'
+import { readCostumes, setClassCostumes, type Costumes } from '../../project/classCostumes'
 import type { Session } from '../session'
 
 /** What the person set in the diagram (details on/off, the class clicked last): kept while another sidebar tab is shown. */
@@ -34,15 +38,21 @@ interface Props {
   /** The file and line the cursor is in (marks the class in the diagram). */
   cursor: { path: string; line: number } | null
   stale: Set<string>
+  /** Classes whose event methods were just called. */
+  fired?: ReadonlySet<string>
   refresh: () => Promise<void>
   onNewClass: (base?: BaseClass) => void
   onRenameClass: (info: ModelClass) => void
+  /** "React to …": add a method for an event to this class. */
+  onReact: (info: ModelClass) => void
 }
 
 /** The class diagram of the project with its tools: show a class, add a new one or a subclass, choose an image. */
-export function ClassPanel({ view, fs, session, entries, kind, classModel, gf, metaApi, cursor, stale, refresh, onNewClass, onRenameClass }: Props) {
+export function ClassPanel({ view, fs, session, entries, kind, classModel, gf, metaApi, cursor, stale, fired, refresh, onNewClass, onRenameClass, onReact }: Props) {
   const { details, setDetails, picked: pickedClass, setPicked: setPickedClass } = view
   const [imageFor, setImageFor] = useState<string | null>(null)
+  const [costumesFor, setCostumesFor] = useState<string | null>(null)
+  const [toolbarFor, setToolbarFor] = useState<string | null>(null)
   const [thumbs, setThumbs] = useState<Record<string, string>>({})
   const cursorClass = classModel.model && cursor ? classAtLine(classModel.model, cursor.path, cursor.line) : null
 
@@ -82,6 +92,31 @@ export function ClassPanel({ view, fs, session, entries, kind, classModel, gf, m
     classModel.refresh()
   }
 
+  async function applyCostumes(className: string, costumes: Costumes) {
+    setCostumesFor(null)
+    const info = classModel.model?.classes.find((c) => c.name === className)
+    const first = costumes.frames[0]
+    if (!info || !session || !first) return
+    const dims = await imageSize(await fs.readBytes(first), first)
+    const edit = setClassCostumes(await session.readText(info.file), info, costumes, dims ? fitSize(dims[0], dims[1]) : null)
+    if (!edit.ok) return void (await infoDialog(t('dialog.error'), t('image.oneLineSetup', { name: className, path: first })))
+    await session.writeText(info.file, edit.text)
+    await refresh()
+    classModel.refresh()
+  }
+
+  async function applyToolbar(className: string, spec: ToolbarSpec, handler: boolean) {
+    setToolbarFor(null)
+    const info = classModel.model?.classes.find((c) => c.name === className)
+    if (!info || !session) return
+    const edit = setToolbar(await session.readText(info.file), info, spec, handler)
+    if (!edit.ok) return void (await infoDialog(t('dialog.error'), t('toolbar.oneLineSetup', { name: className })))
+    await session.writeText(info.file, edit.text)
+    await refresh()
+    classModel.refresh()
+    void session.open(info.file, { line: info.line, column: 0, length: 0 })
+  }
+
   function baseOf(info: ModelClass | null, name: string): BaseClass | null {
     if (info) return { name, user: true, kind: info.kind, file: info.file }
     const lib = classModel.model?.libraries.find((l) => l.name === name)
@@ -109,15 +144,20 @@ export function ClassPanel({ view, fs, session, entries, kind, classModel, gf, m
       )
     }
     if (info) items.push({ text: t('uml.menu.source'), run: () => onSelect(info, name) })
+    if (info && (info.kind === 'actor' || info.kind === 'world')) items.push({ text: t('uml.menu.react'), run: () => onReact(info) })
     if (info && kind === 'project') items.push({ text: t('class.rename'), run: () => onRenameClass(info) })
     if (info?.kind === 'actor') items.push({ text: t('uml.menu.image'), run: () => setImageFor(name) })
+    if (info?.kind === 'actor') items.push({ text: t('uml.menu.costumes'), run: () => setCostumesFor(name) })
     if (info?.kind === 'world') items.push({ text: t('uml.menu.background'), run: () => setImageFor(name) })
+    if (info?.kind === 'world') items.push({ text: t('uml.menu.toolbar'), run: () => setToolbarFor(name) })
     if (base && kind === 'project' && canSubclass(base)) {
       items.push('-', { text: t('uml.menu.subclass', { name }), run: () => onNewClass(base) })
     }
     if (items.length > 1) openContextMenu(event.clientX, event.clientY, items)
   }
 
+  const toolbarClass = toolbarFor ? classModel.model?.classes.find((x) => x.name === toolbarFor) : undefined
+  const costumeClass = costumesFor ? classModel.model?.classes.find((x) => x.name === costumesFor) : undefined
   const imageClass = imageFor ? classModel.model?.classes.find((x) => x.name === imageFor) : undefined
 
   return (
@@ -141,7 +181,7 @@ export function ClassPanel({ view, fs, session, entries, kind, classModel, gf, m
             model={classModel.model}
             details={details}
             counts={gf.state.byClass}
-            marks={{ selected: pickedClass, cursor: cursorClass, object: gf.state.selected?.cls ?? null, armed: gf.state.armed?.cls ?? null }}
+            marks={{ selected: pickedClass, cursor: cursorClass, object: gf.state.selected?.cls ?? null, armed: gf.state.armed?.cls ?? null, fired }}
             stale={stale}
             images={thumbs}
             onSelect={onSelect}
@@ -150,6 +190,25 @@ export function ClassPanel({ view, fs, session, entries, kind, classModel, gf, m
           />
         )}
       </div>
+      {toolbarFor && toolbarClass && (
+        <ToolbarDialog
+          className={toolbarFor}
+          initial={readToolbar(modelClassSource(toolbarClass, classModel.files))}
+          hasHandler={toolbarClass.methods.some((m) => m.name === 'on_message')}
+          onApply={(spec, handler) => void applyToolbar(toolbarFor, spec, handler)}
+          onClose={() => setToolbarFor(null)}
+        />
+      )}
+      {costumesFor && costumeClass && (
+        <CostumeDialog
+          fs={fs}
+          className={costumesFor}
+          initial={readCostumes(modelClassSource(costumeClass, classModel.files))}
+          onSource={(path, source) => metaApi.setMeta({ ...metaApi.metaRef.current, images: recordSource(metaApi.metaRef.current.images, path, source) })}
+          onApply={(costumes) => void applyCostumes(costumesFor, costumes)}
+          onClose={() => setCostumesFor(null)}
+        />
+      )}
       {imageFor && (
         <ImageDialog
           fs={fs}
