@@ -30,10 +30,11 @@ async function download(name, expectedSha) {
     if (!expectedSha || sha256(target) === expectedSha) return target
     rmSync(target) // damaged copy from an earlier run
   }
-  const res = await fetch(CDN + name)
+  // identity: with a compressed transfer, content-length is the compressed size and fetch hands out the decompressed bytes
+  const res = await fetch(CDN + name, { headers: { 'accept-encoding': 'identity' } })
   if (!res.ok) throw new Error(`${name}: HTTP ${res.status}`)
   const bytes = Buffer.from(await res.arrayBuffer())
-  const length = Number(res.headers.get('content-length'))
+  const length = res.headers.get('content-encoding') ? 0 : Number(res.headers.get('content-length')) // 0: size not comparable
   if (length && length !== bytes.length) throw new Error(`${name}: incomplete download (${bytes.length} of ${length} bytes)`)
   if (bytes.length === 0) throw new Error(`${name}: empty download`)
   if (name.endsWith('.wasm') && bytes.subarray(0, 4).toString('latin1') !== '\0asm') throw new Error(`${name}: not a WebAssembly file`)
