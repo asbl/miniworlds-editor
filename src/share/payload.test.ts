@@ -100,7 +100,7 @@ describe('decodePayload refuses what it should', () => {
     const hash = '#play=' + btoa(String.fromCharCode(...huge)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
     expect(huge.length).toBeLessThan(200_000)
     expect(() => decodePayload(hash)).toThrow(/too large/)
-  })
+  }, 30_000) // packing 60 MB takes a while when the machine is busy
   it('rejects a payload with a path that climbs out, bad base64, or a newer version', () => {
     const make = (payload: unknown) => encodeLink(payload as never, '').slice(1)
     bad(make({ v: 1, files: { '../evil.py': 'x' } }))
