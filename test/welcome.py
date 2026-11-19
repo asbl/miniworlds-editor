@@ -110,6 +110,7 @@ with sync_playwright() as p:
     check("the starter project stays", eventually(lambda: page.locator("dialog.welcome").count() == 0 and "Projekt: Mein Projekt" in topbar(page), 5000))
     page.click(".sidebar-tabs [role=tab] >> text=Dateien")
     page.click(".tree .row >> text=Figur.py")
+    eventually(lambda: "class Figur" in page.inner_text(".cm-content"), 10000)  # the editor swaps its text a moment after the click
     figure = page.inner_text(".cm-content")
     check("the starter figure explains itself and stays in the world", "bounce_from_border" in figure and "Radius" in figure, figure[:300])
     page.click(".toolbar .run")
