@@ -1,6 +1,7 @@
 import type { de } from './de'
 import { studentEn } from './student.en'
 import { welcomeEn } from './welcome.en'
+import { collabEn } from './collab.en'
 import { engineEn } from './engine.en'
 
 export const en: Record<keyof typeof de, string> = {
@@ -365,5 +366,6 @@ export const en: Record<keyof typeof de, string> = {
 
   ...studentEn,
   ...welcomeEn,
+  ...collabEn,
   ...engineEn,
 }

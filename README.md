@@ -11,7 +11,7 @@ npm run size       # Größenbudget prüfen (Shell ≤ 2 MB gzip, Hintergrund-WA
 npm run selfhost   # Pyodide nach dist/pyodide/ legen (Schulnetze ohne CDN)
 ```
 
-Weiterführend: [Veröffentlichen, Offline, config.json](docs/deploy.md) · [Einbetten in Moodle per postMessage](docs/embed.md).
+Weiterführend: [Veröffentlichen, Offline, config.json](docs/deploy.md) · [Einbetten in Moodle per postMessage](docs/embed.md) · [Gemeinsam arbeiten (Relay)](docs/collab.md).
 
 Browsertests (brauchen Netz für Pyodide und PyPI; Python mit Playwright): `npm run build`, dann
 - gegen `npx vite preview --port 4173`: Editor-Kern `test/smoke.py`, Python-Laufzeit `test/run.py`, miniworlds-Ansicht `test/miniworlds.py`, Vorlagen und Bilder `test/templates.py`, Editor-Hilfen `test/assist.py`, schmale Bildschirme `test/responsive.py`, Verlauf `test/history.py`, Welt in Fenster/Vollbild/Tab `test/world.py`, `input()` `test/input.py`, Links für Aufgaben `test/launch.py`, Ton `test/sound.py`, Klasse umbenennen `test/rename.py`, Content-Security-Policy `test/csp.py`, Speicher (Linux) `test/memory.py`, Barrierefreiheit (axe) `test/a11y.py`;

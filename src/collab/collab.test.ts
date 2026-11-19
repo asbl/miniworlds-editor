@@ -1,0 +1,353 @@
+import { afterEach, describe, expect, it } from 'vitest'
+import { createRelay } from '../../deploy/collab/relay.mjs'
+import { MemoryFs, type Fs } from '../workspace'
+import { Collab, isSyncedFs } from './collab'
+import { newInvite, parseInviteHash, randomRoomCode, readOnlyOf, deserializeInvite, serializeInvite, roomLink, type Invite } from './shared'
+
+type Relay = ReturnType<typeof createRelay>
+const relays: Relay[] = []
+const collabs: Collab[] = []
+
+async function start(options: Record<string, unknown> = { origins: ['*'] }) {
+  const relay = createRelay(options)
+  relays.push(relay)
+  const address = (await relay.listen(0, '127.0.0.1')) as { port: number }
+  return { relay, url: `ws://127.0.0.1:${address.port}/collab` }
+}
+
+const invites = new Map<string, Invite>()
+/** `code` names a room; every name has one invitation, so the people of a room share their keys. */
+function person(code: string, url: string, name: string, extra: Record<string, unknown> = {}) {
+  let invite = invites.get(code)
+  if (!invite) invites.set(code, (invite = { ...newInvite(), room: code }))
+  const c = new Collab({ invite, name, url, applyDelayMs: 10, ...extra })
+  collabs.push(c)
+  return c
+}
+const readerOf = (code: string, url: string, name: string) => {
+  const invite = readOnlyOf(invites.get(code) as Invite) as Invite
+  const c = new Collab({ invite, name, url, applyDelayMs: 10 })
+  collabs.push(c)
+  return c
+}
+
+const settle = (ms = 150) => new Promise((r) => setTimeout(r, ms))
+async function until(check: () => Promise<boolean> | boolean, ms = 3000) {
+  const end = Date.now() + ms
+  while (Date.now() < end) {
+    if (await check()) return true
+    await settle(20)
+  }
+  return false
+}
+
+async function filled(files: Record<string, string>): Promise<Fs> {
+  const fs = new MemoryFs()
+  for (const [p, c] of Object.entries(files)) await fs.write(p, c)
+  return fs
+}
+
+afterEach(async () => {
+  await Promise.all(collabs.splice(0).map((c) => c.leave()))
+  await Promise.all(relays.splice(0).map((r) => r.close()))
+  invites.clear()
+})
+
+describe('working together', () => {
+  it('gives a joiner the project of the host', async () => {
+    const { url } = await start()
+    const host = person('abcd-efgh', url, 'Anna')
+    await host.join(await filled({ 'main.py': 'print(1)\n', 'classes/Crab.py': 'class Crab: ...\n' }))
+    const guestFs = new MemoryFs()
+    const guest = person('abcd-efgh', url, 'Ben')
+    expect(await guest.join(guestFs)).not.toBeNull()
+    expect(await guestFs.read('main.py')).toBe('print(1)\n')
+    expect(await guestFs.read('classes/Crab.py')).toBe('class Crab: ...\n')
+    await until(() => guest.people().length === 2)
+    expect(guest.people().map((p) => p.name).sort()).toEqual(['Anna', 'Ben'])
+    expect(guest.people()[0]?.self).toBe(true)
+  })
+
+  it('merges edits made at the same time in one file', async () => {
+    const { url } = await start()
+    const a = person('room-aaaa', url, 'A')
+    const b = person('room-aaaa', url, 'B')
+    const fsA = (await a.join(await filled({ 'main.py': 'one\ntwo\n' }))) as Fs
+    const fsB = (await b.join(new MemoryFs())) as Fs
+    expect(await fsB.read('main.py')).toBe('one\ntwo\n')
+    a.room.text('main.py')?.insert(0, 'A:')
+    b.room.text('main.py')?.insert('one\ntwo\n'.length, 'B:')
+    await until(async () => (await fsA.read('main.py')) === 'A:one\ntwo\nB:' && (await fsB.read('main.py')) === 'A:one\ntwo\nB:')
+    expect(await fsA.read('main.py')).toBe('A:one\ntwo\nB:')
+    expect(await fsB.read('main.py')).toBe('A:one\ntwo\nB:')
+  })
+
+  it('shows new, renamed and removed files and pictures to the others', async () => {
+    const { url } = await start()
+    const a = person('room-bbbb', url, 'A')
+    const b = person('room-bbbb', url, 'B')
+    const innerB = new MemoryFs()
+    const changes: string[] = []
+    b.onRemote = (c) => changes.push(JSON.stringify(c))
+    const fsA = (await a.join(await filled({ 'main.py': 'x\n' }))) as Fs
+    await b.join(innerB)
+    await fsA.write('classes/Hero.py', 'class Hero: ...\n')
+    await fsA.write('images/hero.png', new Uint8Array([1, 2, 3, 250]))
+    expect(await until(async () => (await innerB.exists('classes/Hero.py')) && (await innerB.exists('images/hero.png')))).toBe(true)
+    expect([...(await innerB.readBytes('images/hero.png'))]).toEqual([1, 2, 3, 250])
+    await fsA.rename('classes/Hero.py', 'classes/Knight.py')
+    expect(await until(async () => (await innerB.exists('classes/Knight.py')) && !(await innerB.exists('classes/Hero.py')))).toBe(true)
+    expect(await innerB.read('classes/Knight.py')).toBe('class Hero: ...\n')
+    await fsA.remove('classes')
+    expect(await until(async () => !(await innerB.exists('classes/Knight.py')))).toBe(true)
+    expect(changes.some((c) => c.includes('classes/Knight.py'))).toBe(true)
+  })
+
+  it('does not let a late autosave undo what somebody else typed', async () => {
+    const { url } = await start()
+    const a = person('room-cccc', url, 'A')
+    const b = person('room-cccc', url, 'B')
+    const fsA = (await a.join(await filled({ 'main.py': 'v1' }))) as Fs
+    await b.join(new MemoryFs())
+    expect(isSyncedFs(fsA)).toBe(true)
+    // B types; A's autosave still holds the old text
+    b.room.text('main.py')?.insert(2, '-b')
+    await until(() => a.room.text('main.py')?.toString() === 'v1-b')
+    if (isSyncedFs(fsA)) await fsA.mirror.write('main.py', 'v1')
+    expect(a.room.text('main.py')?.toString()).toBe('v1-b')
+    expect(await fsA.read('main.py')).toBe('v1-b')
+  })
+
+  it('adds files only found on the joining side and lets the room win otherwise', async () => {
+    const { url } = await start()
+    const a = person('room-dddd', url, 'A')
+    await a.join(await filled({ 'main.py': 'room version' }))
+    const b = person('room-dddd', url, 'B')
+    const local = await filled({ 'main.py': 'old local', 'notes.txt': 'mine' })
+    await b.join(local)
+    expect(await local.read('main.py')).toBe('room version')
+    expect(await until(() => a.room.has('notes.txt'))).toBe(true)
+  })
+
+  it('catches up after the connection was lost', async () => {
+    const { url, relay } = await start()
+    const a = person('room-eeee', url, 'A')
+    const b = person('room-eeee', url, 'B')
+    await a.join(await filled({ 'main.py': 'start' }))
+    await b.join(new MemoryFs())
+    const sockets = [...(relay.rooms.get('room-eeee')?.conns.keys() ?? [])] as { terminate(): void }[]
+    sockets.forEach((s) => s.terminate())
+    a.room.text('main.py')?.insert(5, ' A')
+    b.room.text('main.py')?.insert(0, 'B ')
+    expect(await until(() => a.room.text('main.py')?.toString() === b.room.text('main.py')?.toString() && a.status === 'connected' && a.room.text('main.py')?.toString().includes('A') === true && a.room.text('main.py')?.toString().includes('B') === true, 8000)).toBe(true)
+  })
+})
+
+describe('relay', () => {
+  it('refuses pages that are not on its list and bad room names', async () => {
+    const { url } = await start({ origins: ['https://editor.example.org'] })
+    const c = person('room-ffff', url, 'A')
+    expect(await c.join(new MemoryFs(), 3000)).toBeNull() // node sends no Origin
+    expect(c.failure).toBe('refused')
+    const bad = person('x', url, 'B')
+    expect(await bad.join(new MemoryFs(), 3000)).toBeNull()
+    expect(bad.failure).toBe('badRoom')
+  })
+
+  it('limits the people in a room', async () => {
+    const { url } = await start({ origins: ['*'], maxPerRoom: 2 })
+    const a = person('room-gggg', url, 'A')
+    const b = person('room-gggg', url, 'B')
+    const c = person('room-gggg', url, 'C')
+    expect(await a.join(new MemoryFs())).not.toBeNull()
+    expect(await b.join(new MemoryFs())).not.toBeNull()
+    expect(await c.join(new MemoryFs(), 3000)).toBeNull()
+    expect(c.failure).toBe('full')
+  })
+
+  it('forgets a room after the last person left (and keeps it while somebody is there)', async () => {
+    const { url, relay } = await start({ origins: ['*'], roomTtlMs: 1 })
+    const a = person('room-hhhh', url, 'A')
+    await a.join(await filled({ 'main.py': 'x' }))
+    expect(relay.rooms.has('room-hhhh')).toBe(true)
+    await a.leave()
+    expect(await until(() => (relay.rooms.get('room-hhhh')?.conns.size ?? 0) === 0)).toBe(true)
+  })
+})
+
+describe('room codes', () => {
+  it('look like abcd-efgh and fit the relay pattern', () => {
+    for (let i = 0; i < 50; i++) expect(randomRoomCode()).toMatch(/^[a-z2-9]{4}-[a-z2-9]{4}$/)
+  })
+})
+
+describe('read-only link', () => {
+  it('lets a teacher watch, but nothing he does reaches the room', async () => {
+    const { url } = await start()
+    const a = person('room-rrrr', url, 'Anna')
+    await a.join(await filled({ 'main.py': 'print(1)\n' }))
+    const teacherFs = new MemoryFs()
+    const t = readerOf('room-rrrr', url, 'Lehrer')
+    expect(await t.join(teacherFs)).not.toBeNull()
+    expect(t.readOnly).toBe(true)
+    expect(t.locked).toBe(true)
+    expect(await teacherFs.read('main.py')).toBe('print(1)\n')
+    // he sees live changes
+    a.room.text('main.py')?.insert(0, '# hi\n')
+    expect(await until(async () => (await teacherFs.read('main.py')) === '# hi\nprint(1)\n')).toBe(true)
+    // even a client that tampers with its own copy is not believed
+    t.room.text('main.py')?.insert(0, 'EVIL')
+    await settle(300)
+    expect(a.room.text('main.py')?.toString()).toBe('# hi\nprint(1)\n')
+  })
+
+  it('keeps what a watcher does on his own device out of the room', async () => {
+    const { url } = await start()
+    const a = person('room-uuuu', url, 'Anna')
+    await a.join(await filled({ 'main.py': 'x' }))
+    expect(a.readInvite()?.readOnly).toBe(true)
+    const t = readerOf('room-uuuu', url, 'Lehrer')
+    const fs = (await t.join(new MemoryFs())) as Fs
+    await fs.write('scratch.py', 'mine')
+    await fs.remove('main.py')
+    await settle(300)
+    expect(a.room.has('scratch.py')).toBe(false)
+    expect(a.room.has('main.py')).toBe(true)
+  })
+
+  it('is refused without the right key, and when the room does not exist yet', async () => {
+    const { url } = await start()
+    const a = person('room-ssss', url, 'Anna')
+    await a.join(new MemoryFs())
+    const wrong = new Collab({ invite: { room: 'room-ssss', key: 'wrongwrongwrong', readKey: null, readOnly: true }, name: 'x', url })
+    collabs.push(wrong)
+    expect(await wrong.join(new MemoryFs(), 3000)).toBeNull()
+    expect(wrong.failure).toBe('refused')
+    const writerWrong = new Collab({ invite: { room: 'room-ssss', key: 'wrongwrongwrong', readKey: null, readOnly: false }, name: 'x', url })
+    collabs.push(writerWrong)
+    expect(await writerWrong.join(new MemoryFs(), 3000)).toBeNull()
+    expect(writerWrong.failure).toBe('refused')
+    invites.set('room-tttt', newInvite())
+    const early = readerOf('room-tttt', url, 'early')
+    expect(await early.join(new MemoryFs(), 3000)).toBeNull()
+    expect(early.failure).toBe('notFound')
+  })
+})
+
+describe('files deleted while away', () => {
+  it('are deleted here too, unless the room was new', async () => {
+    const { url, relay } = await start()
+    let known: string[] = []
+    const a = person('room-vvvv', url, 'Anna')
+    const fsA = (await a.join(await filled({ 'main.py': 'm', 'old.py': 'o' }))) as Fs
+    const innerB = await filled({})
+    const b1 = person('room-vvvv', url, 'Ben', { onKnown: (p: string[]) => (known = p) })
+    await b1.join(innerB)
+    expect(await innerB.exists('old.py')).toBe(true)
+    expect(known.sort()).toEqual(['main.py', 'old.py'])
+    await b1.leave()
+    await fsA.remove('old.py')
+    await innerB.write('mine.py', 'new offline') // made while away: not known to the room
+    const b2 = person('room-vvvv', url, 'Ben', { known: new Set(known) })
+    await b2.join(innerB)
+    expect(await innerB.exists('old.py')).toBe(false)
+    expect(b2.removedOnJoin).toEqual(['old.py'])
+    expect(await innerB.exists('mine.py')).toBe(true)
+    expect(await until(() => a.room.has('mine.py'))).toBe(true)
+    // the relay forgets the room (restart): nothing is deleted, everything here is the project again
+    await a.leave()
+    await b2.leave()
+    for (const name of [...relay.rooms.keys()]) relay.rooms.delete(name)
+    const c = person('room-vvvv', url, 'Ben', { known: new Set(['main.py', 'mine.py']) })
+    await c.join(innerB)
+    expect(await innerB.exists('main.py')).toBe(true)
+    expect(c.removedOnJoin).toEqual([])
+    expect(c.room.has('main.py')).toBe(true)
+  })
+})
+
+describe('roles and following', () => {
+  it('lets one person drive and the others watch, until he leaves', async () => {
+    const { url } = await start()
+    const a = person('room-wwww', url, 'A')
+    const b = person('room-wwww', url, 'B')
+    await a.join(new MemoryFs())
+    await b.join(new MemoryFs())
+    await until(() => a.people().length === 2 && b.people().length === 2)
+    expect(a.locked || b.locked).toBe(false)
+    a.takeWheel()
+    expect(await until(() => b.driver === a.id)).toBe(true)
+    expect(b.locked).toBe(true)
+    expect(a.locked).toBe(false)
+    b.takeWheel()
+    expect(await until(() => a.locked && !b.locked)).toBe(true)
+    b.releaseWheel()
+    expect(await until(() => !a.locked)).toBe(true)
+    a.takeWheel()
+    await until(() => b.locked)
+    await a.leave()
+    expect(await until(() => !b.locked)).toBe(true)
+  })
+
+  it('tells where somebody is working, and stops following when he leaves', async () => {
+    const { url } = await start()
+    const a = person('room-xxxx', url, 'A')
+    const b = person('room-xxxx', url, 'B')
+    await a.join(new MemoryFs())
+    await b.join(new MemoryFs())
+    a.setFocus('classes/Crab.py', 12)
+    expect(await until(() => b.people().find((p) => p.id === a.id)?.focus?.line === 12)).toBe(true)
+    b.follow(a.id)
+    expect(b.following).toBe(a.id)
+    await a.leave()
+    expect(await until(() => b.following === null)).toBe(true)
+  })
+})
+
+describe('big files', () => {
+  it('stay on the device that has them, and say so once', async () => {
+    const { url } = await start()
+    const skipped: string[] = []
+    const a = person('room-yyyy', url, 'A')
+    a.onSkipped = (path) => skipped.push(path)
+    const fs = (await a.join(new MemoryFs())) as Fs
+    await fs.write('images/huge.png', new Uint8Array(4 * 1024 * 1024))
+    await fs.write('images/small.png', new Uint8Array(1000))
+    await fs.write('images/huge.png', new Uint8Array(4 * 1024 * 1024 + 1))
+    await settle(100)
+    expect(a.room.has('images/huge.png')).toBe(false)
+    expect(a.room.has('images/small.png')).toBe(true)
+    expect(skipped).toEqual(['images/huge.png'])
+    expect(await fs.exists('images/huge.png')).toBe(true)
+  })
+})
+
+describe('relay health', () => {
+  it('counts rooms and people, and names none of them', async () => {
+    const { url } = await start()
+    const a = person('room-zzzz', url, 'A')
+    await a.join(new MemoryFs())
+    const res = await fetch(url.replace(/^ws/, 'http') + '/health')
+    const body = await res.json()
+    expect(body).toMatchObject({ ok: true, rooms: 1, connections: 1 })
+    expect(JSON.stringify(body)).not.toContain('zzzz')
+  })
+})
+
+describe('invitations', () => {
+  it('round-trip through links and storage', () => {
+    const invite = { ...newInvite(), room: 'abcd-efgh' }
+    const link = roomLink(invite, 'https://e.org/')
+    expect(link).toMatch(/^https:\/\/e\.org\/#room=abcd-efgh\.[a-z0-9]{12}\.[a-z0-9]{12}$/)
+    expect(parseInviteHash(link.slice(link.indexOf('#')))).toEqual(invite)
+    const read = readOnlyOf(invite) as Invite
+    const readLink = roomLink(read, 'https://e.org/')
+    expect(readLink).toContain('#watch=abcd-efgh.')
+    expect(readLink).not.toContain(invite.key)
+    expect(parseInviteHash(readLink.slice(readLink.indexOf('#')))).toEqual(read)
+    expect(deserializeInvite(serializeInvite(invite))).toEqual(invite)
+    expect(deserializeInvite(serializeInvite(read))).toEqual(read)
+    for (const bad of ['', '#room=abcd', '#room=abcd-efgh', '#room=abc.def', '#x=abcd-efgh.aaaaaaaa', '#watch=abcd-efgh', '#room=abcd-efgh.<script>']) expect(parseInviteHash(bad)).toBeNull()
+    expect(deserializeInvite('junk')).toBeNull()
+  })
+})

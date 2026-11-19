@@ -35,6 +35,8 @@ export class Session {
     readonly fs: Fs,
     private surface: Surface,
     private autosaveMs = 500,
+    /** Where autosave writes to, when that differs from `fs` (a shared project: typing is already in the room). */
+    private saver: Fs = fs,
   ) {}
 
   subscribe(listener: () => void): () => void {
@@ -77,7 +79,7 @@ export class Session {
     if (text === undefined) return
     clearTimeout(this.timers.get(path))
     this.timers.delete(path)
-    await this.fs.write(path, text)
+    await this.saver.write(path, text)
     // an edit that arrived while writing keeps the path dirty
     if (this.latest.get(path) === text) {
       this.latest.delete(path)

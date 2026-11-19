@@ -20,9 +20,14 @@ export interface AppConfig {
   embedOrigins: string[] | null
   /** The editor help (second Python, ~130 MB) sleeps while nobody edits: "auto" = on devices with 4 GB or less, true/false forces. */
   lowMemory: LowMemorySetting
+  /**
+   * Relay for "work together" (address of the WebSocket relay, e.g. "/collab" or "wss://host/collab"); relative to the page.
+   * null (the default) switches the feature off: no menu entry. The relay is not part of the editor, see docs/collab.md.
+   */
+  collabUrl: string | null
 }
 
-export const DEFAULT_CONFIG: AppConfig = { pyodideBase: PYODIDE_BASE, links: [], embedOrigins: [], lowMemory: 'auto' }
+export const DEFAULT_CONFIG: AppConfig = { pyodideBase: PYODIDE_BASE, links: [], embedOrigins: [], lowMemory: 'auto', collabUrl: null }
 
 const isHttpUrl = (value: string): boolean => /^https?:\/\//i.test(value)
 
@@ -61,6 +66,7 @@ export function parseAppConfig(raw: unknown, page: string): AppConfig {
     })
   }
   if (typeof r.lowMemory === 'boolean') config.lowMemory = r.lowMemory
+  if (typeof r.collabUrl === 'string' && r.collabUrl.trim()) config.collabUrl = collabAddress(r.collabUrl.trim(), page)
   if ('embedOrigins' in r) {
     // present but unusable (a string, numbers …) stays "nobody": a typo must not open the door
     const list = Array.isArray(r.embedOrigins) ? r.embedOrigins : []
@@ -77,6 +83,19 @@ export function parseAppConfig(raw: unknown, page: string): AppConfig {
       })
   }
   return config
+}
+
+/** A relay address as given (relative, http(s) or ws(s)) → an absolute ws(s) address; null for anything else. */
+export function collabAddress(value: string, page: string): string | null {
+  try {
+    const url = new URL(value, page)
+    if (url.protocol === 'https:') url.protocol = 'wss:'
+    else if (url.protocol === 'http:') url.protocol = 'ws:'
+    if (url.protocol !== 'wss:' && url.protocol !== 'ws:') return null
+    return url.href.replace(/\/+$/, '')
+  } catch {
+    return null
+  }
 }
 
 /** Fetches `config.json` (cache-busted by the Service Worker's network-first strategy); a missing file means defaults. */

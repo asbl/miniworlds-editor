@@ -23,6 +23,11 @@ import { FIRST_REMINDER_MS, loadBackupRecord, saveBackupRecord, shouldRemind } f
 import { hasSeenWelcome, markWelcomeSeen } from './welcome/firstRun'
 import { ImportGuide, Welcome, type ImportActions } from './welcome/Welcome'
 import { ProjectView } from './ProjectView'
+import type { Collab } from '../collab/collab'
+import { CollabDialog } from '../collab/CollabDialog'
+import { useCollabInfo } from '../collab/useCollabInfo'
+import { knownPaths, rememberKnown, rememberName, rememberRoom, savedName, savedRoom } from '../collab/storage'
+import { cleanName, deserializeInvite, newInvite, parseInviteHash, serializeInvite, type CollabFailure, type Invite } from '../collab/shared'
 import { collectShareContext, type ShareContext } from '../share/collect'
 import { ShareDialog } from '../share/ShareDialog'
 import { isPlayHash } from '../share/payload'
@@ -66,6 +71,18 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
   const folderInput = useRef<HTMLInputElement>(null)
   const [update, setUpdate] = useState<PwaHandle | null>(null)
   const [sharing, setSharing] = useState<ShareContext | null>(null)
+  /** Working together: the session of the open project, the project as stored (without the room), and what the UI shows. */
+  const [collab, setCollab] = useState<Collab | null>(null)
+  const collabRef = useRef<Collab | null>(null)
+  const plainWorkspace = useRef<Workspace | null>(null)
+  const nameRef = useRef<string | null>(null)
+  const [collabOpen, setCollabOpen] = useState(false)
+  /** `connecting`: the project joins its room again in the background. */
+  const [collabNote, setCollabNote] = useState<'connecting' | null>(null)
+  /** Something the person must know (a refusal, files that were deleted, a file that is too big). */
+  const [collabAlert, setCollabAlert] = useState<string | null>(null)
+  const [collabAvailable, setCollabAvailable] = useState(false)
+  const collabInfo = useCollabInfo(collab)
   const filesInput = useRef<HTMLInputElement>(null)
   /** The card for a first visit, or the import hints (from the menu). */
   const [overlay, setOverlay] = useState<'welcome' | 'import' | null>(null)
@@ -74,6 +91,22 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
   /** `hint`: the reminder that the project lives only on this device; `done`: the backup that was just made. */
   const [backupNote, setBackupNote] = useState<'hint' | 'done' | null>(null)
   useEffect(() => registerServiceWorker((handle) => setUpdate(handle)), [])
+
+  // the menu entry exists only where a relay is set up and answers
+  useEffect(() => {
+    setCollabAvailable(false)
+    if (!config.collabUrl) return
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 4000)
+    fetch(`${config.collabUrl.replace(/^ws/, 'http')}/health`, { signal: controller.signal, cache: 'no-store' })
+      .then((res) => setCollabAvailable(res.ok))
+      .catch(() => {})
+      .finally(() => clearTimeout(timer))
+    return () => {
+      clearTimeout(timer)
+      controller.abort()
+    }
+  }, [config.collabUrl])
 
   // after a while of work in a project that was never backed up (or not for a week): say where the project lives
   useEffect(() => {
@@ -102,13 +135,123 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
 
   async function show(next: string) {
     await flush.current?.()
+    await endSession()
     const list = await store.list()
     const ws = await store.open(next)
     rememberProject(next)
     setProjects(list.includes(next) ? list : await store.list())
+    plainWorkspace.current = ws
+    nameRef.current = next
     setWorkspace(ws)
     setName(next)
     closeOverlay()
+    // a project that was shared when it was closed joins its room again (in the background: the project is usable at once)
+    const invite = deserializeInvite(savedRoom(next))
+    if (invite && config.collabUrl) void connect(next, ws, invite, savedName() || t('collab.you'), { quiet: true })
+  }
+
+  /** Leave the session of the project that is open (the stored project stays). */
+  async function endSession() {
+    const old = collabRef.current
+    collabRef.current = null
+    setCollab(null)
+    setCollabNote(null)
+    await old?.leave()
+  }
+
+  const reasonText = (failure: CollabFailure | null) => t(`collab.err.${failure ?? 'network'}` as 'collab.err.network')
+
+  /**
+   * Join the room of `invite` with the project `project` (its files are merged into the room, the room's files win) and show
+   * the shared project. `quiet`: a reconnect after opening, whose failure is a note instead of an error. `adopt`: the project
+   * was not shown yet (an invitation link); it is shown once the room let us in. Returns why not, or null.
+   */
+  async function connect(project: string, ws: Workspace, invite: Invite, person: string, how: { quiet?: boolean; adopt?: boolean } = {}): Promise<CollabFailure | null> {
+    if (!config.collabUrl) return 'network'
+    if (how.quiet) setCollabNote('connecting')
+    const { Collab } = await import('../collab/collab') // Yjs only loads when somebody works together
+    const session = new Collab({
+      invite,
+      name: person,
+      url: config.collabUrl,
+      known: knownPaths(project),
+      onKnown: (paths) => rememberKnown(project, paths),
+    })
+    session.onShrunk = (path, before, after) => setCollabAlert(t('collab.shrunk', { path, before: (before / 1048576).toFixed(1), after: (after / 1048576).toFixed(1) }))
+    session.onSkipped = (path, bytes) => setCollabAlert(t('collab.tooBigFile', { path, size: (bytes / 1048576).toFixed(1) }))
+    const fs = await session.join(ws.fs, how.quiet ? 5000 : 8000).catch(() => null)
+    const stale = !how.adopt && nameRef.current !== project
+    if (!fs || stale) {
+      const failure = session.failure
+      await session.leave()
+      if (how.quiet && !stale) {
+        setCollabNote(null)
+        setCollabAlert(`${t('collab.rejoinFailed')} ${reasonText(failure)}`)
+      }
+      return fs ? null : failure ?? 'network'
+    }
+    await flush.current?.() // what was typed on the plain project meanwhile goes to disk before the shared project takes over
+    await collabRef.current?.leave()
+    const projects = how.adopt ? await store.list() : null
+    if (how.adopt) {
+      plainWorkspace.current = ws
+      nameRef.current = project
+      rememberProject(project)
+    }
+    collabRef.current = session
+    rememberRoom(project, serializeInvite(invite))
+    // project, workspace and session change together: a view that is still open on the old project must not outlive it
+    if (projects) setProjects(projects)
+    setCollab(session)
+    setCollabNote(null)
+    setWorkspace({ ...ws, fs })
+    if (how.adopt) setName(project)
+    if (session.removedOnJoin.length > 0) setCollabAlert(t('collab.deletedOnJoin', { files: session.removedOnJoin.join(', ') }))
+    return null
+  }
+
+  async function startCollab(person: string) {
+    const who = cleanName(person)
+    rememberName(who)
+    rememberKnown(current, null)
+    const failure = await connect(current, plainWorkspace.current as Workspace, newInvite(), who)
+    if (failure) await infoDialog(t('collab.title'), reasonText(failure))
+  }
+
+  async function stopCollab() {
+    const project = current
+    await flush.current?.()
+    await endSession()
+    rememberRoom(project, null)
+    rememberKnown(project, null)
+    setCollabOpen(false)
+    setWorkspace(plainWorkspace.current)
+    setCollabNote(null)
+    void infoDialog(t('collab.title'), t('collab.left'))
+  }
+
+  /** An invitation link: a project of its own for the room, so that the person's other projects stay untouched. */
+  async function joinRoom(invite: Invite) {
+    if (!config.collabUrl) return void (await infoDialog(t('collab.joinTitle'), t('collab.unavailable')))
+    const project = `${t('collab.title')} ${invite.room}`
+    const values = await openDialog({
+      title: t('collab.joinTitle'),
+      message: t('collab.joinText', { code: invite.room, project }) + (invite.readOnly ? ` ${t('collab.readOnly')}` : ''),
+      submit: 'dialog.ok',
+      fields: [{ kind: 'text', key: 'name', label: t('collab.name'), initial: savedName() }],
+    })
+    if (!values) return
+    const who = cleanName(String(values.name))
+    rememberName(who)
+    await flush.current?.()
+    const existed = await store.exists(project)
+    const ws = await store.open(project)
+    const failure = await connect(project, ws, invite, who, { adopt: true })
+    if (failure) {
+      if (!existed) await store.remove(project).catch(() => {})
+      return void (await infoDialog(t('collab.joinTitle'), reasonText(failure)))
+    }
+    await dropStarter(project)
   }
 
   function closeOverlay() {
@@ -163,6 +306,8 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     void (async () => {
       // an older kind of project link (`#project=…`, handed out before the play links): open it as a copy of its own
       const legacy = hasLegacyLink(location.hash) ? location.hash : null
+      const joinCode = parseInviteHash(location.hash)
+      if (joinCode) history.replaceState(null, '', location.pathname + location.search)
       const launch = legacy ? null : parseLaunch(location.search, location.href)
       if (legacy) history.replaceState(null, '', location.pathname + location.search)
       else if (launch) history.replaceState(null, '', withoutLaunch(location.href)) // a reload must not repeat the task
@@ -179,12 +324,14 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
         await createStarterProject(store, first, 'project', await newestVersion())
         await show(first)
         // somebody who has never been here: say what to do first (not for a link that brings its own task)
-        if (!launch && !hasSeenWelcome()) {
+        if (joinCode) firstProject.current = first // replaced by the project of the room
+        else if (!launch && !hasSeenWelcome()) {
           firstProject.current = first
           markWelcomeSeen()
           setOverlay('welcome')
         }
       }
+      if (joinCode) await joinRoom(joinCode).catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
       if (legacyFailed) await infoDialog(t('dialog.error'), t('share.legacyFailed'))
       else if (launch) await openLaunch(launch).catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
     })()
@@ -210,6 +357,12 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
   // itself. Save the work, then reload, so that the play page opens (the editor's own copy is untouched).
   useEffect(() => {
     const changed = () => {
+      const joinCode = parseInviteHash(location.hash)
+      if (joinCode) {
+        history.replaceState(null, '', location.pathname + location.search)
+        void joinRoom(joinCode).catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
+        return
+      }
       if (hasLegacyLink(location.hash)) {
         const hash = location.hash
         history.replaceState(null, '', location.pathname + location.search)
@@ -310,6 +463,16 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
         <h1 class="brand">{t('app.title')}</h1>
         {name && <Menu label={`${t('project.menu')}: ${name} ▾`} items={projectItems} />}
         <span class="spacer" />
+        {name && collabAvailable && (
+          <button
+            type="button"
+            class={collab ? `collab-button on ${collabInfo?.status ?? ''}` : 'collab-button'}
+            title={collab && collabInfo ? t('collab.chip.title', { n: collabInfo.people.length }) : t('collab.button.title')}
+            onClick={() => setCollabOpen(true)}
+          >
+            {collab && collabInfo ? `${collabInfo.readOnly ? '👁' : '👥'} ${collabInfo.status === 'connected' ? collabInfo.people.length : '⚠'}` : t('collab.button')}
+          </button>
+        )}
         {name && (
           <button type="button" class="backup-button" title={t('backup.title')} onClick={guarded(backup)}>
             {t('backup.button')}
@@ -347,6 +510,40 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
           )}
         </div>
       )}
+      {collabNote && (
+        <div class="notice" role="status">
+          <span>{t('collab.reconnecting')}</span>
+        </div>
+      )}
+      {collabAlert && (
+        <div class="notice" role="alert">
+          <span>{collabAlert}</span>
+          <button type="button" onClick={() => setCollabAlert(null)}>
+            {t('collab.dismiss')}
+          </button>
+        </div>
+      )}
+      {collab && collabInfo && collabInfo.status === 'offline' && (
+        <div class="notice" role="status">
+          <span>{t('collab.offlineBanner')}</span>
+        </div>
+      )}
+      {collab && collabInfo && collabInfo.following !== null && (
+        <div class="collab-follow-bar" role="status">
+          <span>{t('collab.following', { name: collabInfo.people.find((p) => p.id === collabInfo.following)?.name ?? '' })}</span>
+          <button type="button" onClick={() => collab.follow(null)}>
+            {t('collab.following.stop')}
+          </button>
+        </div>
+      )}
+      {collab && collabInfo && !collabInfo.readOnly && collabInfo.locked && (
+        <div class="collab-follow-bar" role="status">
+          <span>{t('collab.pair.locked', { name: collabInfo.people.find((p) => p.id === collabInfo.driver)?.name ?? '' })}</span>
+          <button type="button" onClick={() => collab.takeWheel()}>
+            🚗 {t('collab.pair.take')}
+          </button>
+        </div>
+      )}
       {update && (
         <div class="notice" role="status" aria-label={t('pwa.reload')}>
           <span>{t(update.kind === 'waiting' ? 'pwa.update' : 'pwa.stale')}</span>
@@ -358,7 +555,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
           </button>
         </div>
       )}
-      {workspace && name && <ProjectView key={name} workspace={workspace} projectName={name} runner={runner} catalog={catalog} language={language} registerFlush={(f) => (flush.current = f)} />}
+      {workspace && name && <ProjectView key={`${name}${collab ? `#${collab.invite.room}` : ''}`} collab={collab} workspace={workspace} projectName={name} runner={runner} catalog={catalog} language={language} registerFlush={(f) => (flush.current = f)} />}
       <input
         ref={zipInput}
         type="file"
@@ -370,6 +567,21 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
           if (file) guarded(async () => showMade(await importProjectZip(store, file)))()
         }}
       />
+      {collabOpen && (
+        <CollabDialog
+          collab={collab}
+          initialName={savedName()}
+          onStart={async (person) => {
+            await startCollab(person)
+          }}
+          onStop={stopCollab}
+          onRename={(person) => {
+            rememberName(cleanName(person))
+            collabRef.current?.setName(person)
+          }}
+          onClose={() => setCollabOpen(false)}
+        />
+      )}
       {sharing && <ShareDialog context={sharing} onClose={() => setSharing(null)} />}
       <input
         ref={filesInput}

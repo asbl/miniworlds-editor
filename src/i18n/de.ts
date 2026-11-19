@@ -1,5 +1,6 @@
 import { studentDe } from './student.de'
 import { welcomeDe } from './welcome.de'
+import { collabDe } from './collab.de'
 import { engineDe } from './engine.de'
 /** Deutsche Texte. Der Schlüsselsatz hier ist maßgeblich; `en.ts` muss denselben Satz haben (Typ + Test). */
 export const de = {
@@ -364,5 +365,6 @@ export const de = {
 
   ...studentDe,
   ...welcomeDe,
+  ...collabDe,
   ...engineDe,
 } as const
