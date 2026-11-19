@@ -1,4 +1,5 @@
 import { studentDe } from './student.de'
+import { engineDe } from './engine.de'
 /** Deutsche Texte. Der Schlüsselsatz hier ist maßgeblich; `en.ts` muss denselben Satz haben (Typ + Test). */
 export const de = {
   'app.title': 'miniworlds-Editor',
@@ -361,4 +362,5 @@ export const de = {
   'status.saving': 'Speichert …',
 
   ...studentDe,
+  ...engineDe,
 } as const

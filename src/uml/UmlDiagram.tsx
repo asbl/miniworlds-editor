@@ -12,6 +12,8 @@ export interface Marks {
   object?: string | null
   /** This class is armed for placing. */
   armed?: string | null
+  /** An event method of this class was called a moment ago (see the trace). */
+  fired?: ReadonlySet<string>
 }
 
 interface Props {
@@ -48,7 +50,7 @@ export function UmlDiagram({ model, details, counts, marks, stale, images = {}, 
       {layout.nodes.map((node) => {
         const info = node.lib ? null : (node.info as ModelClass)
         const count = counts[node.name]
-        const classes = ['uml-box', node.kind, node.lib ? 'lib' : '', marks.selected === node.name ? 'is-selected' : '', marks.cursor === node.name ? 'is-cursor' : '', marks.object === node.name ? 'is-object' : '', marks.armed === node.name ? 'is-armed' : '', stale.has(node.name) ? 'is-stale' : '']
+        const classes = ['uml-box', node.kind, node.lib ? 'lib' : '', marks.selected === node.name ? 'is-selected' : '', marks.cursor === node.name ? 'is-cursor' : '', marks.object === node.name ? 'is-object' : '', marks.armed === node.name ? 'is-armed' : '', marks.fired?.has(node.name) ? 'is-fired' : '', stale.has(node.name) ? 'is-stale' : '']
         return (
           <div
             key={node.name}

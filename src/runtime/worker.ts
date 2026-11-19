@@ -1,6 +1,8 @@
 import runnerSource from './runner.py?raw'
+import traceSource from './trace.py?raw'
+import liveSource from './livepatch.py?raw'
 import { RUNTIME_PACKAGES } from './config'
-import type { BootStep, FileChanges, FromWorker, ToWorker } from './protocol'
+import type { BootStep, FileChanges, FromWorker, ToWorker, TraceBatch } from './protocol'
 
 /** Minimal view of the Pyodide API that this file uses (pyodide is loaded from a URL at runtime, not bundled). */
 interface Pyodide {
@@ -95,7 +97,9 @@ function collectChanges(): FileChanges & { transfer: Transferable[] } {
 // Python → JS notifications (see runner.py)
 scope._mw_notify = (kind: string, payload: string) => {
   const value = JSON.parse(payload) as string | null
-  if (kind === 'scenario-ready') {
+  if (kind === 'trace') {
+    post({ type: 'trace', ...(value as unknown as TraceBatch) })
+  } else if (kind === 'scenario-ready') {
     post({ type: 'scenario-ready' })
   } else if (kind === 'notice') {
     post({ type: 'notice', code: value as 'silent-audio' })
@@ -134,6 +138,15 @@ scope._mw_read_line_sync = (prompt: string): string | null => {
   } catch {
     return null
   }
+}
+
+/** pygame.display.set_mode was called: SDL does not resize an OffscreenCanvas by itself, so the worker does and tells the page. */
+scope._mw_canvas_size = (width: number, height: number) => {
+  const canvas = scope.__canvas as OffscreenCanvas | undefined
+  if (!canvas || width <= 0 || height <= 0) return
+  if (canvas.width !== width) canvas.width = width
+  if (canvas.height !== height) canvas.height = height
+  post({ type: 'canvas-size', width, height })
 }
 
 /** Sound: the page plays it (see audio.ts). `data` is the file's bytes, sent only the first time. */
@@ -184,6 +197,8 @@ async function boot(message: Extract<ToWorker, { type: 'boot' }>): Promise<strin
   }
   // The lifecycle helpers are a normal Python module so that tracebacks and imports behave as usual.
   py.FS.writeFile('/home/pyodide/mw_runner.py', new TextEncoder().encode(runnerSource))
+  py.FS.writeFile('/home/pyodide/mw_trace.py', new TextEncoder().encode(traceSource))
+  py.FS.writeFile('/home/pyodide/mw_live.py', new TextEncoder().encode(liveSource))
   py.runPython(`import sys\nif "/home/pyodide" not in sys.path: sys.path.insert(0, "/home/pyodide")`)
   runner = py.pyimport('mw_runner')
   runner.setup(hasAudio, message.audio)

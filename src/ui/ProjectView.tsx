@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'preact/hooks'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { Workspace, FileEntry } from '../workspace'
 import { t, useLang } from '../i18n'
 import { useLanguage } from '../language/useLanguage'
@@ -35,6 +35,14 @@ import { useReport } from './project/useReport'
 import { usePanelWidths } from './project/usePanelWidths'
 import { useSessionState } from './project/useSessionState'
 import { useStaleClasses } from './project/useStaleClasses'
+import { useTrace } from '../trace/useTrace'
+import { LiveSync } from '../live/liveSync'
+import { ApiPanel } from '../api/ApiPanel'
+import { engineBaseOf, snippetFor, type ApiMember } from '../api/apiIndex'
+import { useApiIndex } from '../api/useApi'
+import { classAtLine, type ModelClass } from '../uml/model'
+import { askEvent } from '../events/reactDialog'
+import { infoDialog } from './dialogs'
 
 interface Props {
   workspace: Workspace
@@ -94,7 +102,14 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   const metaApi = useMiniworldsMeta(fs, refresh)
   metaFlush.current = metaApi.flush
   const gf = useMiniworlds(runner, metaApi)
-  const reloader = useAutoReload({ enabled: view === 'miniworlds' && autoReload, session, runner, fs, reload: () => void program.run() })
+  const sessionRef = useRef<typeof session>(null)
+  sessionRef.current = session
+  const live = useMemo(() => new LiveSync(runner, fs, () => sessionRef.current), [runner, fs])
+  useEffect(() => {
+    if (host.current) host.current.onNumberChange = () => live.request()
+    return () => live.dispose()
+  }, [live, host, session])
+  const reloader = useAutoReload({ enabled: view === 'miniworlds' && autoReload, session, runner, fs, live, reload: () => void program.run() })
   const installedVersion = program.state.version
   const waitingForInput = program.state.input !== null
   useEffect(() => {
@@ -103,6 +118,10 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   const modelSupported = installedVersion ? engineTier(installedVersion) === 'full' : miniworldsSupported
   const classModel = useClassModel({ runner, session, fs, supported: modelSupported, ready: installedVersion !== null && program.state.phase !== 'booting', fileSignal: entries })
   const stale = useStaleClasses(classModel, gf.state.active)
+  const apiIndex = useApiIndex(runner, installedVersion, modelSupported)
+  const cursorClass = classModel.model && cursor ? classAtLine(classModel.model, cursor.path, cursor.line) : null
+  const apiStart = apiIndex ? engineBaseOf(classModel.model, apiIndex, cursorClass) : null
+  const trace = useTrace(runner, (row) => host.current?.flash(row.path, row.line))
   const classView = useClassPanelView()
   const taskChecks = useTaskChecks({ meta: metaApi.meta, setMeta: metaApi.setMeta, controller: gf.controller, facts: gf.state.facts, lines: gf.runnerState.lines, model: classModel.model, files: classModel.files })
   const languageState = useLanguage({
@@ -131,6 +150,28 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   async function changeVersion(version: string | null) {
     await program.stop()
     await updateSettings({ miniworlds: version })
+  }
+
+  /** "React to …": add the method for an event to a class (or show it when it is there already). */
+  async function reactTo(info: ModelClass) {
+    if (!session) return
+    const actors = (classModel.model?.classes ?? []).filter((c) => c.kind === 'actor').map((c) => c.name)
+    const built = await askEvent(info.kind === 'world' ? 'world' : 'actor', info.name, actors)
+    if (!built) return
+    setPane('editor')
+    const existing = info.methods.find((m) => m.name === built.method)
+    if (existing) {
+      await session.open(info.file, { line: existing.line, column: 0, length: 0 })
+      return void infoDialog(t('event.exists'), t('event.existsText', { method: built.method, name: info.name }))
+    }
+    await session.open(info.file, { line: info.line, column: 0, length: 0 })
+    host.current?.insertBlock({ id: 'event', group: 'input', kind: 'method', code: built.code })
+  }
+
+  function insertMember(member: ApiMember) {
+    if (!state.active?.endsWith('.py')) return void infoDialog(t('api.title'), t('api.noEditor'))
+    setPane('editor')
+    host.current?.insertBlock({ id: 'api', group: 'move', kind: 'statement', code: snippetFor(member) })
   }
 
   function openSearch() {
@@ -231,6 +272,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
           onOpenSnapshot={(snapshot) => void history.openSnapshot(snapshot)}
           onSaveVersion={() => void history.saveVersion()}
           onChanged={() => void refresh()}
+          api={<ApiPanel index={apiIndex} start={apiStart} onInsert={insertMember} />}
           classes={
             <ClassPanel
               view={classView}
@@ -243,9 +285,11 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
               metaApi={metaApi}
               cursor={cursor}
               stale={stale}
+              fired={trace.fired}
               refresh={refresh}
               onNewClass={(base) => void files.newClass(base)}
               onRenameClass={(info) => void renameClassDialog(info)}
+              onReact={(info) => void reactTo(info)}
             />
           }
         />
@@ -266,6 +310,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
         <WorldPanel
           name={projectName}
           runner={runner}
+          trace={trace}
           onReport={() => void copyReport()}
           onJump={(loc) => {
             setPane('editor') // a link in the console: show the line it points to

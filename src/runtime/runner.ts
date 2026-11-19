@@ -2,7 +2,7 @@ import { getLang, t } from '../i18n'
 import { explainError } from './explain'
 import type { AudioMessage, AudioSink } from './audio'
 import { STOP_TIMEOUT_MS } from './config'
-import type { BootStep, FileChanges, FromWorker, InputEvent, RpcReply, ToWorker } from './protocol'
+import type { BootStep, FileChanges, FromWorker, InputEvent, RpcReply, ToWorker, TraceBatch } from './protocol'
 
 export type Phase = 'idle' | 'booting' | 'ready' | 'running' | 'stopping'
 
@@ -51,6 +51,8 @@ export interface RunnerState {
   lines: readonly ConsoleLine[]
   /** Increments whenever `canvas` is replaced. */
   canvasGeneration: number
+  /** Size the program's window has now (the page's canvas element follows it). */
+  canvasSize: { width: number; height: number }
   /** How the current/last program was started. */
   mode: 'program' | 'scenario' | null
   /** Scenario mode only: the world exists (paused) and answers commands. */
@@ -82,7 +84,7 @@ interface Waiter<T> {
  * Single program at a time. UI-framework free; components subscribe to `state`.
  */
 export class Runner<C extends CanvasLike = HTMLCanvasElement> {
-  state: RunnerState = { phase: 'idle', bootStep: null, version: null, lines: [], canvasGeneration: 0, mode: null, scenarioReady: false, input: null, audioUsed: false }
+  state: RunnerState = { phase: 'idle', bootStep: null, version: null, lines: [], canvasGeneration: 0, canvasSize: { width: 400, height: 300 }, mode: null, scenarioReady: false, input: null, audioUsed: false }
   canvas: C
 
   private worker: WorkerLike | null = null
@@ -95,6 +97,7 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
   private installWaiters = new Map<string, Waiter<{ ok: boolean; error?: string }>>()
   private stopTimer: ReturnType<typeof setTimeout> | null = null
   private listeners = new Set<() => void>()
+  private traceListeners = new Set<(batch: TraceBatch) => void>()
   private nextLine = 1
 
   constructor(private env: RunnerEnv<C>) {
@@ -104,6 +107,12 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
   subscribe(listener: () => void): () => void {
     this.listeners.add(listener)
     return () => void this.listeners.delete(listener)
+  }
+
+  /** What the engine called while the program runs (about 8 batches a second); not part of `state`, it changes too often. */
+  subscribeTrace(listener: (batch: TraceBatch) => void): () => void {
+    this.traceListeners.add(listener)
+    return () => void this.traceListeners.delete(listener)
   }
 
   private set(patch: Partial<RunnerState>): void {
@@ -146,7 +155,7 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
     const promise = new Promise<void>((resolve, reject) => (waiter = { resolve, reject }))
     promise.catch(() => {}) // callers handle it; avoid an unhandled rejection if nobody awaits
     this.boot = { key, promise, waiter }
-    this.set({ phase: 'booting', bootStep: null, version: null, canvasGeneration: this.state.canvasGeneration + 1 })
+    this.set({ phase: 'booting', bootStep: null, version: null, canvasGeneration: this.state.canvasGeneration + 1, canvasSize: { width: 400, height: 300 } })
     worker.postMessage(
       { type: 'boot', canvas: offscreen, pyodideBase: this.env.pyodideBase, miniworlds: config.miniworlds, packages: config.packages, inputBase: this.env.inputBase ?? null, audio: this.env.audio !== undefined },
       [offscreen],
@@ -215,6 +224,14 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
         this.env.audio?.handle(audio as AudioMessage)
         // the mute button is for programs that make sound; the engine also stops music while a world starts
         if (!this.state.audioUsed && (message.op === 'play' || message.op === 'music-play')) this.set({ audioUsed: true })
+        break
+      }
+      case 'canvas-size':
+        if (message.width !== this.state.canvasSize.width || message.height !== this.state.canvasSize.height) this.set({ canvasSize: { width: message.width, height: message.height } })
+        break
+      case 'trace': {
+        const { type: _type, ...batch } = message
+        this.traceListeners.forEach((l) => l(batch))
         break
       }
       case 'input-request':
@@ -372,6 +389,7 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
   dispose(): void {
     this.discardWorker(t('run.cancelled'))
     this.listeners.clear()
+    this.traceListeners.clear()
   }
 }
 

@@ -1,5 +1,6 @@
 import type { de } from './de'
 import { studentEn } from './student.en'
+import { engineEn } from './engine.en'
 
 export const en: Record<keyof typeof de, string> = {
   'app.title': 'miniworlds editor',
@@ -362,4 +363,5 @@ export const en: Record<keyof typeof de, string> = {
   'status.saving': 'Saving …',
 
   ...studentEn,
+  ...engineEn,
 }

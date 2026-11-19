@@ -11,7 +11,7 @@ import { SearchPanel } from '../SearchPanel'
 import type { Session } from '../session'
 import type { ComponentChildren } from 'preact'
 
-export type SidebarTab = 'files' | 'search' | 'classes' | 'history'
+export type SidebarTab = 'files' | 'search' | 'classes' | 'api' | 'history'
 
 interface Props {
   tab: SidebarTab
@@ -35,6 +35,8 @@ interface Props {
   onChanged: () => void
   /** The class diagram (it needs much of the project's state, so the parent builds it). */
   classes: ComponentChildren
+  /** What the engine offers (the reference); built by the parent, which knows the cursor's class. */
+  api: ComponentChildren
 }
 
 /** The left column: files, class diagram, search and history in one place, one at a time. */
@@ -62,6 +64,9 @@ export function Sidebar(p: Props) {
           <button type="button" role="tab" aria-selected={tab === 'classes'} onClick={() => p.onTab('classes')}>
             {t('uml.title')}
           </button>
+          <button type="button" role="tab" aria-selected={tab === 'api'} onClick={() => p.onTab('api')}>
+            {t('api.title')}
+          </button>
           <button type="button" role="tab" aria-selected={tab === 'search'} onClick={p.onOpenSearch} title="Ctrl+Shift+F">
             {t('search.title')}
           </button>
@@ -76,6 +81,8 @@ export function Sidebar(p: Props) {
         p.classes
       ) : tab === 'files' ? (
         <FileTree entries={p.entries} active={p.active} dirty={p.dirty} onOpen={p.onOpenFile} onRename={p.onRename} onDelete={p.onDelete} />
+      ) : tab === 'api' ? (
+        p.api
       ) : tab === 'history' ? (
         <HistoryPanel snapshots={p.historyApi.snapshots} available={p.historyApi.history !== null} onOpen={p.onOpenSnapshot} onSave={p.onSaveVersion} />
       ) : (

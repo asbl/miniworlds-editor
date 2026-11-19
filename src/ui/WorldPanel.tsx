@@ -6,6 +6,8 @@ import { attachWorldTools, type WorldPoint } from '../miniworlds/worldTools'
 import { GuidesOverlay } from '../miniworlds/GuidesOverlay'
 import { anyGuides, loadGuides, saveGuides, type Guides } from '../miniworlds/guides'
 import { Inspector } from '../miniworlds/Inspector'
+import { TracePanel } from '../trace/TracePanel'
+import type { TraceView } from '../trace/useTrace'
 import { attachInput, canvasPoint } from '../runtime/input'
 import type { Runner } from '../runtime/runner'
 import type { TraceLocation } from '../runtime/traceback'
@@ -33,7 +35,7 @@ export interface TasksProps {
   hasCheck?: (index: number) => boolean
 }
 
-export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, name = '' }: { runner: Runner; onJump: (location: TraceLocation) => void; onReport?: () => void; miniworlds?: MiniworldsProps; tasks?: TasksProps; name?: string }) {
+export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace, name = '' }: { runner: Runner; onJump: (location: TraceLocation) => void; onReport?: () => void; miniworlds?: MiniworldsProps; tasks?: TasksProps; trace?: TraceView; name?: string }) {
   useLang()
   const state = useRunnerState(runner)
   const slot = useRef<HTMLDivElement>(null)
@@ -248,6 +250,7 @@ export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, name =
       </div>
       {miniworlds && <MiniworldsControls {...miniworlds} />}
       {mw?.selected && <Inspector actor={mw.selected} inspection={mw.inspection} onClose={() => void controller?.select(null)} />}
+      {trace && <TracePanel trace={trace} running={state.phase === 'running'} onJump={onJump} />}
       {tasks && tasks.items.length > 0 && (
         <details class="tasks" open>
           <summary>{t('tasks.title', { done: tasks.items.filter((_, i) => tasks.done[i]).length, total: tasks.items.length })}</summary>

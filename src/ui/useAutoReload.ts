@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import { isTextPath } from '../project/search'
 import type { Runner } from '../runtime/runner'
 import type { Fs } from '../workspace'
+import type { LiveSync } from '../live/liveSync'
 import type { Session } from './session'
 
 export interface SyntaxProblem {
@@ -16,8 +17,8 @@ const DELAY_MS = 900
  * Miniworlds view: after a pause in typing, check the code and reload the world (the start setup is replayed).
  * A syntax error leaves the running world alone and is reported instead.
  */
-export function useAutoReload(opts: { enabled: boolean; session: Session | null; runner: Runner; fs: Fs; reload: () => void }) {
-  const { enabled, session, runner, fs } = opts
+export function useAutoReload(opts: { enabled: boolean; session: Session | null; runner: Runner; fs: Fs; live?: LiveSync; reload: () => void }) {
+  const { enabled, session, runner, fs, live } = opts
   const [problem, setProblem] = useState<SyntaxProblem | null>(null)
   const reload = useRef(opts.reload)
   reload.current = opts.reload
@@ -35,14 +36,17 @@ export function useAutoReload(opts: { enabled: boolean; session: Session | null;
         const reply = await runner.rpc<SyntaxProblem | null>('check', sources)
         if (!reply.ok) return
         setProblem(reply.value)
-        if (reply.value === null) reload.current()
+        if (reply.value !== null) return
+        // numbers and comments apply to the running world; only other changes start it again
+        const applied = await live?.sync()
+        if (!applied || applied.reload) reload.current()
       }, DELAY_MS)
     })
     return () => {
       off()
       if (timer) clearTimeout(timer)
     }
-  }, [enabled, session, runner, fs])
+  }, [enabled, session, runner, fs, live])
 
   return { problem, clearProblem: () => setProblem(null) }
 }
