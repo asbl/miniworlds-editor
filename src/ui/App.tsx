@@ -14,6 +14,8 @@ import { ContextMenuHost } from './ContextMenu'
 import { confirmDialog, DialogHost, infoDialog, openDialog } from './dialogs'
 import { launchedProject, parseLaunch, rememberLaunched, withoutLaunch, type Launch } from './launch'
 import { MAX_ZIP_BYTES } from '../project/zip'
+import { createShareUrl, hasSharedProject, importSharedProject, ShareError } from '../project/share'
+import { ShareLink } from './ShareLink'
 import { dragHasFiles, droppedFolders, fromFileList } from '../project/folder'
 import { createFromTemplate, TEMPLATES } from '../templates'
 import { loadPreferences, savePreferences, type Preferences } from './preferences'
@@ -41,6 +43,12 @@ interface AppProps {
   runner?: Runner
   catalog?: Catalog
   language?: LanguageService
+}
+
+function clearSharedLocation() {
+  const clean = new URL(withoutLaunch(location.href), location.href)
+  clean.hash = ''
+  history.replaceState(null, '', clean.pathname + clean.search)
 }
 
 export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog: injectedCatalog, language: injectedLanguage }: AppProps) {
@@ -107,11 +115,18 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     }
   }
 
-  // First start: reopen the last project, else the first one, else create a starter project; then open the task of the link.
+  // Shared snapshots open directly; otherwise restore local work (or a starter), then open any task link.
   useEffect(() => {
     void (async () => {
-      const launch = parseLaunch(location.search, location.href)
-      if (launch) history.replaceState(null, '', withoutLaunch(location.href)) // a reload must not repeat the task
+      const shared = hasSharedProject(location.hash) ? location.hash : null
+      const launch = shared ? null : parseLaunch(location.search, location.href)
+      if (shared) clearSharedLocation()
+      else if (launch) history.replaceState(null, '', withoutLaunch(location.href)) // a reload must not repeat the task
+      let sharedError: unknown
+      if (shared) {
+        try { await show(await importSharedProject(store, shared)); return }
+        catch (error) { sharedError = error }
+      }
       const list = await store.list()
       const wanted = lastProject()
       if (wanted && list.includes(wanted)) await show(wanted)
@@ -121,15 +136,45 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
         await createStarterProject(store, starter, 'project', await newestVersion())
         await show(starter)
       }
-      if (launch) await openLaunch(launch).catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
+      if (shared) await infoDialog(t('share.title'), shareProblem(sharedError))
+      else if (launch) await openLaunch(launch).catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store])
+
+  // Opening another project link in an already open editor can be a fragment-only navigation.
+  useEffect(() => {
+    const changed = () => {
+      if (!hasSharedProject(location.hash)) return
+      const hash = location.hash
+      clearSharedLocation()
+      void (async () => {
+        try {
+          await flush.current?.()
+          await show(await importSharedProject(store, hash))
+        } catch (error) { await infoDialog(t('share.title'), shareProblem(error)) }
+      })()
+    }
+    window.addEventListener('hashchange', changed)
+    return () => window.removeEventListener('hashchange', changed)
   }, [store])
 
   const guarded = (action: () => Promise<void>) => () =>
     void action().catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
 
   const current = name as string
+  function shareProblem(error: unknown): string {
+    return error instanceof ShareError ? t(`share.error.${error.code}`) : t('share.error.invalid')
+  }
+
+  async function shareProject() {
+    await flush.current?.()
+    let url: string
+    try { url = await createShareUrl((await store.open(current)).fs, current, location.href) }
+    catch (error) { return infoDialog(t('share.title'), shareProblem(error)) }
+    await openDialog({ title: t('share.title'), message: t('share.hint'), info: true, body: <ShareLink url={url} /> })
+  }
+
   const projectItems = [
     { label: t('project.new'), onSelect: guarded(async () => { await flush.current?.(); const n = await promptNewProject(store, catalog.data?.latest ?? null); if (n) await show(n) }) },
     { label: t('project.rename'), onSelect: guarded(async () => { await flush.current?.(); const n = await promptRenameProject(store, current); if (n) await show(n) }) },
@@ -147,7 +192,8 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
         }
       }),
     },
-    { label: t('project.exportZip'), divider: true, onSelect: guarded(async () => { await flush.current?.(); await exportProjectZip(store, current) }) },
+    { label: t('share.title'), divider: true, onSelect: guarded(shareProject) },
+    { label: t('project.exportZip'), onSelect: guarded(async () => { await flush.current?.(); await exportProjectZip(store, current) }) },
     { label: t('project.importFolder'), onSelect: () => folderInput.current?.click() },
     { label: t('project.importZip'), onSelect: () => zipInput.current?.click() },
     ...projects.map((p, i) => ({ label: p, checked: p === name, divider: i === 0, onSelect: guarded(() => show(p)) })),
