@@ -28,6 +28,7 @@ export const welcomeDe = {
   'project.importHelp': 'Programm importieren – wie? …',
   'project.importFiles': 'Python-Dateien importieren …',
   // ---- backup ----
+  'share.legacyFailed': 'Der Projektlink ist unvollständig, ungültig oder zu groß. Bitte den vollständigen Link noch einmal kopieren oder das Projekt als ZIP übertragen.',
   'backup.button': '💾 Sichern',
   'backup.title': 'Projekt als ZIP-Datei herunterladen',
   'backup.hint': 'Dein Projekt liegt nur in diesem Browser auf diesem Gerät. Auf Schulrechnern, die sich zurücksetzen, kann es verloren gehen. Sichere es als ZIP-Datei – oder importiere es später wieder.',

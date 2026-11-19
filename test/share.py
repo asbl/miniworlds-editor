@@ -3,7 +3,7 @@
 Needs network (Pyodide CDN, miniworlds from PyPI), a served build, Python with Playwright.
 Usage:  python test/share.py [chromium|firefox] [url]
 """
-import base64, os, re, sys
+import base64, gzip, json, os, re, sys
 from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -128,6 +128,17 @@ with sync_playwright() as p:
     open_editor.evaluate("location.hash = 'play=nonsense'")
     check("a link pasted into an open editor opens the play page", eventually(lambda: open_editor.locator(".play-problem").count() == 1, 15000))
     open_editor.close()
+
+    # --- the older kind of link (#project=, handed out before the play links) still opens, as a copy, without running anything
+    old = {"name": "Alte Aufgabe", "files": [{"path": "main.py", "data": base64.urlsafe_b64encode(b'print("alt")\n').decode().rstrip("=")}]}
+    old_link = URL + "#project=v1." + base64.urlsafe_b64encode(gzip.compress(json.dumps(old).encode())).decode().rstrip("=")
+    legacy = ctx.new_page()
+    legacy.goto(old_link)
+    legacy.wait_for_selector(".cm-content", timeout=30000)
+    check("an older project link opens the project", eventually(lambda: "Alte Aufgabe" in legacy.inner_text(".topbar"), 10000), legacy.inner_text(".topbar"))
+    check("it shows the file's code", "print(\"alt\")" in legacy.inner_text(".cm-content"))
+    check("the link part is gone from the address", "#project=" not in legacy.url, legacy.url)
+    legacy.close()
 
     check("no page errors in the editor", not errors, str(errors[:3]))
     check("no page errors on the play pages", not perrors and not (BROWSER == "chromium" and merrors), str((perrors + (merrors if BROWSER == "chromium" else []))[:3]))

@@ -26,6 +26,7 @@ export const welcomeEn: Record<keyof typeof welcomeDe, string> = {
   'import.tips': 'The program has to use miniworlds (“import miniworlds as mw”). Paths like “images/figure.png” work when the pictures are in the same folder as main.py. If there is an error after the import, the box under the error line helps.',
   'project.importHelp': 'Import a program – how? …',
   'project.importFiles': 'Import Python files …',
+  'share.legacyFailed': 'The project link is incomplete, invalid or too large. Please copy the whole link again, or pass the project on as a ZIP.',
   'backup.button': '💾 Back up',
   'backup.title': 'Download the project as a ZIP file',
   'backup.hint': 'Your project is stored only in this browser on this device. On school computers that reset themselves it can be lost. Back it up as a ZIP file – you can import it again later.',

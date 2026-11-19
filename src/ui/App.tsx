@@ -26,6 +26,7 @@ import { ProjectView } from './ProjectView'
 import { collectShareContext, type ShareContext } from '../share/collect'
 import { ShareDialog } from '../share/ShareDialog'
 import { isPlayHash } from '../share/payload'
+import { hasLegacyLink, importLegacyLink } from '../share/legacy'
 import {
   createStarterProject,
   createTemplateProject,
@@ -160,8 +161,15 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
   // First start: reopen the last project, else the first one, else create a starter project; then open the task of the link.
   useEffect(() => {
     void (async () => {
-      const launch = parseLaunch(location.search, location.href)
-      if (launch) history.replaceState(null, '', withoutLaunch(location.href)) // a reload must not repeat the task
+      // an older kind of project link (`#project=…`, handed out before the play links): open it as a copy of its own
+      const legacy = hasLegacyLink(location.hash) ? location.hash : null
+      const launch = legacy ? null : parseLaunch(location.search, location.href)
+      if (legacy) history.replaceState(null, '', location.pathname + location.search)
+      else if (launch) history.replaceState(null, '', withoutLaunch(location.href)) // a reload must not repeat the task
+      let legacyFailed = false
+      if (legacy) {
+        try { await show(await importLegacyLink(store, legacy)); return } catch { legacyFailed = true }
+      }
       const list = await store.list()
       const wanted = lastProject()
       if (wanted && list.includes(wanted)) await show(wanted)
@@ -177,7 +185,8 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
           setOverlay('welcome')
         }
       }
-      if (launch) await openLaunch(launch).catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
+      if (legacyFailed) await infoDialog(t('dialog.error'), t('share.legacyFailed'))
+      else if (launch) await openLaunch(launch).catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store])
@@ -201,6 +210,17 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
   // itself. Save the work, then reload, so that the play page opens (the editor's own copy is untouched).
   useEffect(() => {
     const changed = () => {
+      if (hasLegacyLink(location.hash)) {
+        const hash = location.hash
+        history.replaceState(null, '', location.pathname + location.search)
+        void (async () => {
+          try {
+            await flush.current?.()
+            await show(await importLegacyLink(store, hash))
+          } catch { await infoDialog(t('dialog.error'), t('share.legacyFailed')) }
+        })()
+        return
+      }
       if (!isPlayHash(location.hash)) return
       void (async () => {
         try { await flush.current?.() } finally { location.reload() }
@@ -208,7 +228,8 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     }
     window.addEventListener('hashchange', changed)
     return () => window.removeEventListener('hashchange', changed)
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store])
 
   const guarded = (action: () => Promise<void>) => () =>
     void action().catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
