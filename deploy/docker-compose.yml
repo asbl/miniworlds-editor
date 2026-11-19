@@ -23,6 +23,7 @@ services:
   # nginx passes /collab/ on to it. The origin list keeps other sites (and forks) from using it.
   collab:
     build: ./collab
+    runtime: "php-security-compat"   # this server runs every container with it (plain runc does not start here)
     container_name: editor-collab
     restart: unless-stopped
     networks:
