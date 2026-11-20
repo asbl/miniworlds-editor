@@ -87,7 +87,7 @@ def tree(page):
 
 def new_person(browser, name):
     ctx = browser.new_context(locale="de-DE", viewport={"width": 1300, "height": 800}, permissions=["clipboard-read", "clipboard-write"] if BROWSER == "chromium" else [])
-    ctx.add_init_script(FILES_FIRST + f";localStorage.setItem('miniworlds-editor.collabName', '{name}')")
+    ctx.add_init_script(FILES_FIRST + ";localStorage.setItem('miniworlds-editor.prefs', JSON.stringify({sidebar: 'files', git: true}))" + f";localStorage.setItem('miniworlds-editor.collabName', '{name}')")
     page = ctx.new_page()
     page.errors = []
     page.on("pageerror", lambda e: page.errors.append(str(e) + " @ " + "after: " + (trail[-1] if trail else "-")))
@@ -109,6 +109,7 @@ try:
         ctx_a, a = new_person(browser, "Anna")
         a.goto(URL)
         a.wait_for_selector(".cm-content")
+        check("optional Git is available before joining", a.get_by_role("button", name="Git ▾", exact=True).count() == 1)
         check("with a relay the entry appears", eventually(lambda: a.locator(".collab-button").count() == 1, 8000))
         a.locator(".tree .row-main", has_text="main.py").click()
         a.click(".cm-content")
@@ -128,6 +129,7 @@ try:
         dialog.get_by_role("button", name="Schließen").click()
         a.wait_for_selector("dialog[open]", state="detached")
         check("the button shows how many are here", eventually(lambda: "👥 1" in a.locator(".collab-button").inner_text(), 5000))
+        check("Git is hidden while the room owns the project", a.get_by_role("button", name="Git ▾", exact=True).count() == 0)
         a.locator(".tree .row-main", has_text="main.py").click()
         check("her text survived the start", "zeile eins" in editor_text(a), editor_text(a))
 
@@ -275,8 +277,9 @@ try:
         dialog.get_by_role("button", name="Gemeinsames Arbeiten beenden").click()
         a.get_by_role("button", name="OK").click()
         check("she is alone again", eventually(lambda: a.locator(".collab-button").inner_text().strip() == "👥 Gemeinsam", 8000), a.locator(".collab-button").inner_text())
+        check("Git is available again for the saved copy", a.get_by_role("button", name="Git ▾", exact=True).count() == 1)
         a.locator(".tree .row-main", has_text="main.py").click()
-        check("her text is still there", "zeile eins" in editor_text(a), editor_text(a))
+        check("her text is still there", eventually(lambda: "zeile eins" in editor_text(a), 8000), editor_text(a))
         check("Ben sees her leave (the teacher is still there)", pumped(b, lambda: "👥 2" in b.locator(".collab-button").inner_text(), 8000), b.locator(".collab-button").inner_text())
         for who, page in (("Anna", a), ("Ben", b)):
             check(f"no script errors for {who}", not page.errors, str(page.errors[:2]))
