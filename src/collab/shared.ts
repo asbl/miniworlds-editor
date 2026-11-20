@@ -29,12 +29,14 @@ export interface Invite {
   /** The key this person connects with. */
   key: string
   /** The read key of the room (known to everybody who can write, so that they can hand out a read-only link). */
-  readKey: string | null
+  readKey: string
+  /** What everything is encrypted with: it only exists in the link, so the relay cannot read the project. */
+  secret: string
   readOnly: boolean
 }
 
 export function newInvite(random?: () => number): Invite {
-  return { room: randomRoomCode(random), key: token(12, random), readKey: token(12, random), readOnly: false }
+  return { room: randomRoomCode(random), key: token(12, random), readKey: token(12, random), secret: token(22, random), readOnly: false }
 }
 
 const ROOM = '[a-z0-9]{4,12}(?:-[a-z0-9]{4,12}){0,3}'
@@ -42,18 +44,18 @@ const KEY = '[a-z0-9]{6,32}'
 
 /** The text that goes behind `#room=` (write) or `#watch=` (read). */
 export function inviteCode(invite: Invite): string {
-  return invite.readOnly ? `${invite.room}.${invite.key}` : `${invite.room}.${invite.key}${invite.readKey ? `.${invite.readKey}` : ''}`
+  return invite.readOnly ? `${invite.room}.${invite.key}.${invite.secret}` : `${invite.room}.${invite.key}.${invite.readKey}.${invite.secret}`
 }
 
 /** The write invitation of a session, as a read-only one (what the teacher link carries). */
-export const readOnlyOf = (invite: Invite): Invite | null => (invite.readKey ? { room: invite.room, key: invite.readKey, readKey: invite.readKey, readOnly: true } : null)
+export const readOnlyOf = (invite: Invite): Invite => ({ room: invite.room, key: invite.readKey, readKey: invite.readKey, secret: invite.secret, readOnly: true })
 
-/** `#room=abcd-efgh.KEY.READKEY` or `#watch=abcd-efgh.READKEY` → the invitation; null for anything else. */
+/** `#room=abcd-efgh.KEY.READKEY.SECRET` or `#watch=abcd-efgh.READKEY.SECRET` → the invitation; null for anything else. */
 export function parseInviteHash(hash: string): Invite | null {
-  const write = new RegExp(`^#room=(${ROOM})\\.(${KEY})(?:\\.(${KEY}))?$`, 'i').exec(hash)
-  if (write) return { room: (write[1] as string).toLowerCase(), key: write[2] as string, readKey: write[3] ?? null, readOnly: false }
-  const read = new RegExp(`^#watch=(${ROOM})\\.(${KEY})$`, 'i').exec(hash)
-  if (read) return { room: (read[1] as string).toLowerCase(), key: read[2] as string, readKey: read[2] as string, readOnly: true }
+  const write = new RegExp(`^#room=(${ROOM})\\.(${KEY})\\.(${KEY})\\.(${KEY})$`, 'i').exec(hash)
+  if (write) return { room: (write[1] as string).toLowerCase(), key: write[2] as string, readKey: write[3] as string, secret: write[4] as string, readOnly: false }
+  const read = new RegExp(`^#watch=(${ROOM})\\.(${KEY})\\.(${KEY})$`, 'i').exec(hash)
+  if (read) return { room: (read[1] as string).toLowerCase(), key: read[2] as string, readKey: read[2] as string, secret: read[3] as string, readOnly: true }
   return null
 }
 
@@ -70,7 +72,7 @@ export function deserializeInvite(text: string | null): Invite | null {
 
 export const roomLink = (invite: Invite, base: string): string => `${base}#${invite.readOnly ? 'watch' : 'room'}=${inviteCode(invite)}`
 
-export type CollabFailure = 'full' | 'serverFull' | 'refused' | 'tooMany' | 'badRoom' | 'notFound' | 'busy' | 'tooBig' | 'network'
+export type CollabFailure = 'full' | 'serverFull' | 'refused' | 'tooMany' | 'badRoom' | 'notFound' | 'busy' | 'tooBig' | 'badKey' | 'network'
 
 /** The close codes of the relay (see deploy/collab/relay.mjs) and the standard ones that mean something to the person. */
 export function failureOfClose(code: number): CollabFailure | null {
@@ -88,7 +90,7 @@ export function failureOfClose(code: number): CollabFailure | null {
 }
 
 /** Failures where trying again at once is pointless (the person has to change something). */
-export const FINAL_FAILURES: ReadonlySet<CollabFailure> = new Set(['refused', 'badRoom', 'notFound', 'tooBig'])
+export const FINAL_FAILURES: ReadonlySet<CollabFailure> = new Set(['refused', 'badRoom', 'notFound', 'tooBig', 'badKey'])
 
 export interface Person {
   id: number
@@ -99,6 +101,28 @@ export interface Person {
   /** The file and line this person is working at. */
   focus: { path: string; line: number } | null
 }
+
+/** What somebody else's program printed (shown in the console next to one's own output). */
+export interface RemoteLine {
+  id: number
+  kind: 'stdout' | 'stderr' | 'input' | 'hint'
+  text: string
+}
+
+export interface RemoteRun {
+  lines: RemoteLine[]
+  running: boolean
+  /** Counts the runs of this person (a new one starts the output over). */
+  started: number
+  /** Lines that came since somebody last looked at them. */
+  unseen: number
+  nextLine: number
+}
+
+export const LINE_KINDS: ReadonlySet<string> = new Set(['stdout', 'stderr', 'input', 'hint'])
+/** At most this many lines of one person are kept, and this much of one run is shared (a loop that prints without end must not flood the room). */
+export const MAX_REMOTE_LINES = 1000
+export const MAX_SHARED_OUTPUT = 100_000
 
 /** What other people changed in the project since the last call (already written to the file system). */
 export interface RemoteChange {

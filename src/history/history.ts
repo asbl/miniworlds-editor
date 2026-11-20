@@ -1,6 +1,6 @@
 import type { Fs } from '../workspace'
 
-export type SnapshotReason = 'open' | 'run' | 'timer' | 'manual' | 'before-restore' | 'before-delete' | 'before-rename'
+export type SnapshotReason = 'open' | 'run' | 'timer' | 'manual' | 'before-restore' | 'before-delete' | 'before-rename' | 'before-join'
 
 export interface Snapshot {
   id: string

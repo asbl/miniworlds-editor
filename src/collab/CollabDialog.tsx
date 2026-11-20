@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { t, useLang } from '../i18n'
 import { qrModules, qrSvg } from '../share/qr'
 import type { Collab } from './collab'
+import { CODE_HOURS } from './code'
 import { MAX_NAME, roomLink } from './shared'
 import { useCollabInfo } from './useCollabInfo'
 
@@ -10,6 +11,10 @@ interface Props {
   /** Starts a session in the open project with the name that was typed. */
   onStart: (name: string) => Promise<void>
   onStop: () => Promise<void>
+  /** Join by short code or link; returns what went wrong (text for the person), or null. */
+  onJoin: (text: string) => Promise<string | null>
+  /** Make a short code for the running session (returns it, or an error text). */
+  onCode: () => Promise<{ code: string } | { error: string }>
   onRename: (name: string) => void
   initialName: string
   onClose: () => void
@@ -17,7 +22,7 @@ interface Props {
 
 const baseUrl = () => `${location.origin}${location.pathname}`
 
-function CopyRow({ link, label, button }: { link: string; label: string; button: string }) {
+function CopyRow({ link, label, button, big }: { link: string; label: string; button: string; big?: boolean }) {
   const [copied, setCopied] = useState(false)
   const field = useRef<HTMLInputElement>(null)
   async function copy() {
@@ -30,7 +35,7 @@ function CopyRow({ link, label, button }: { link: string; label: string; button:
   }
   return (
     <div class="share-row">
-      <input ref={field} class="share-link" readOnly value={link} aria-label={label} onFocus={(e) => e.currentTarget.select()} />
+      <input ref={field} class={big ? 'share-link share-code' : 'share-link'} readOnly value={link} aria-label={label} onFocus={(e) => e.currentTarget.select()} />
       <button type="button" class="primary" onClick={() => void copy()}>
         {copied ? t('collab.copied') : button}
       </button>
@@ -39,12 +44,15 @@ function CopyRow({ link, label, button }: { link: string; label: string; button:
 }
 
 /** "Work together": start a session, then the invitation links, the people in the room (follow, who drives) and how to leave. */
-export function CollabDialog({ collab, onStart, onStop, onRename, initialName, onClose }: Props) {
+export function CollabDialog({ collab, onStart, onStop, onJoin, onCode, onRename, initialName, onClose }: Props) {
   useLang()
   const ref = useRef<HTMLDialogElement>(null)
   const info = useCollabInfo(collab)
   const [name, setName] = useState(initialName)
   const [busy, setBusy] = useState(false)
+  const [joining, setJoining] = useState('')
+  const [problem, setProblem] = useState<string | null>(null)
+  const [code, setCode] = useState<string | null>(collab?.shortCode && collab.shortCode.until > Date.now() ? collab.shortCode.code : null)
   const link = collab && !collab.readOnly ? roomLink(collab.invite, baseUrl()) : ''
   const readInvite = collab && !collab.readOnly ? collab.readInvite() : null
   const readLink = readInvite ? roomLink(readInvite, baseUrl()) : ''
@@ -93,6 +101,24 @@ export function CollabDialog({ collab, onStart, onStop, onRename, initialName, o
             </div>
           </form>
         )}
+        {!collab && (
+          <form
+            class="collab-join"
+            onSubmit={(e) => {
+              e.preventDefault()
+              void run(async () => setProblem(await onJoin(joining)))
+            }}
+          >
+            <h3 class="muted small">{t('collab.join.title')}</h3>
+            <div class="share-row">
+              <input value={joining} placeholder="kobi-latu-42" aria-label={t('collab.join.field')} onInput={(e) => (setJoining(e.currentTarget.value), setProblem(null))} />
+              <button type="submit" disabled={busy || joining.trim() === ''}>
+                {t('collab.join.button')}
+              </button>
+            </div>
+            {problem && <p class="collab-problem" role="alert">{problem}</p>}
+          </form>
+        )}
         {collab && info && (
           <>
             <p class={`collab-status ${info.status}`} role="status">
@@ -104,6 +130,31 @@ export function CollabDialog({ collab, onStart, onStop, onRename, initialName, o
                 <CopyRow link={link} label={t('collab.link')} button={t('collab.copy')} />
                 {qr && <div class="share-qr" role="img" aria-label={t('collab.qr')} dangerouslySetInnerHTML={{ __html: qrSvg(qr) }} />}
               </>
+            )}
+            {link && (
+              <div class="collab-code">
+                {code ? (
+                  <>
+                    <p class="muted small collab-readlabel">{t('collab.code.label')} · {t('collab.code.hint', { hours: CODE_HOURS })}</p>
+                    <CopyRow link={code} big label={t('collab.code.label')} button={t('collab.code.copy')} />
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        const made = await onCode()
+                        if ('code' in made) setCode(made.code)
+                        else setProblem(made.error)
+                      })
+                    }
+                  >
+                    {t('collab.code.make')}
+                  </button>
+                )}
+                {problem && <p class="collab-problem" role="alert">{problem}</p>}
+              </div>
             )}
             {readLink && (
               <>

@@ -24,7 +24,11 @@ import { hasSeenWelcome, markWelcomeSeen } from './welcome/firstRun'
 import { ImportGuide, Welcome, type ImportActions } from './welcome/Welcome'
 import { ProjectView } from './ProjectView'
 import type { Collab } from '../collab/collab'
+import { History } from '../history/history'
+import { readTexts } from '../history/restore'
 import { CollabDialog } from '../collab/CollabDialog'
+import { CODE_HOURS, inviteInLink, publishCode, resolveCode } from '../collab/code'
+import { parseShortCode } from '../collab/crypto'
 import { useCollabInfo } from '../collab/useCollabInfo'
 import { knownPaths, rememberKnown, rememberName, rememberRoom, savedName, savedRoom } from '../collab/storage'
 import { cleanName, deserializeInvite, newInvite, parseInviteHash, serializeInvite, type CollabFailure, type Invite } from '../collab/shared'
@@ -179,6 +183,14 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     })
     session.onShrunk = (path, before, after) => setCollabAlert(t('collab.shrunk', { path, before: (before / 1048576).toFixed(1), after: (after / 1048576).toFixed(1) }))
     session.onSkipped = (path, bytes) => setCollabAlert(t('collab.tooBigFile', { path, size: (bytes / 1048576).toFixed(1) }))
+    // the room's files win over the ones here: what this project had before is kept in its history
+    if (ws.history && !how.quiet) {
+      try {
+        await new History(ws.history).record(await readTexts(ws.fs, null), 'before-join')
+      } catch {
+        /* a safety net only */
+      }
+    }
     const fs = await session.join(ws.fs, how.quiet ? 5000 : 8000).catch(() => null)
     const stale = !how.adopt && nameRef.current !== project
     if (!fs || stale) {
@@ -252,6 +264,37 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
       return void (await infoDialog(t('collab.joinTitle'), reasonText(failure)))
     }
     await dropStarter(project)
+  }
+
+  /** "Join" in the dialog: a short code or a pasted link. Returns what is wrong, or null (then the dialog closes and the join goes on). */
+  async function joinByCode(text: string): Promise<string | null> {
+    if (!config.collabUrl) return t('collab.unavailable')
+    let invite = inviteInLink(text)
+    if (!invite) {
+      const code = parseShortCode(text)
+      if (!code) return t('collab.join.invalid')
+      try {
+        invite = await resolveCode(config.collabUrl, code)
+      } catch (error) {
+        return error instanceof Error && error.message === 'tooMany' ? t('collab.code.tooMany') : reasonText('network')
+      }
+      if (!invite) return t('collab.join.notFound', { hours: CODE_HOURS })
+    }
+    setCollabOpen(false)
+    void joinRoom(invite)
+    return null
+  }
+
+  async function makeCode(): Promise<{ code: string } | { error: string }> {
+    const session = collabRef.current
+    if (!session || !config.collabUrl) return { error: t('collab.code.failed') }
+    try {
+      const code = await publishCode(config.collabUrl, session.invite)
+      session.shortCode = { code, until: Date.now() + CODE_HOURS * 3600_000 }
+      return { code }
+    } catch (error) {
+      return { error: error instanceof Error && error.message === 'tooMany' ? t('collab.code.tooMany') : t('collab.code.failed') }
+    }
   }
 
   function closeOverlay() {
@@ -575,6 +618,8 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
             await startCollab(person)
           }}
           onStop={stopCollab}
+          onJoin={joinByCode}
+          onCode={makeCode}
           onRename={(person) => {
             rememberName(cleanName(person))
             collabRef.current?.setName(person)

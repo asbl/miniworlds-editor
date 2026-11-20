@@ -10,6 +10,8 @@ import { CollabRoom } from './room'
 import { shrinkableType, shrinkImage } from './shrink'
 import {
   cleanName,
+  LINE_KINDS,
+  MAX_REMOTE_LINES,
   MAX_SHARED_BYTES,
   MAX_SHARED_TOTAL,
   readOnlyOf,
@@ -17,6 +19,8 @@ import {
   type Invite,
   type Person,
   type RemoteChange,
+  type RemoteLine,
+  type RemoteRun,
   type SyncedFs,
 } from './shared'
 
@@ -82,6 +86,10 @@ export class Collab {
   /** Files that were deleted by others while this project was away, and so were deleted here when it joined again. */
   removedOnJoin: string[] = []
   readonly skipped = new Map<string, number>()
+  /** The short code made for this session in this window, and when the relay forgets it. */
+  shortCode: { code: string; until: number } | null = null
+  /** What the others' programs print (by their awareness id); only kept while they are in the room. */
+  readonly remoteRuns = new Map<number, RemoteRun>()
   private fs: Fs | null = null
   private pending = { written: new Set<string>(), removed: new Set<string>(), replaced: new Set<string>() }
   private timer: ReturnType<typeof setTimeout> | null = null
@@ -96,13 +104,15 @@ export class Collab {
     this.readOnly = options.invite.readOnly
     const color = COLORS[this.room.doc.clientID % COLORS.length] as string
     this.awareness.setLocalStateField('user', { name: cleanName(options.name), color, colorLight: LIGHT(color), readOnly: this.readOnly })
-    const protocols = this.readOnly ? [`r.${options.invite.key}`] : [`k.${options.invite.key}`, ...(options.invite.readKey ? [`v.${options.invite.readKey}`] : [])]
-    this.provider = new CollabProvider({ url: options.url, room: options.invite.room, protocols, doc: this.room.doc, awareness: this.awareness, socket: options.socket })
+    const protocols = this.readOnly ? [`r.${options.invite.key}`] : [`k.${options.invite.key}`, `v.${options.invite.readKey}`]
+    this.provider = new CollabProvider({ url: options.url, room: options.invite.room, protocols, secret: options.invite.secret, readOnly: this.readOnly, doc: this.room.doc, awareness: this.awareness, socket: options.socket })
     const emit = () => {
       // somebody who leaves is no longer followed (and no longer drives)
       if (this.followed !== null && !this.awareness.getStates().has(this.followed)) this.followed = null
+      for (const id of this.remoteRuns.keys()) if (!this.awareness.getStates().has(id)) this.remoteRuns.delete(id)
       this.listeners.forEach((l) => l())
     }
+    this.provider.onApp = (from, data) => this.onApp(from, data)
     this.provider.subscribe(emit)
     this.awareness.on('change', emit)
     this.room.meta.observe(emit)
@@ -146,9 +156,10 @@ export class Collab {
   private async apply(): Promise<void> {
     this.timer = null
     const fs = this.fs
+    if (!fs) return // still joining: what arrived stays queued until `join` is through
     const change: RemoteChange = { written: [...this.pending.written], removed: [...this.pending.removed], replaced: [...this.pending.replaced] }
     this.pending = { written: new Set(), removed: new Set(), replaced: new Set() }
-    if (!fs || this.disposed) return
+    if (this.disposed) return
     for (const path of change.removed) await fs.remove(path).catch(() => {})
     for (const path of change.written) {
       const text = this.room.text(path)
@@ -229,7 +240,9 @@ export class Collab {
         if (content !== null) this.room.set(path, content)
       }
     }
+    await this.provider.flushed() // what this person brought is in the room before the next one asks for it
     this.fs = fs
+    if (this.timer === null && (this.pending.written.size > 0 || this.pending.removed.size > 0)) this.timer = setTimeout(() => void this.apply(), 0)
     this.options.onKnown?.(this.room.paths())
     return this.syncedFs(fs)
   }
@@ -326,6 +339,61 @@ export class Collab {
     return this.followed
   }
 
+  // ---- what the others' programs print --------------------------------------------------------------------------------
+
+  /** This person started the program (the others' view of this person's output starts over). */
+  shareRunStart(): void {
+    if (!this.readOnly) this.provider.sendApp({ t: 'start' })
+  }
+
+  shareRunEnd(): void {
+    if (!this.readOnly) this.provider.sendApp({ t: 'end' })
+  }
+
+  shareLines(lines: { kind: string; text: string }[]): void {
+    if (!this.readOnly && lines.length > 0) this.provider.sendApp({ t: 'out', lines: lines.map((l) => [l.kind, l.text]) })
+  }
+
+  private onApp(from: number, data: unknown): void {
+    if (from === this.id || typeof data !== 'object' || data === null) return
+    const message = data as { t?: unknown; lines?: unknown }
+    // somebody who only watches does not run programs for the others
+    const sender = this.awareness.getStates().get(from) as { user?: { readOnly?: boolean } } | undefined
+    if (!sender || sender.user?.readOnly) return
+    let run = this.remoteRuns.get(from)
+    if (message.t === 'start') {
+      this.remoteRuns.set(from, { lines: [], running: true, started: (run?.started ?? 0) + 1, unseen: 0, nextLine: 0 })
+    } else if (message.t === 'end') {
+      if (run) run.running = false
+    } else if (message.t === 'out' && Array.isArray(message.lines)) {
+      if (!run) this.remoteRuns.set(from, (run = { lines: [], running: false, started: 1, unseen: 0, nextLine: 0 }))
+      for (const row of message.lines.slice(0, 200)) {
+        if (!Array.isArray(row) || typeof row[0] !== 'string' || typeof row[1] !== 'string' || !LINE_KINDS.has(row[0])) continue
+        run.lines.push({ id: run.nextLine++, kind: row[0] as RemoteLine['kind'], text: row[1].slice(0, 5000) })
+        run.unseen++
+      }
+      if (run.lines.length > MAX_REMOTE_LINES) run.lines.splice(0, run.lines.length - MAX_REMOTE_LINES)
+    } else return
+    this.listeners.forEach((l) => l())
+  }
+
+  markRunSeen(id: number): void {
+    const run = this.remoteRuns.get(id)
+    if (run && run.unseen > 0) {
+      run.unseen = 0
+      this.listeners.forEach((l) => l())
+    }
+  }
+
+  clearRun(id: number): void {
+    const run = this.remoteRuns.get(id)
+    if (run) {
+      run.lines = []
+      run.unseen = 0
+      this.listeners.forEach((l) => l())
+    }
+  }
+
   // ---- pair programming: one person drives, the others watch (and can take the wheel) -------------------------------
 
   /** The person who drives, if there is one still in the room. */
@@ -347,8 +415,8 @@ export class Collab {
     return this.readOnly || (this.driver !== null && this.driver !== this.id)
   }
 
-  /** The invitation for somebody who should only watch (null when this session does not know the read key). */
-  readInvite(): Invite | null {
+  /** The invitation for somebody who should only watch. */
+  readInvite(): Invite {
     return readOnlyOf(this.invite)
   }
 

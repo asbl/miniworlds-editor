@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { createRelay } from '../../deploy/collab/relay.mjs'
 import { MemoryFs, type Fs } from '../workspace'
 import { Collab, isSyncedFs } from './collab'
+import { newShortCode, parseShortCode } from './crypto'
+import { publishCode, resolveCode } from './code'
 import { newInvite, parseInviteHash, randomRoomCode, readOnlyOf, deserializeInvite, serializeInvite, roomLink, type Invite } from './shared'
 
 type Relay = ReturnType<typeof createRelay>
@@ -25,7 +27,7 @@ function person(code: string, url: string, name: string, extra: Record<string, u
   return c
 }
 const readerOf = (code: string, url: string, name: string) => {
-  const invite = readOnlyOf(invites.get(code) as Invite) as Invite
+  const invite = readOnlyOf(invites.get(code) as Invite)
   const c = new Collab({ invite, name, url, applyDelayMs: 10 })
   collabs.push(c)
   return c
@@ -74,6 +76,7 @@ describe('working together', () => {
     const b = person('room-aaaa', url, 'B')
     const fsA = (await a.join(await filled({ 'main.py': 'one\ntwo\n' }))) as Fs
     const fsB = (await b.join(new MemoryFs())) as Fs
+    expect(await until(() => b.room.has('main.py'))).toBe(true)
     expect(await fsB.read('main.py')).toBe('one\ntwo\n')
     a.room.text('main.py')?.insert(0, 'A:')
     b.room.text('main.py')?.insert('one\ntwo\n'.length, 'B:')
@@ -109,6 +112,7 @@ describe('working together', () => {
     const b = person('room-cccc', url, 'B')
     const fsA = (await a.join(await filled({ 'main.py': 'v1' }))) as Fs
     await b.join(new MemoryFs())
+    expect(await until(() => b.room.has('main.py'))).toBe(true)
     expect(isSyncedFs(fsA)).toBe(true)
     // B types; A's autosave still holds the old text
     b.room.text('main.py')?.insert(2, '-b')
@@ -135,6 +139,7 @@ describe('working together', () => {
     const b = person('room-eeee', url, 'B')
     await a.join(await filled({ 'main.py': 'start' }))
     await b.join(new MemoryFs())
+    expect(await until(() => b.room.has('main.py'))).toBe(true)
     const sockets = [...(relay.rooms.get('room-eeee')?.conns.keys() ?? [])] as { terminate(): void }[]
     sockets.forEach((s) => s.terminate())
     a.room.text('main.py')?.insert(5, ' A')
@@ -175,6 +180,141 @@ describe('relay', () => {
   })
 })
 
+describe('encryption', () => {
+  it('keeps the project unreadable for the relay', async () => {
+    const { url, relay } = await start()
+    const a = person('room-encr', url, 'A')
+    await a.join(await filled({ 'main.py': 'print("geheimer Satz")\n' }))
+    const b = person('room-encr', url, 'B')
+    await b.join(new MemoryFs())
+    a.setFocus('main.py', 3)
+    await settle(300)
+    const room = relay.rooms.get('room-encr') as { log: { payload: Buffer }[] }
+    expect(room.log.length).toBeGreaterThan(0)
+    for (const entry of room.log) expect(entry.payload.toString('latin1')).not.toContain('geheimer')
+    expect(b.room.text('main.py')?.toString()).toContain('geheimer Satz')
+  })
+
+  it('turns away a link with the wrong secret', async () => {
+    const { url } = await start()
+    const a = person('room-encs', url, 'A')
+    await a.join(await filled({ 'main.py': 'x' }))
+    const intruder = new Collab({ invite: { ...(invites.get('room-encs') as Invite), secret: 'z'.repeat(22) }, name: 'X', url })
+    collabs.push(intruder)
+    expect(await intruder.join(new MemoryFs(), 3000)).toBeNull()
+    expect(intruder.failure).toBe('badKey')
+  })
+
+  it('compacts the log of the relay now and then', async () => {
+    const { url, relay } = await start({ origins: ['*'], messagesPerSecond: 5000 })
+    const a = person('room-encc', url, 'A')
+    const b = person('room-encc', url, 'B')
+    await a.join(await filled({ 'main.py': '' }))
+    await b.join(new MemoryFs())
+    await until(() => b.room.has('main.py'))
+    const text = a.room.text('main.py')
+    for (let i = 0; i < 400; i++) text?.insert(i, 'x')
+    await until(() => b.room.text('main.py')?.length === 400)
+    const room = relay.rooms.get('room-encc') as { log: unknown[] }
+    expect(await until(() => room.log.length < 100, 6000)).toBe(true)
+    // a newcomer still gets everything
+    const c = person('room-encc', url, 'C')
+    await c.join(new MemoryFs())
+    expect(await until(() => c.room.text('main.py')?.length === 400)).toBe(true)
+  })
+
+  it('does not take changes from a read-only connection', async () => {
+    const { url, relay } = await start()
+    const a = person('room-ence', url, 'A')
+    await a.join(await filled({ 'main.py': 'x' }))
+    const { default: WebSocket } = await import('ws')
+    const invite = readOnlyOf(invites.get('room-ence') as Invite)
+    const ws = new WebSocket(`${url}/room-ence`, [`r.${invite.key}`])
+    await new Promise((r) => ws.on('open', r))
+    const room = relay.rooms.get('room-ence') as { log: unknown[] }
+    const before = room.log.length
+    ws.send(Buffer.concat([Buffer.from([3]), Buffer.alloc(40, 1)])) // DATA
+    ws.send(Buffer.concat([Buffer.from([5, 0, 0, 0, 1]), Buffer.alloc(40, 1)])) // SNAPSHOT
+    await settle(200)
+    expect(room.log.length).toBe(before)
+    ws.close()
+  })
+})
+
+describe('short codes', () => {
+  it('are easy to say and forgiving to type', () => {
+    for (let i = 0; i < 50; i++) expect(parseShortCode(newShortCode())).not.toBeNull()
+    expect(parseShortCode('  KOBI Latu 07 ')).toBe('kobi-latu-07')
+    expect(parseShortCode('kobi-latu')).toBeNull()
+    expect(parseShortCode('hello-world-12')).toBeNull()
+  })
+
+  it('lead to the invitation, which the relay cannot read', async () => {
+    const { url, relay } = await start()
+    const base = url.replace(/^ws/, 'http')
+    const invite = { ...newInvite(), room: 'abcd-efgh' }
+    const code = await publishCode(base, invite)
+    expect(await resolveCode(base, code)).toEqual(invite)
+    expect(await resolveCode(base, 'bobo-bobo-00')).toBeNull()
+    const stored = [...relay.codes.values()].map((e) => e.data.toString('latin1')).join('')
+    expect(stored).not.toContain(invite.secret)
+    expect(stored).not.toContain(invite.key)
+  })
+
+  it('expire, and a try is limited per address', async () => {
+    const { url, relay } = await start({ origins: ['*'], codeTtlMs: 1, codeTriesPerMinute: 5 })
+    const base = url.replace(/^ws/, 'http')
+    const code = await publishCode(base, newInvite())
+    await settle(20)
+    expect(await resolveCode(base, code)).toBeNull()
+    expect(relay.codes.size).toBe(1)
+    let blocked = false
+    for (let i = 0; i < 10 && !blocked; i++) blocked = await resolveCode(base, 'bobo-bobo-00').then(() => false, (e: Error) => e.message === 'tooMany')
+    expect(blocked).toBe(true)
+  })
+})
+
+describe("others' program output", () => {
+  it('reaches the others, and starts over with every run', async () => {
+    const { url } = await start()
+    const a = person('room-outa', url, 'A')
+    const b = person('room-outa', url, 'B')
+    const w = readerOf('room-outa', url, 'Lehrer')
+    await a.join(new MemoryFs())
+    await b.join(new MemoryFs())
+    await w.join(new MemoryFs())
+    await until(() => b.people().length === 3 && w.people().length === 3)
+    a.shareRunStart()
+    a.shareLines([{ kind: 'stdout', text: 'Hallo' }, { kind: 'stderr', text: 'Fehler!' }])
+    expect(await until(() => b.remoteRuns.get(a.id)?.lines.length === 2)).toBe(true)
+    expect(b.remoteRuns.get(a.id)).toMatchObject({ running: true, started: 1 })
+    expect(await until(() => w.remoteRuns.get(a.id)?.lines.length === 2)).toBe(true) // a teacher reads along
+    a.shareRunEnd()
+    expect(await until(() => b.remoteRuns.get(a.id)?.running === false)).toBe(true)
+    a.shareRunStart()
+    expect(await until(() => b.remoteRuns.get(a.id)?.started === 2)).toBe(true)
+    expect(b.remoteRuns.get(a.id)?.lines).toEqual([])
+    expect(a.remoteRuns.size).toBe(0)
+  })
+
+  it('is not accepted from somebody who only watches, and ignores junk', async () => {
+    const { url } = await start()
+    const a = person('room-outb', url, 'A')
+    const w = readerOf('room-outb', url, 'Lehrer')
+    await a.join(new MemoryFs())
+    await w.join(new MemoryFs())
+    await until(() => a.people().length === 2)
+    w.provider.sendApp({ t: 'out', lines: [['stdout', 'from the teacher']] })
+    w.provider.sendApp({ t: 'start' })
+    await settle(300)
+    expect(a.remoteRuns.size).toBe(0)
+    w.shareRunStart() // a reader never sends these at all
+    a.provider.sendApp({ t: 'out', lines: [['bogus', 'x'], 5, ['stdout', 7]] })
+    await settle(200)
+    expect(w.remoteRuns.get(a.id)?.lines ?? []).toEqual([])
+  })
+})
+
 describe('room codes', () => {
   it('look like abcd-efgh and fit the relay pattern', () => {
     for (let i = 0; i < 50; i++) expect(randomRoomCode()).toMatch(/^[a-z2-9]{4}-[a-z2-9]{4}$/)
@@ -205,7 +345,7 @@ describe('read-only link', () => {
     const { url } = await start()
     const a = person('room-uuuu', url, 'Anna')
     await a.join(await filled({ 'main.py': 'x' }))
-    expect(a.readInvite()?.readOnly).toBe(true)
+    expect(a.readInvite().readOnly).toBe(true)
     const t = readerOf('room-uuuu', url, 'Lehrer')
     const fs = (await t.join(new MemoryFs())) as Fs
     await fs.write('scratch.py', 'mine')
@@ -219,11 +359,11 @@ describe('read-only link', () => {
     const { url } = await start()
     const a = person('room-ssss', url, 'Anna')
     await a.join(new MemoryFs())
-    const wrong = new Collab({ invite: { room: 'room-ssss', key: 'wrongwrongwrong', readKey: null, readOnly: true }, name: 'x', url })
+    const wrong = new Collab({ invite: { room: 'room-ssss', key: 'wrongwrongwrong', readKey: 'wrongwrongwrong', secret: 'x'.repeat(22), readOnly: true }, name: 'x', url })
     collabs.push(wrong)
     expect(await wrong.join(new MemoryFs(), 3000)).toBeNull()
     expect(wrong.failure).toBe('refused')
-    const writerWrong = new Collab({ invite: { room: 'room-ssss', key: 'wrongwrongwrong', readKey: null, readOnly: false }, name: 'x', url })
+    const writerWrong = new Collab({ invite: { room: 'room-ssss', key: 'wrongwrongwrong', readKey: 'wrongwrongwrong', secret: 'x'.repeat(22), readOnly: false }, name: 'x', url })
     collabs.push(writerWrong)
     expect(await writerWrong.join(new MemoryFs(), 3000)).toBeNull()
     expect(writerWrong.failure).toBe('refused')
@@ -338,16 +478,16 @@ describe('invitations', () => {
   it('round-trip through links and storage', () => {
     const invite = { ...newInvite(), room: 'abcd-efgh' }
     const link = roomLink(invite, 'https://e.org/')
-    expect(link).toMatch(/^https:\/\/e\.org\/#room=abcd-efgh\.[a-z0-9]{12}\.[a-z0-9]{12}$/)
+    expect(link).toMatch(/^https:\/\/e\.org\/#room=abcd-efgh\.[a-z0-9]{12}\.[a-z0-9]{12}\.[a-z0-9]{22}$/)
     expect(parseInviteHash(link.slice(link.indexOf('#')))).toEqual(invite)
-    const read = readOnlyOf(invite) as Invite
+    const read = readOnlyOf(invite)
     const readLink = roomLink(read, 'https://e.org/')
     expect(readLink).toContain('#watch=abcd-efgh.')
     expect(readLink).not.toContain(invite.key)
     expect(parseInviteHash(readLink.slice(readLink.indexOf('#')))).toEqual(read)
     expect(deserializeInvite(serializeInvite(invite))).toEqual(invite)
     expect(deserializeInvite(serializeInvite(read))).toEqual(read)
-    for (const bad of ['', '#room=abcd', '#room=abcd-efgh', '#room=abc.def', '#x=abcd-efgh.aaaaaaaa', '#watch=abcd-efgh', '#room=abcd-efgh.<script>']) expect(parseInviteHash(bad)).toBeNull()
+    for (const bad of ['', '#room=abcd', '#room=abcd-efgh', '#room=abcd-efgh.aaaaaaaa.bbbbbbbb', '#room=abc.def', '#x=abcd-efgh.aaaaaaaa', '#watch=abcd-efgh', '#room=abcd-efgh.<script>']) expect(parseInviteHash(bad)).toBeNull()
     expect(deserializeInvite('junk')).toBeNull()
   })
 })

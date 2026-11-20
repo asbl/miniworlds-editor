@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { Workspace, FileEntry } from '../workspace'
 import type { Collab } from '../collab/collab'
 import { useCollabInfo } from '../collab/useCollabInfo'
+import { useRemoteConsoles, useShareRun } from '../collab/useShareRun'
 import { t, useLang } from '../i18n'
 import { useLanguage } from '../language/useLanguage'
 import type { LanguageService } from '../language/service'
@@ -64,6 +65,9 @@ interface Props {
  * One open project: wires the project's state (files, session, program, world, class model, history) together and
  * lays out the toolbar, the three columns (sidebar, editor, world) and the dialogs. The parts live in `./project/`.
  */
+/** Working together: a safe state every minute, so that what somebody deletes by mistake is not older than that. */
+const COLLAB_HISTORY_MS = 60 * 1000
+
 export function ProjectView({ workspace, projectName, runner, catalog, language, registerFlush, embedded = false, collab = null }: Props) {
   const lang = useLang()
   const { fs } = workspace
@@ -89,6 +93,8 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
     }, onProblems: setProblems })
   const state = useSessionState(session)
   const collabInfo = useCollabInfo(collab)
+  useShareRun(collab, runner)
+  const remoteConsoles = useRemoteConsoles(collab)
   // somebody who watches, or whose turn it is not, cannot type
   useEffect(() => {
     host.current?.setLocked(collabInfo?.locked ?? false)
@@ -122,7 +128,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
     if (kind !== 'project') setTab((now) => (now === startTab ? 'files' : now))
   }, [entries, kind, startTab])
 
-  const historyApi = useHistory(workspace, fs, session)
+  const historyApi = useHistory(workspace, fs, session, collab ? COLLAB_HISTORY_MS : undefined)
   const { settings, loaded: settingsLoaded, update: updateSettings } = useSettings(fs, kind, projectName, session)
   const { data: versions, status: catalogStatus } = useCatalog(catalog)
   const [mode, setMode] = useMode(projectName)
@@ -170,7 +176,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   })
 
   const files = useFileOps({ fs, session, entries, kind, refresh, metaApi, historyApi })
-  const history = useHistoryActions(fs, session, historyApi, refresh)
+  const history = useHistoryActions(fs, session, historyApi, refresh, !!collab && !collab.readOnly)
   const renameClassDialog = useRenameClass({ fs, session, kind, runner, classModel, metaApi, historyApi, refresh, onRenamed: classView.setPicked })
   const copyReport = useReport({ fs, session, runner, lang, settings, entries })
 
@@ -347,6 +353,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
           name={projectName}
           runner={runner}
           trace={trace}
+          remote={collab ? { ...remoteConsoles, onSeen: (id) => collab.markRunSeen(id), onClear: (id) => collab.clearRun(id) } : undefined}
           onReport={() => void copyReport()}
           onJump={(loc) => {
             setPane('editor') // a link in the console: show the line it points to

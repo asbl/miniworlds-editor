@@ -12,7 +12,7 @@ Mehrere Personen bearbeiten **dasselbe Projekt live**: jede sieht den Code, die 
 
 ### Nur-Lesen-Link (Lehrkräfte)
 
-Im Dialog steht neben dem Einladungslink ein zweiter, **Nur-Lesen-Link** (`#watch=…`). Wer ihn öffnet, sieht alles live (Code, Cursor, Dateien), kann aber nichts ändern: der Editor ist gesperrt, und der Relay verwirft Änderungen von Lese-Verbindungen. Der Nur-Lesen-Link enthält den Schreibschlüssel nicht. Was die Lehrkraft auf dem eigenen Gerät tut (z. B. das Programm laufen lassen), erreicht den Raum nicht.
+Im Dialog steht neben dem Einladungslink ein zweiter, **Nur-Lesen-Link** (`#watch=…`). Wer ihn öffnet, sieht alles live (Code, Cursor, Dateien), kann aber nichts ändern: der Editor ist gesperrt, und der Relay verwirft Änderungen von Lese-Verbindungen. Der Nur-Lesen-Link enthält den Schreibschlüssel nicht (wohl aber den Verschlüsselungsschlüssel, sonst könnte man nichts lesen). Was die Lehrkraft auf dem eigenen Gerät tut (z. B. das Programm laufen lassen), erreicht den Raum nicht.
 
 ### Folgen
 
@@ -36,7 +36,25 @@ Wer den Link kennt, kann **mitlesen und mitschreiben** (Nur-Lesen-Link: nur mitl
 
 ## Technik
 
-Yjs (CRDT) im Browser (wird erst beim ersten „Gemeinsam“ nachgeladen, ein eigener Baustein von etwa 100 KB); Text­dateien als `Y.Text`, Bilder und Sonstiges als Bytes (`src/collab/`). Der Editor-Dateizugriff läuft durch `Collab.join()`: Änderungen der anderen werden in das normale Projekt-Dateisystem geschrieben, das Automatische Speichern bleibt wie es ist. Als Verbindung dient ein kleiner **WebSocket-Relay** (y-websocket-Protokoll, `deploy/collab/relay.mjs`), der pro Raum ein Dokument im Arbeitsspeicher hält und einen Raum einen Tag nach dem Weggang der letzten Person vergisst. Nichts wird auf Platte geschrieben.
+Yjs (CRDT) im Browser (wird erst beim ersten „Gemeinsam“ nachgeladen, ein eigener Baustein von etwa 100 KB); Text­dateien als `Y.Text`, Bilder und Sonstiges als Bytes (`src/collab/`). Der Editor-Dateizugriff läuft durch `Collab.join()`: Änderungen der anderen werden in das normale Projekt-Dateisystem geschrieben, das Automatische Speichern bleibt wie es ist. Als Verbindung dient ein kleiner **WebSocket-Relay** (`deploy/collab/relay.mjs`, nur die Bibliothek `ws`), der einen Raum einen Tag nach dem Weggang der letzten Person vergisst. Nichts wird auf Platte geschrieben.
+
+## Verschlüsselung (Ende zu Ende)
+
+Der Relay **kann das Projekt nicht lesen**. Jede Nachricht (Änderungen, Cursor, Programmausgabe) wird im Browser mit AES-GCM verschlüsselt; der Schlüssel steht nur im Einladungslink hinter dem `#` (der nie an einen Server geschickt wird) und wird mit dem Raumnamen verknüpft. Der Relay hält pro Raum nur ein **Protokoll verschlüsselter Änderungen** (wer neu kommt, bekommt es und spielt es ab), leitet kurzlebige Nachrichten (Cursor, Ausgabe) weiter und verwirft alles nach 24 h ohne Teilnehmer. Damit das Protokoll nicht endlos wächst, ersetzt einer der Schreibenden den alten Teil ab und zu durch den aktuellen (verschlüsselten) Stand (nach 300 Änderungen oder 1 MB).
+
+Was der Relay trotzdem sieht: Raumnamen, wie viele Verbindungen, Größe und Zeitpunkt der Nachrichten. Die Zugriffsschlüssel (Schreiben / Nur-Lesen) kennt er, weil er sie prüft; der Verschlüsselungsschlüssel ist ein dritter und geht nie zu ihm. Ein Link, dessen Schlüssel nicht passt, wird mit eigener Meldung abgewiesen. Alte Links ohne Schlüsselteil (vor dieser Version) gelten nicht mehr.
+
+## Kurzcode
+
+Im Dialog erzeugt „Kurzcode erzeugen“ einen Code wie `kobi-latu-42`, den man im Klassenraum ansagen kann; wer ihn im Dialog („Einem Raum beitreten“) eintippt, kommt in den Raum. Technisch legt der Browser die (verschlüsselte) Einladung unter einer Nummer ab, die aus dem Code berechnet wird; der Code selbst und der Schlüssel erreichen den Relay nie. Der Relay vergisst ihn nach **4 Stunden** und zählt Versuche (30 pro Minute und Adresse). Ein Kurzcode hat rund 31 Bit und ist deshalb schwächer als der Link: Wer den Relay betreibt, könnte ihn mit Aufwand durchprobieren. Er eignet sich für den Unterricht, nicht für Geheimnisse; der Link bleibt der sichere Weg.
+
+## Gemeinsame Ausgabe
+
+Was das Programm einer Person ausgibt (Text, Fehler, Eingaben), sehen die anderen im Konsolenfeld: ein Reiter pro Person („Meine“ | Anna ●). Der Reiter wechselt von selbst auf die Person, der man folgt oder die fährt. Es wird nichts ausgeführt, nur gelesen; die Fehlerverweise springen in den (gemeinsamen) Code. Begrenzt auf 100 000 Zeichen pro Lauf, in Paketen alle 250 ms, damit ein endloses `print` den Raum nicht überschwemmt. Die Welt (die Zeichenfläche) wird nicht übertragen; jede Person startet sie auf dem eigenen Gerät. Wer nur zusieht, sendet nichts.
+
+## Verlauf
+
+Der vorhandene Verlauf (Seitenleiste) gilt auch hier: im gemeinsamen Raum wird jede Minute ein Stand gemerkt (sonst alle 3 Minuten), und beim Beitreten wird der bisherige Stand des Projekts gemerkt („Vor dem Beitritt“), weil der Raum die lokalen Dateien überschreibt. „Alles auf diesen Stand setzen“ wirkt im Raum **für alle** (mit Warnung) und lässt sich über „Vor dem Zurücksetzen“ zurücknehmen.
 
 ## Der Relay ist optional – und gehört dem, der ihn betreibt
 
@@ -73,4 +91,4 @@ Im eingebetteten Editor (`?embed=1`) ist „Gemeinsam arbeiten“ **aus**: dort 
 
 ## Tests
 
-`npx vitest run src/collab` (echter Relay: Sync, Abbruch, Grenzen, Nur-Lesen, Rollen, Folgen, gelöschte Dateien, große Dateien, Health) und `python test/collab.py [chromium|firefox]` (vier Browser: gleichzeitiges Tippen, Cursor, Dateien, Nur-Lesen, Folgen, Fahrer, Bild verkleinern, Neuladen; braucht `npm run build`). Safari/WebKit ist hier nicht startbar und nur auf echten Geräten prüfbar (Plan S6).
+`npx vitest run src/collab` (echter Relay: Sync, Abbruch, Verschlüsselung, Verdichten des Protokolls, Kurzcodes, Programmausgabe, Grenzen, Nur-Lesen, Rollen, Folgen, gelöschte Dateien, große Dateien, Health) und `python test/collab.py [chromium|firefox]` (vier Browser: gleichzeitiges Tippen, Cursor, Dateien, Nur-Lesen, Folgen, Fahrer, Bild verkleinern, Neuladen, Kurzcode; braucht `npm run build`). Safari/WebKit ist hier nicht startbar und nur auf echten Geräten prüfbar (Plan S6).
