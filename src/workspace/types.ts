@@ -10,6 +10,8 @@ export interface FileEntry {
 }
 
 export interface Fs {
+  /** Atomic project access; use the supplied raw Fs inside the callback. */
+  exclusive?<T>(action: (fs: Fs) => Promise<T>): Promise<T>
   /** All entries below the project root, recursive, sorted by path. */
   list(): Promise<FileEntry[]>
   read(path: string): Promise<string>

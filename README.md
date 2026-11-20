@@ -20,3 +20,8 @@ Browsertests (brauchen Netz für Pyodide und PyPI; Python mit Playwright): `npm 
 Aufruf: `python test/<name>.py [chromium|firefox]`. Die CI (`.github/workflows/ci.yml`) führt Unit-Tests, Build, Größenbudget und alle Browsertests in Chromium aus.
 
 Lizenz: MIT.
+
+Der [optionale Git-Modus](docs/git-mode.md) bietet Klonen, lokale Commits, Pull und
+Push. Aktivierung unter **⚙ → Git-Modus aktivieren (erweitert)**; ohne Aktivierung
+bleiben die Git-Werkzeuge ausgeblendet. Für GitHub ist ein vertrauenswürdiger
+Git-CORS-Proxy erforderlich (Hosting-Hinweise in der Dokumentation).

@@ -582,3 +582,7 @@ input[type=text], input[type=search], select {
 .toolbar-actions button { padding: 0 4px; line-height: 1.4; font-size: 11px; }
 .toolbar-options { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
 .toolbar-empty { margin: 4px; }
+
+.git-dialog { width: min(600px, calc(100vw - 32px)); }
+.git-dialog form { overflow-wrap: anywhere; }
+.git-changes { max-height: 160px; overflow: auto; font-family: monospace; }

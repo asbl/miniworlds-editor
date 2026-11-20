@@ -1,0 +1,6 @@
+PASS: Git UI and engine stay hidden until enabled/opened
+PASS: real production bundle creates a local commit in OPFS
+PASS: repository and clean committed state survive reload
+PASS: Cancel aborts stalled clone and removes project/history
+PASS: Escape aborts stalled clone and removes project/history
+PASS: disabling Git hides the menu; no uncaught browser errors

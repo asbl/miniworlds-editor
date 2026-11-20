@@ -1,0 +1,11 @@
+npm notice run miniworlds-editor@0.0.0 npx
+npm notice run 'vitest' run --config audit/git-feature-2026-11-19/vitest.config.ts
+
+ RUN  v5.1.0 /home/sbl/code-git/miniworlds-editor
+
+
+ Test Files  1 passed (1)
+      Tests  2 passed (2)
+   Start at  19:44:22
+   Duration  747ms (transform 37%, tests 32%, import 28%, worker 2%)
+

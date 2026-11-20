@@ -1,4 +1,5 @@
 import { MemoryFs } from './memory'
+import { LockedFs } from './locked'
 import { OpfsFs } from './opfs'
 import type { Fs, Workspace } from './types'
 
@@ -25,7 +26,8 @@ export function validateProjectName(raw: string): string {
 
 export class MemoryStore implements ProjectStore {
   readonly kind = 'memory'
-  private projects = new Map<string, MemoryFs>()
+  private projects = new Map<string, Fs>()
+  private id = Math.random().toString(36).slice(2)
   private histories = new Map<string, MemoryFs>()
 
   async list() {
@@ -34,7 +36,7 @@ export class MemoryStore implements ProjectStore {
   async open(name: string): Promise<Workspace> {
     const key = validateProjectName(name)
     let fs = this.projects.get(key)
-    if (!fs) this.projects.set(key, (fs = new MemoryFs()))
+    if (!fs) this.projects.set(key, (fs = new LockedFs(new MemoryFs(), `project-memory-${this.id}-${key}`)))
     let history = this.histories.get(key)
     if (!history) this.histories.set(key, (history = new MemoryFs()))
     return { kind: this.kind, fs, history }
@@ -65,7 +67,7 @@ export class OpfsStore implements ProjectStore {
   }
   async open(name: string): Promise<Workspace> {
     const valid = validateProjectName(name)
-    return { kind: this.kind, fs: (await OpfsFs.open(valid)) as Fs, history: (await OpfsFs.open(valid, 'history').catch(() => undefined)) as Fs | undefined }
+    return { kind: this.kind, fs: new LockedFs(await OpfsFs.open(valid), `project-opfs-${valid}`), history: (await OpfsFs.open(valid, 'history').catch(() => undefined)) as Fs | undefined }
   }
   async remove(name: string) {
     await (await this.dir()).removeEntry(name, { recursive: true })

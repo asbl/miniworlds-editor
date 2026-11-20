@@ -16,9 +16,12 @@ import { launchedProject, parseLaunch, rememberLaunched, withoutLaunch, type Lau
 import { MAX_ZIP_BYTES } from '../project/zip'
 import { dragHasFiles, droppedFolders, fromFileList } from '../project/folder'
 import { createFromTemplate, TEMPLATES } from '../templates'
-import { loadPreferences, savePreferences, type Preferences } from './preferences'
+import { loadPreferences, savePreferences, type Preferences, usePreferences } from './preferences'
 import { LoadingBanner } from './LoadingBanner'
 import { Menu } from './Menu'
+import { GitDialog } from './GitDialog'
+import type { GitOperationOptions } from '../git/network'
+import type { Connection, Credentials } from '../git/repository'
 import { FIRST_REMINDER_MS, loadBackupRecord, saveBackupRecord, shouldRemind } from './backup'
 import { hasSeenWelcome, markWelcomeSeen } from './welcome/firstRun'
 import { ImportGuide, Welcome, type ImportActions } from './welcome/Welcome'
@@ -58,6 +61,9 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
   const language = useMemo(() => injectedLanguage ?? createBrowserLanguageService(config.pyodideBase, isLowMemory(config.lowMemory)), [injectedLanguage, config.pyodideBase, config.lowMemory])
   const catalog = useMemo(() => injectedCatalog ?? new Catalog(browserKeyValue()), [injectedCatalog])
   const lang = useLang()
+  const preferences = usePreferences()
+  const [gitDialog, setGitDialog] = useState<'project' | 'clone' | null>(null)
+  const [revision, setRevision] = useState(0)
   const [projects, setProjects] = useState<string[]>([])
   const [name, setName] = useState<string | null>(null)
   const [workspace, setWorkspace] = useState<Workspace | null>(null)
@@ -262,6 +268,19 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     ...projects.map((p, i) => ({ label: p, checked: p === name, divider: i === 0, onSelect: guarded(() => show(p)) })),
   ]
 
+  async function cloneRepository(connection: Connection, credentials: Credentials, options: GitOperationOptions) {
+    const { Repository } = await import('../git/repository')
+    const base = new URL(connection.url).pathname.split('/').filter(Boolean).pop()?.replace(/\.git$/, '') || 'Repository'
+    const next = await uniqueProjectName(store, base)
+    const target = await store.open(next)
+    try {
+      await Repository.create(target, connection, true, credentials, options)
+      options.signal?.throwIfAborted()
+    }
+    catch (error) { await store.remove(next); throw error }
+    await show(next)
+  }
+
   async function openPreferences() {
     const current = loadPreferences()
     const values = await openDialog({
@@ -278,9 +297,10 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
             { value: 'files', label: t('prefs.sidebar.files') },
           ],
         },
+        { kind: 'checkbox', key: 'git', label: t('git.enable'), initial: current.git === true },
       ],
     })
-    if (values) savePreferences({ sidebar: values.sidebar as Preferences['sidebar'] })
+    if (values) savePreferences({ sidebar: values.sidebar as Preferences['sidebar'], ...(values.git ? { git: true } : {}) })
   }
 
   return (
@@ -309,6 +329,10 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
       <header class="topbar">
         <h1 class="brand">{t('app.title')}</h1>
         {name && <Menu label={`${t('project.menu')}: ${name} ▾`} items={projectItems} />}
+        {preferences.git && workspace && <Menu label="Git ▾" items={[
+          { label: t('git.title'), onSelect: guarded(async () => { await flush.current?.(); setGitDialog('project') }) },
+          { label: t('git.clone'), onSelect: guarded(async () => { await flush.current?.(); setGitDialog('clone') }) },
+        ]} />}
         <span class="spacer" />
         {name && (
           <button type="button" class="backup-button" title={t('backup.title')} onClick={guarded(backup)}>
@@ -358,7 +382,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
           </button>
         </div>
       )}
-      {workspace && name && <ProjectView key={name} workspace={workspace} projectName={name} runner={runner} catalog={catalog} language={language} registerFlush={(f) => (flush.current = f)} />}
+      {workspace && name && <ProjectView key={`${name}:${revision}`} workspace={workspace} projectName={name} runner={runner} catalog={catalog} language={language} registerFlush={(f) => (flush.current = f)} />}
       <input
         ref={zipInput}
         type="file"
@@ -410,6 +434,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
       />
       <LoadingBanner runner={runner} language={language} onReload={() => void (flush.current?.() ?? Promise.resolve()).then(() => location.reload())} />
       <DialogHost />
+      {gitDialog && workspace && <GitDialog workspace={workspace} clone={gitDialog === 'clone'} onClone={cloneRepository} onPulled={() => { flush.current = null; setRevision(v => v + 1) }} onClose={() => setGitDialog(null)} />}
       <ContextMenuHost />
     </div>
   )
