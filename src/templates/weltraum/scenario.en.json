@@ -1,0 +1,36 @@
+{
+ "title": "Dodge the asteroids",
+ "level": "Advanced",
+ "description": "Fly the spaceship (←/→ or A/D), shoot asteroids with the space bar and dodge them. One hit ends the game.",
+ "tasks": [
+  {
+   "text": "Start with Run and shoot an asteroid (space bar; the world has to be clicked).",
+   "check": {
+    "type": "gone",
+    "cls": "Laser"
+   }
+  },
+  {
+   "text": "Make the game harder: asteroids should come more often (Weltraum.act, the number in frame % 40).",
+   "check": {
+    "type": "changed",
+    "path": "classes/Weltraum.py"
+   }
+  },
+  {
+   "text": "Make the spaceship faster (Raumschiff.on_key_pressed).",
+   "check": {
+    "type": "changed",
+    "path": "classes/Raumschiff.py"
+   }
+  },
+  {
+   "text": "Add a class Stern that slowly falls down in the background.",
+   "check": {
+    "type": "class",
+    "name": "Stern"
+   }
+  },
+  "Give the spaceship three lives instead of one: Game Over only after the third hit."
+ ]
+}

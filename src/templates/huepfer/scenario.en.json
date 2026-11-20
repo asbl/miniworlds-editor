@@ -1,0 +1,36 @@
+{
+ "title": "Jumper: platforms",
+ "level": "Advanced",
+ "description": "Steer the figure with ←/→ or A/D and jump onto the platforms with the space bar or ↑. Collect all three coins. Gravity is programmed by hand: tempo_y grows every frame.",
+ "tasks": [
+  {
+   "text": "Start with Run and collect all three coins (the world has to be clicked).",
+   "check": {
+    "type": "fewer",
+    "cls": "Muenze"
+   }
+  },
+  {
+   "text": "Jump higher: change the number in self.tempo_y = -11.",
+   "check": {
+    "type": "changed",
+    "path": "classes/Huepfer.py"
+   }
+  },
+  {
+   "text": "Add a fourth platform and a coin on it in main.py.",
+   "check": {
+    "type": "changed",
+    "path": "main.py"
+   }
+  },
+  {
+   "text": "Add a class Stachel that sends the figure back to the start when touched.",
+   "check": {
+    "type": "class",
+    "name": "Stachel"
+   }
+  },
+  "Play with gravity: what happens with self.tempo_y += 0.3 or += 1.2?"
+ ]
+}

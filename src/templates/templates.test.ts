@@ -6,8 +6,8 @@ import { hashText, type Check } from '../tasks/checks'
 import { createFromTemplate, loadTemplates, resolveCheck, TEMPLATES } from './index'
 
 describe('templates', () => {
-  it('ships krabbe, sammler and pong in that order', () => {
-    expect(TEMPLATES.map((t) => t.id)).toEqual(['krabbe', 'sammler', 'pong'])
+  it('ships the templates in teaching order', () => {
+    expect(TEMPLATES.map((t) => t.id)).toEqual(['krabbe', 'sammler', 'pong', 'weltraum', 'huepfer', 'schlange'])
   })
 
   it('has texts and tasks in both languages', () => {

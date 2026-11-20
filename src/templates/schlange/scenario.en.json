@@ -1,0 +1,36 @@
+{
+ "title": "Snake",
+ "level": "Intermediate",
+ "description": "Steer the snake with the arrow keys and eat apples. It grows with every apple. Touching the wall or yourself ends the game.",
+ "tasks": [
+  {
+   "text": "Start with Run and eat an apple (arrow keys; the world has to be clicked).",
+   "check": {
+    "type": "actors",
+    "cls": "Glied"
+   }
+  },
+  {
+   "text": "Make the snake faster: Kopf.act moves it only every 8 frames – change the number.",
+   "check": {
+    "type": "changed",
+    "path": "classes/Kopf.py"
+   }
+  },
+  {
+   "text": "Select the head in the class diagram and call a method from the menu.",
+   "check": {
+    "type": "selected",
+    "cls": "Kopf"
+   }
+  },
+  {
+   "text": "Add a class Goldapfel that gives three points.",
+   "check": {
+    "type": "class",
+    "name": "Goldapfel"
+   }
+  },
+  "Let the snake come out on the other side of the wall instead of losing."
+ ]
+}

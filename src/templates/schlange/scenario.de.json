@@ -1,0 +1,36 @@
+{
+ "title": "Schlange",
+ "level": "Mittel",
+ "description": "Steuere die Schlange mit den Pfeiltasten und fresse Äpfel. Sie wächst mit jedem Apfel. Wer die Wand oder sich selbst berührt, verliert.",
+ "tasks": [
+  {
+   "text": "Starte mit Run und friss einen Apfel (Pfeiltasten; die Welt muss angeklickt sein).",
+   "check": {
+    "type": "actors",
+    "cls": "Glied"
+   }
+  },
+  {
+   "text": "Mach die Schlange schneller: Kopf.act bewegt sie nur alle 8 Bilder – ändere die Zahl.",
+   "check": {
+    "type": "changed",
+    "path": "classes/Kopf.py"
+   }
+  },
+  {
+   "text": "Wähle den Kopf im Klassendiagramm aus und rufe über das Menü eine Methode auf.",
+   "check": {
+    "type": "selected",
+    "cls": "Kopf"
+   }
+  },
+  {
+   "text": "Lege eine Klasse Goldapfel an, die drei Punkte gibt.",
+   "check": {
+    "type": "class",
+    "name": "Goldapfel"
+   }
+  },
+  "Lass die Schlange durch die Wand auf der anderen Seite wieder erscheinen, statt zu verlieren."
+ ]
+}

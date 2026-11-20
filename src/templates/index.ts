@@ -19,7 +19,7 @@ export interface Template {
   text: Record<Lang, TemplateText>
 }
 
-const ORDER = ['krabbe', 'sammler', 'pong']
+const ORDER = ['krabbe', 'sammler', 'pong', 'weltraum', 'huepfer', 'schlange']
 const raw = import.meta.glob('./*/**/*', { query: '?raw', import: 'default', eager: true }) as Record<string, string>
 
 export function loadTemplates(source: Record<string, string> = raw): Template[] {

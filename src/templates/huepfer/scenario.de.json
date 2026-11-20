@@ -1,0 +1,36 @@
+{
+ "title": "Hüpfer: Plattformen",
+ "level": "Fortgeschritten",
+ "description": "Steuere die Figur mit ←/→ oder A/D und springe mit Leertaste oder ↑ auf die Plattformen. Sammle alle drei Münzen. Die Schwerkraft ist selbst programmiert: tempo_y wächst jedes Bild.",
+ "tasks": [
+  {
+   "text": "Starte mit Run und sammle alle drei Münzen (die Welt muss angeklickt sein).",
+   "check": {
+    "type": "fewer",
+    "cls": "Muenze"
+   }
+  },
+  {
+   "text": "Springe höher: ändere die Zahl bei self.tempo_y = -11.",
+   "check": {
+    "type": "changed",
+    "path": "classes/Huepfer.py"
+   }
+  },
+  {
+   "text": "Baue eine vierte Plattform und eine Münze darauf in main.py ein.",
+   "check": {
+    "type": "changed",
+    "path": "main.py"
+   }
+  },
+  {
+   "text": "Lege eine Klasse Stachel an, bei deren Berührung die Figur zurück zum Start muss.",
+   "check": {
+    "type": "class",
+    "name": "Stachel"
+   }
+  },
+  "Spiele mit der Schwerkraft: Was passiert bei self.tempo_y += 0.3 oder += 1.2?"
+ ]
+}
