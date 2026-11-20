@@ -251,8 +251,15 @@ try:
         c.wait_for_selector(".cm-content")
         c.locator(".tree .row-main", has_text="main.py").click()
         check("she sees the code", eventually(lambda: "zeile eins" in editor_text(c), 8000))
+        c.close()
         ctx_c.close()
-        check("she leaves again", eventually(lambda: "👥 3" in a.locator(".collab-button").inner_text(), 15000), a.locator(".collab-button").inner_text())
+        def pumped(page, fn, ms):  # let Playwright pump events while waiting (Firefox)
+            for _ in range(ms // 250):
+                if fn():
+                    return True
+                page.wait_for_timeout(250)
+            return fn()
+        check("she leaves again", pumped(a, lambda: "👥 3" in a.locator(".collab-button").inner_text(), 15000), a.locator(".collab-button").inner_text())
 
         # --- a read-only link to a room that does not exist says so
         ctx_x, stray = new_person(browser, "Fremd")
@@ -270,7 +277,7 @@ try:
         check("she is alone again", eventually(lambda: a.locator(".collab-button").inner_text().strip() == "👥 Gemeinsam", 8000), a.locator(".collab-button").inner_text())
         a.locator(".tree .row-main", has_text="main.py").click()
         check("her text is still there", "zeile eins" in editor_text(a), editor_text(a))
-        check("Ben sees her leave (the teacher is still there)", eventually(lambda: "👥 2" in b.locator(".collab-button").inner_text(), 8000), b.locator(".collab-button").inner_text())
+        check("Ben sees her leave (the teacher is still there)", pumped(b, lambda: "👥 2" in b.locator(".collab-button").inner_text(), 8000), b.locator(".collab-button").inner_text())
         for who, page in (("Anna", a), ("Ben", b)):
             check(f"no script errors for {who}", not page.errors, str(page.errors[:2]))
         browser.close()
