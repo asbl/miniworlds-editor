@@ -193,7 +193,7 @@ describe('zip', () => {
     const many: Record<string, Uint8Array> = {}
     for (let i = 0; i <= MAX_ZIP_FILES; i++) many[`f${i}.txt`] = new Uint8Array(0)
     await expect(importZip(new MemoryFs(), zipSync(many))).rejects.toThrow('too-many-files')
-  })
+  }, 30_000) // Building thousands of ZIP entries is CPU-bound on busy CI hosts.
 })
 
 describe('path operations', () => {

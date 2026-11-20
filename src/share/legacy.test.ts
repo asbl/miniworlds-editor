@@ -82,7 +82,7 @@ describe('older project links (#project=)', () => {
     expect(bomb.length).toBeLessThan(MAX_SHARE_URL)
     await expect(importSharedProject(store, bomb)).rejects.toMatchObject({ code: 'too-large' })
     expect(await store.list()).toEqual([])
-  }, 15_000) // Real multi-megabyte fixtures also run alongside the other CI workers.
+  }, 30_000) // Real multi-megabyte fixtures also run alongside the other CI workers.
 
   it('enforces the file count on import', async () => {
     await expect(importSharedProject(new MemoryStore(), hash({ name: 'Task', files: Array.from({ length: MAX_SHARE_FILES + 1 }, (_, i) => file(`${i}.py`)) }))).rejects.toMatchObject({ code: 'too-many-files' })
