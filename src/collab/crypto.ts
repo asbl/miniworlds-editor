@@ -48,20 +48,21 @@ export function parseShortCode(text: string): string | null {
   return /^[bdfgklmnprstvz][aeiou][bdfgklmnprstvz][aeiou]-[bdfgklmnprstvz][aeiou][bdfgklmnprstvz][aeiou]-\d{2}$/.test(t) ? t : null
 }
 
-/** Where the relay keeps the sealed invitation (the code itself never leaves the browser). */
-export async function codeLookup(code: string): Promise<string> {
-  return hex(new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(`miniworlds-code-lookup|${code}`))).subarray(0, 16))
+/**
+ * From a code: the number under which the relay keeps the sealed invitation, and the key that seals it. Both come out of one slow
+ * derivation (PBKDF2), so that whoever runs the relay cannot go through all codes quickly, neither by their lookup numbers nor by
+ * trying to open what is stored.
+ */
+export async function fromCode(code: string): Promise<{ lookup: string; key: CryptoKey }> {
+  const base = await crypto.subtle.importKey('raw', enc.encode(code), 'PBKDF2', false, ['deriveBits'])
+  const bits = new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode('miniworlds-code-v2'), iterations: 300_000 }, base, 384))
+  return { lookup: hex(bits.subarray(0, 16)), key: await crypto.subtle.importKey('raw', bits.subarray(16) as unknown as BufferSource, 'AES-GCM', false, ['encrypt', 'decrypt']) }
 }
 
-async function codeKey(code: string): Promise<CryptoKey> {
-  const base = await crypto.subtle.importKey('raw', enc.encode(code), 'PBKDF2', false, ['deriveKey'])
-  return crypto.subtle.deriveKey({ name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode('miniworlds-code-key'), iterations: 150_000 }, base, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt'])
+export async function sealWithCode(derived: { key: CryptoKey }, text: string): Promise<Uint8Array<ArrayBuffer>> {
+  return seal(derived.key, 'code', enc.encode(text))
 }
 
-export async function sealWithCode(code: string, text: string): Promise<Uint8Array<ArrayBuffer>> {
-  return seal(await codeKey(code), 'code', enc.encode(text))
-}
-
-export async function openWithCode(code: string, sealed: Uint8Array): Promise<string> {
-  return new TextDecoder().decode(await open(await codeKey(code), 'code', sealed))
+export async function openWithCode(derived: { key: CryptoKey }, sealed: Uint8Array): Promise<string> {
+  return new TextDecoder().decode(await open(derived.key, 'code', sealed))
 }

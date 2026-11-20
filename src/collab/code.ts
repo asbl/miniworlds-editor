@@ -1,4 +1,4 @@
-import { codeLookup, newShortCode, openWithCode, sealWithCode } from './crypto'
+import { fromCode, newShortCode, openWithCode, sealWithCode } from './crypto'
 import { deserializeInvite, parseInviteHash, serializeInvite, type Invite } from './shared'
 
 /** How long the relay keeps a short code (see deploy/collab/relay.mjs). */
@@ -15,8 +15,9 @@ export type CodeError = 'tooMany' | 'network'
 export async function publishCode(base: string, invite: Invite): Promise<string> {
   for (let tries = 0; tries < 6; tries++) {
     const code = newShortCode()
-    const body = await sealWithCode(code, serializeInvite(invite))
-    const res = await fetch(`${web(base)}/code/${await codeLookup(code)}`, { method: 'PUT', body, headers: { 'content-type': 'application/octet-stream' } }).catch(() => null)
+    const derived = await fromCode(code)
+    const body = await sealWithCode(derived, serializeInvite(invite))
+    const res = await fetch(`${web(base)}/code/${derived.lookup}`, { method: 'PUT', body, headers: { 'content-type': 'application/octet-stream' } }).catch(() => null)
     if (!res) throw new Error('network' satisfies CodeError)
     if (res.status === 201) return code
     if (res.status === 429) throw new Error('tooMany' satisfies CodeError)
@@ -27,13 +28,14 @@ export async function publishCode(base: string, invite: Invite): Promise<string>
 
 /** The invitation behind a short code; null when there is none (wrong, or older than a few hours). */
 export async function resolveCode(base: string, code: string): Promise<Invite | null> {
-  const res = await fetch(`${web(base)}/code/${await codeLookup(code)}`, { cache: 'no-store' }).catch(() => null)
+  const derived = await fromCode(code)
+  const res = await fetch(`${web(base)}/code/${derived.lookup}`, { cache: 'no-store' }).catch(() => null)
   if (!res) throw new Error('network' satisfies CodeError)
   if (res.status === 404) return null
   if (res.status === 429) throw new Error('tooMany' satisfies CodeError)
   if (!res.ok) throw new Error('network' satisfies CodeError)
   try {
-    return deserializeInvite(await openWithCode(code, new Uint8Array(await res.arrayBuffer())))
+    return deserializeInvite(await openWithCode(derived, new Uint8Array(await res.arrayBuffer())))
   } catch {
     return null
   }

@@ -13,9 +13,14 @@ const COMPACTED = 8
 /** Inside an ephemeral message. */
 const KIND_AWARENESS = 1
 const KIND_APP = 2
-/** The log on the relay is compacted when it has grown by this much (bytes) or this many messages since the last time. */
-const COMPACT_BYTES = 1024 * 1024
+/**
+ * The log on the relay is compacted when what came after the last snapshot is as big as the snapshot itself (so that the garbage
+ * never is more than half, and a big project is not uploaded again and again for a few keystrokes) and at least this much; or,
+ * for small projects, after this many messages.
+ */
+const COMPACT_BYTES = 256 * 1024
 const COMPACT_MESSAGES = 300
+const SMALL_BASE = 128 * 1024
 
 const u32 = (n: number) => new Uint8Array([(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255])
 const readU32 = (a: Uint8Array, at: number) => ((a[at] as number) * 2 ** 24 + ((a[at + 1] as number) << 16) + ((a[at + 2] as number) << 8) + (a[at + 3] as number)) >>> 0
@@ -76,6 +81,8 @@ export class CollabProvider {
   private lastSeq = 0
   private sinceBytes = 0
   private sinceCount = 0
+  /** How big the part of the log before `sinceBytes` is (the snapshot, or everything replayed). */
+  private baseBytes = 0
   /** Which awareness ids came through which connection of the relay (so that a person who leaves is removed at once). */
   private senders = new Map<number, Set<number>>()
   private applyingFrom: number | null = null
@@ -145,7 +152,7 @@ export class CollabProvider {
     ws.binaryType = 'arraybuffer'
     this.ws = ws
     this.chain = Promise.resolve()
-    this.lastSeq = this.sinceBytes = this.sinceCount = 0
+    this.lastSeq = this.sinceBytes = this.sinceCount = this.baseBytes = 0
     this.senders.clear()
     this.shadow?.destroy()
     this.shadow = new Y.Doc()
@@ -204,6 +211,9 @@ export class CollabProvider {
       else this.maybeCompact()
     } else if (type === SYNCED && message.length >= 9) {
       this.lastSeq = Math.max(this.lastSeq, readU32(message, 1))
+      // what the replay brought is the base; only what comes after it counts as growth
+      this.baseBytes = this.sinceBytes
+      this.sinceBytes = this.sinceCount = 0
       this.roomWasEmpty = readU32(message, 5) === 0
       const shadow = this.shadow
       this.shadow = null
@@ -238,7 +248,8 @@ export class CollabProvider {
       } else if (plain[0] === KIND_APP) {
         try {
           const body = JSON.parse(new TextDecoder().decode(plain.subarray(1))) as { from?: unknown; data?: unknown }
-          if (typeof body.from === 'number') this.onApp(body.from, body.data)
+          // "from" is what the sender writes; it counts only for a person that came through this very connection (nobody speaks for somebody else)
+          if (typeof body.from === 'number' && this.senders.get(cid)?.has(body.from)) this.onApp(body.from, body.data)
         } catch {
           /* not for us */
         }
@@ -248,6 +259,7 @@ export class CollabProvider {
       this.senders.delete(readU32(message, 1))
       if (ids) awarenessProtocol.removeAwarenessStates(this.options.awareness, [...ids], this)
     } else if (type === COMPACTED) {
+      // somebody else compacted: what the log holds now is about the size of the state
       this.sinceBytes = this.sinceCount = 0
     }
   }
@@ -290,16 +302,22 @@ export class CollabProvider {
     }
   }
 
+  private due(): boolean {
+    return this.sinceBytes >= Math.max(COMPACT_BYTES, this.baseBytes) || (this.baseBytes < SMALL_BASE && this.sinceCount >= COMPACT_MESSAGES)
+  }
+
   /** The relay's log grows with every change; now and then one of the writers replaces the old part by the current state. */
   private maybeCompact(): void {
-    if (this.options.readOnly || this.compactTimer !== null || (this.sinceBytes < COMPACT_BYTES && this.sinceCount < COMPACT_MESSAGES)) return
+    if (this.options.readOnly || this.compactTimer !== null || !this.due()) return
     // everybody notices at about the same time: whoever is first (after a random wait) does it, the others are told
     this.compactTimer = setTimeout(() => {
       this.compactTimer = null
-      if (this.sinceBytes < COMPACT_BYTES && this.sinceCount < COMPACT_MESSAGES) return
+      if (!this.due()) return
       const upto = this.lastSeq
+      const state = Y.encodeStateAsUpdate(this.options.doc)
+      this.baseBytes = state.length
       this.sinceBytes = this.sinceCount = 0
-      void this.sendSealed(SNAPSHOT, Y.encodeStateAsUpdate(this.options.doc), upto)
+      void this.sendSealed(SNAPSHOT, state, upto)
     }, Math.random() * 1500)
   }
 

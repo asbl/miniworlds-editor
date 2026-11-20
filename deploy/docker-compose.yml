@@ -30,7 +30,7 @@ services:
       - traefik_default
     environment:
       COLLAB_ORIGINS: "https://editor.opencoding.de"
-      COLLAB_TRUST_PROXY: "1"
+      COLLAB_TRUST_PROXY: "2" # Traefik and nginx in front of the relay
     mem_limit: 512m
 
 networks:

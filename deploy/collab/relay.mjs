@@ -13,6 +13,8 @@ import { WebSocketServer } from 'ws'
  * COMPACTED + upto.
  */
 export const MSG = { data: 3, ephemeral: 4, snapshot: 5, synced: 6, left: 7, compacted: 8 }
+/** iv (12) + authentication tag (16): the least a sealed message has. */
+const SEALED_MIN = 28
 const u32 = (n) => {
   const b = Buffer.alloc(4)
   b.writeUInt32BE(n >>> 0)
@@ -58,8 +60,14 @@ export const DEFAULTS = {
   codeTtlMs: 4 * 60 * 60 * 1000,
   maxCodes: 2000,
   codeTriesPerMinute: 30,
-  /** Take the client address from X-Forwarded-For (only behind a reverse proxy you control). */
-  trustProxy: false,
+  /**
+   * How many proxies you control sit in front (0: none). The client address is then the entry of X-Forwarded-For that many places
+   * from the end: what a client writes into the header itself is always at the beginning and is never believed.
+   */
+  trustProxy: 0,
+  /** What the logs of all rooms together may hold (a hundred rooms of 48 MB would not fit into the server), and how many entries one room's log may have. */
+  maxTotalBytes: 256 * 1024 * 1024,
+  maxLogEntries: 20000,
 }
 
 /** @param {Partial<typeof DEFAULTS>} options */
@@ -74,8 +82,8 @@ export function createRelay(options = {}) {
   const codes = new Map()
   const tries = new Map()
   const clientIp = (req) => {
-    const forwarded = config.trustProxy ? String(req.headers['x-forwarded-for'] ?? '').split(',')[0].trim() : ''
-    return forwarded || req.socket.remoteAddress || '?'
+    const parts = config.trustProxy > 0 ? String(req.headers['x-forwarded-for'] ?? '').split(',').map((p) => p.trim()) : []
+    return parts[parts.length - config.trustProxy] || req.socket.remoteAddress || '?'
   }
   const CODE_PATH = /^(?:\/collab)?\/code\/([a-f0-9]{32})$/
 
@@ -116,6 +124,7 @@ export function createRelay(options = {}) {
         req.on('data', (chunk) => {
           size += chunk.length
           if (size <= 2048) chunks.push(chunk)
+          else req.destroy() // nobody needs more than that: stop reading
         })
         req.on('end', () => {
           if (size > 2048 || size < 16) return void res.writeHead(413, cors).end()
@@ -175,6 +184,12 @@ export function createRelay(options = {}) {
     return room
   }
 
+  const totalBytes = () => {
+    let sum = 0
+    for (const room of rooms.values()) sum += room.bytes
+    return sum
+  }
+
   function broadcast(room, message, except) {
     for (const ws of room.conns.keys()) if (ws !== except && ws.readyState === 1) ws.send(message)
   }
@@ -203,12 +218,15 @@ export function createRelay(options = {}) {
         broadcast(room, Buffer.concat([Buffer.from([MSG.ephemeral]), u32(cid), message.subarray(1)]), ws)
       } else if (type === MSG.data && !readOnly) {
         const payload = message.subarray(1)
+        // a sealed message is at least iv + tag; shorter ones are junk, and a room's log has a limit of entries as well as of bytes
+        if (payload.length < SEALED_MIN) return
+        if (room.log.length >= config.maxLogEntries || totalBytes() + payload.length > config.maxTotalBytes) return void ws.close(1009, 'too big')
         const seq = ++room.seq
         room.log.push({ seq, payload })
         room.bytes += payload.length
         broadcast(room, Buffer.concat([Buffer.from([MSG.data]), u32(seq), payload]), ws)
         if (room.bytes > config.maxDocBytes) ws.close(1009, 'too big')
-      } else if (type === MSG.snapshot && !readOnly && message.length > 5) {
+      } else if (type === MSG.snapshot && !readOnly && message.length > 5 + SEALED_MIN) {
         const upto = message.readUInt32BE(1)
         const first = room.log[0]
         if (upto > room.seq || (first && upto <= first.seq && first.snapshot)) return // from the future, or older than what is kept
@@ -262,7 +280,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const env = process.env
   const relay = createRelay({
     origins: (env.COLLAB_ORIGINS ?? '').split(',').map((s) => s.trim()).filter(Boolean),
-    trustProxy: env.COLLAB_TRUST_PROXY === '1',
+    trustProxy: Number(env.COLLAB_TRUST_PROXY ?? 0) || 0,
     ...(env.COLLAB_MAX_ROOMS ? { maxRooms: Number(env.COLLAB_MAX_ROOMS) } : {}),
     ...(env.COLLAB_MAX_PER_ROOM ? { maxPerRoom: Number(env.COLLAB_MAX_PER_ROOM) } : {}),
     ...(env.COLLAB_ROOM_TTL_HOURS ? { roomTtlMs: Number(env.COLLAB_ROOM_TTL_HOURS) * 3600_000 } : {}),

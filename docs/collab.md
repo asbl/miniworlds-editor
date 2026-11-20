@@ -44,9 +44,16 @@ Der Relay **kann das Projekt nicht lesen**. Jede Nachricht (Änderungen, Cursor,
 
 Was der Relay trotzdem sieht: Raumnamen, wie viele Verbindungen, Größe und Zeitpunkt der Nachrichten. Die Zugriffsschlüssel (Schreiben / Nur-Lesen) kennt er, weil er sie prüft; der Verschlüsselungsschlüssel ist ein dritter und geht nie zu ihm. Ein Link, dessen Schlüssel nicht passt, wird mit eigener Meldung abgewiesen. Alte Links ohne Schlüsselteil (vor dieser Version) gelten nicht mehr.
 
+### Grenzen des Schutzes
+
+- Wer im Raum ist (Link oder Nur-Lesen-Link), kennt den Schlüssel. Nachrichten tragen keine Unterschrift der Person: Absender einer Programmausgabe oder eines Cursors ist die Person, die durch **diese Verbindung** gekommen ist (niemand kann im Namen einer anderen Verbindung sprechen), aber ein Raummitglied kann sich innerhalb seiner Verbindung beliebig nennen.
+- Ein böswilliger Relay kann Nachrichten weglassen, verzögern oder erneut senden, ohne dass es auffällt (die Daten bleiben unlesbar und lassen sich nicht verändern). Das Ergebnis wäre ein veralteter oder lückenhafter Stand, kein falscher.
+- Schreibende können den Raum zerstören (ein leeres Protokoll senden). Dafür gibt es den Verlauf (Abschnitt unten) und die Nur-Lesen-Verbindung für alle, die nur zusehen sollen.
+- Der Relay begrenzt: 20 000 Einträge je Raum, 48 MB je Raum, 256 MB für alle Räume zusammen (der Container hat 512 MB), 500 Räume, 30 Verbindungen je Adresse.
+
 ## Kurzcode
 
-Im Dialog erzeugt „Kurzcode erzeugen“ einen Code wie `kobi-latu-42`, den man im Klassenraum ansagen kann; wer ihn im Dialog („Einem Raum beitreten“) eintippt, kommt in den Raum. Technisch legt der Browser die (verschlüsselte) Einladung unter einer Nummer ab, die aus dem Code berechnet wird; der Code selbst und der Schlüssel erreichen den Relay nie. Der Relay vergisst ihn nach **4 Stunden** und zählt Versuche (30 pro Minute und Adresse). Ein Kurzcode hat rund 31 Bit und ist deshalb schwächer als der Link: Wer den Relay betreibt, könnte ihn mit Aufwand durchprobieren. Er eignet sich für den Unterricht, nicht für Geheimnisse; der Link bleibt der sichere Weg.
+Im Dialog erzeugt „Kurzcode erzeugen“ einen Code wie `kobi-latu-42`, den man im Klassenraum ansagen kann; wer ihn im Dialog („Einem Raum beitreten“) eintippt, kommt in den Raum. Technisch legt der Browser die (verschlüsselte) Einladung unter einer Nummer ab, die aus dem Code berechnet wird; der Code selbst und der Schlüssel erreichen den Relay nie. Der Relay vergisst ihn nach **4 Stunden** und zählt Versuche (30 pro Minute und Adresse). Nummer und Schlüssel kommen aus einer langsamen Ableitung (PBKDF2, 300 000 Runden), damit auch der Relay-Betreiber nicht schnell alle Codes durchgehen kann. Ein Kurzcode hat trotzdem nur rund 31 Bit und ist schwächer als der Link: ein gezielter Angreifer mit dem gespeicherten Eintrag und viel Rechenzeit käme irgendwann durch (der Eintrag existiert aber nur 4 Stunden). Er eignet sich für den Unterricht, nicht für Geheimnisse; der Link bleibt der sichere Weg.
 
 ## Gemeinsame Ausgabe
 
@@ -70,7 +77,7 @@ Im Quellcode steht **keine Relay-Adresse**. Die Funktion ist aus, solange `confi
    |---|---|
    | `COLLAB_ORIGINS` | **Pflicht.** Kommagetrennte Liste der Seiten (Origins), die sich verbinden dürfen. Browser senden ihren Origin immer mit; alles andere wird mit 403 abgewiesen. `*` schaltet die Prüfung ab (nur lokal testen). |
    | `PORT`, `HOST` | Standard `8787`, `0.0.0.0`. |
-   | `COLLAB_TRUST_PROXY=1` | Client-Adresse aus `X-Forwarded-For` (nur hinter einem Proxy, den man selbst betreibt). |
+   | `COLLAB_TRUST_PROXY=n` | Anzahl der eigenen Proxys vor dem Relay (0: keiner). Die Client-Adresse (für die Begrenzungen) ist dann der `n`-te Eintrag von hinten in `X-Forwarded-For`; was ein Client selbst in den Header schreibt, steht vorn und zählt nie. Im mitgelieferten Aufbau (Traefik → nginx → Relay) ist es `2`. |
    | `COLLAB_MAX_ROOMS`, `COLLAB_MAX_PER_ROOM`, `COLLAB_ROOM_TTL_HOURS` | Grenzen (Standard 500 Räume, 20 Personen je Raum, 24 h). |
 
    Ein Raum wird von der ersten Schreib-Verbindung angelegt und mit deren Schlüsseln geschützt (`Sec-WebSocket-Protocol`, damit sie nicht in Server-Logs landen). Der Raumname allein genügt nicht.

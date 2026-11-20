@@ -315,6 +315,58 @@ describe("others' program output", () => {
   })
 })
 
+describe('audit: trust and limits', () => {
+  it('does not believe a "from" that is not one of the sender\'s own people', async () => {
+    const { url } = await start()
+    const a = person('room-audi', url, 'A')
+    const b = person('room-audi', url, 'B')
+    const w = readerOf('room-audi', url, 'Schueler')
+    await a.join(new MemoryFs())
+    await b.join(new MemoryFs())
+    await w.join(new MemoryFs())
+    await until(() => b.people().length === 3)
+    // the watcher claims to be A (a writer) and sends output in A's name
+    const forged = JSON.stringify({ from: a.id, data: { t: 'out', lines: [['stdout', 'forged']] } })
+    const provider = w.provider as unknown as { sendSealed(type: number, plain: Uint8Array): Promise<void> }
+    await provider.sendSealed(4, new Uint8Array([2, ...new TextEncoder().encode(forged)]))
+    await settle(300)
+    expect(b.remoteRuns.get(a.id)).toBeUndefined()
+  })
+
+  it('ignores junk and caps the log of a room', async () => {
+    const { url, relay } = await start({ origins: ['*'], maxLogEntries: 5 })
+    const a = person('room-audj', url, 'A')
+    await a.join(new MemoryFs())
+    const { default: WebSocket } = await import('ws')
+    const invite = invites.get('room-audj') as Invite
+    const ws = new WebSocket(`${url}/room-audj`, [`k.${invite.key}`])
+    await new Promise((r) => ws.on('open', r))
+    const room = relay.rooms.get('room-audj') as { log: unknown[] }
+    const before = room.log.length
+    ws.send(Buffer.from([3, 1, 2, 3])) // far too short to be a sealed message
+    await settle(100)
+    expect(room.log.length).toBe(before)
+    const closed = new Promise((r) => ws.on('close', (code) => r(code)))
+    for (let i = 0; i < 10; i++) ws.send(Buffer.concat([Buffer.from([3]), Buffer.alloc(40, i)]))
+    expect(await closed).toBe(1009)
+    expect(room.log.length).toBeLessThanOrEqual(5)
+  })
+
+  it('takes the client address from the end of X-Forwarded-For, not from what the client wrote', async () => {
+    const { url, relay } = await start({ origins: ['*'], trustProxy: 1, maxPerIp: 1 })
+    const { default: WebSocket } = await import('ws')
+    const open = (spoof: string) => new Promise<number>((resolve) => {
+      const ws = new WebSocket(`${url}/room-ip${spoof.length}`, ['k.abcdefabcdef'], { headers: { 'x-forwarded-for': spoof } })
+      ws.on('close', (code) => resolve(code))
+      ws.on('open', () => setTimeout(() => resolve(0), 150))
+    })
+    expect(await open('1.1.1.1, 9.9.9.9')).toBe(0)
+    // the proxy appended the same real address again: the first entry (forged, different) changes nothing
+    expect(await open('2.2.2.2, 9.9.9.9')).toBe(4004)
+    expect(relay.rooms.size).toBeGreaterThan(0)
+  })
+})
+
 describe('room codes', () => {
   it('look like abcd-efgh and fit the relay pattern', () => {
     for (let i = 0; i < 50; i++) expect(randomRoomCode()).toMatch(/^[a-z2-9]{4}-[a-z2-9]{4}$/)
