@@ -133,9 +133,19 @@ const flashField = StateField.define<DecorationSet>({
  * One CodeMirror view, one EditorState per open file (keeps undo history and
  * cursor per tab). Imperative on purpose: the UI framework only mounts it.
  */
+/** Working together: the shared text of a file and what it takes to edit it together (kept free of Yjs: see `Collab.editorSource`). */
+export interface CollabSource {
+  text(path: string): string | undefined
+  extensions(path: string): Extension[] | null
+}
+
 export class EditorHost implements Surface {
   readonly view: EditorView
   private states = new Map<string, EditorState>()
+  private collab: CollabSource | null = null
+  /** Somebody who only watches, or whose turn it is not (pair programming): the text cannot be changed. */
+  private lock = new Compartment()
+  private locked = false
   private current: string | null = null
   private language = new Compartment()
   private assist: Assist | null = null
@@ -168,11 +178,32 @@ export class EditorHost implements Surface {
     return EditorState.phrases.of(PHRASES[this.lang])
   }
 
+  private lockExtension(): Extension {
+    return [EditorState.readOnly.of(this.locked), EditorView.editable.of(!this.locked)]
+  }
+
+  /** Allow or forbid typing (a watcher, or somebody who is not driving). Takes effect in the file shown and in every file shown later. */
+  setLocked(locked: boolean): void {
+    if (locked === this.locked) return
+    this.locked = locked
+    this.view.dispatch({ effects: this.lock.reconfigure(this.lockExtension()) })
+  }
+
+  /** Connect the editor to a shared project (or, with null, back to plain files). Call before the first file is shown. */
+  setCollab(source: CollabSource | null): void {
+    this.collab = source
+    this.states.clear()
+  }
+
   private createState(path: string, text: string): EditorState {
+    const shared = this.collab?.extensions(path) ?? null
     return EditorState.create({
-      doc: text,
+      doc: shared ? (this.collab?.text(path) ?? text) : text,
       extensions: [
         basicSetup,
+        // the shared text is the truth; its own undo only takes back one's own typing, so it comes before the ordinary history keys
+        ...(shared ?? []),
+        this.lock.of(this.lockExtension()),
         python(),
         codeHighlighting,
         errorLine,
@@ -206,7 +237,8 @@ export class EditorHost implements Surface {
   show(path: string, text: string): void {
     if (this.current) this.states.set(this.current, this.view.state)
     this.current = path
-    this.view.setState(this.states.get(path) ?? this.createState(path, text))
+    // a shared file is always built anew from the shared text: a kept state would miss what the others typed meanwhile
+    this.view.setState((!this.collab && this.states.get(path)) || this.createState(path, text))
     this.onCursor(path, this.view.state.doc.lineAt(this.view.state.selection.main.head).number)
     this.lastCount = diagnosticCount(this.view.state)
     this.onProblems(this.lastCount)

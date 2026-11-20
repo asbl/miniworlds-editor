@@ -1,6 +1,7 @@
 import type { de } from './de'
 import { studentEn } from './student.en'
 import { welcomeEn } from './welcome.en'
+import { collabEn } from './collab.en'
 import { engineEn } from './engine.en'
 
 export const en: Record<keyof typeof de, string> = {
@@ -319,6 +320,8 @@ export const en: Record<keyof typeof de, string> = {
   'history.status.missing': 'missing now',
   'history.status.new': 'newer',
   'history.restoreFile': 'Restore this file',
+  'history.restoreAllShared': 'Careful: you are working together – this puts the project back for everybody in the room.',
+  'history.reason.before-join': 'Before joining',
   'history.restoreAll': 'Restore everything',
   'history.restoreAllConfirm': 'All text files are set to this version and newer files are removed. The history remembers the current state, so you can go back. Pictures stay as they are.',
   'history.restored': '"{path}" is back as it was.',
@@ -395,5 +398,6 @@ export const en: Record<keyof typeof de, string> = {
 
   ...studentEn,
   ...welcomeEn,
+  ...collabEn,
   ...engineEn,
 }

@@ -29,7 +29,7 @@ DEPLOY_TARGET=<user>@<server>:/home/<user>/projects/editor DEPLOY_SSH_PORT=<port
 python test/live.py https://editor.opencoding.de/ chromium     # Kontrolle der veröffentlichten Seite
 ```
 
-**Erstmalig:** Ordner anlegen, `deploy/docker-compose.yml` und `deploy/nginx.conf` hineinkopieren, `docker compose up -d`; das Zertifikat holt Traefik beim ersten Aufruf.
+**Erstmalig:** Ordner anlegen, `deploy/docker-compose.yml` und `deploy/nginx.conf` hineinkopieren, `deploy/collab/` daneben legen (Relay für „Gemeinsam arbeiten“, optional), `docker compose up -d --build`; das Zertifikat holt Traefik beim ersten Aufruf.
 
 `deploy/config.production.json` wird beim Deploy zur `config.json` (Links zu den anderen IDE-Varianten auf `miniworlds.opencoding.de`, `embedOrigins` = `https://www.opencoding.de`);
 `pyodideBase` ergänzt das Skript. Zugangsdaten und Adressen des Servers stehen nicht im Repository, nur in der Umgebung. Wer einbetten darf, steht zweimal:
@@ -56,6 +56,7 @@ Liegt neben `index.html` und lässt sich ändern, ohne neu zu bauen (Vorlage: `c
 | `pyodideBase` | Wo Pyodide herkommt. Vorgabe: jsDelivr. Mit `npm run selfhost` automatisch `./pyodide/v0.29.3/full/`. |
 | `links` | `[{ "label": "…", "url": "https://…" }]`: Menü „Weitere Editoren“ (z. B. die Java- und Block-Varianten der `miniworlds-ide`). Nur `http(s)`. |
 | `lowMemory` | `"auto"` (Vorgabe), `true` oder `false`. Auf Geräten mit höchstens 4 GB RAM (`navigator.deviceMemory`, nur Chromium; sonst gilt das Gerät als geräumig) läuft das zweite Python der Editor-Hilfen nur, solange jemand tippt; es startet beim ersten Tippen, bei Vervollständigung oder Klick auf die Statusanzeige und schläft nach 5 Minuten ohne Nutzung wieder ein. Spart etwa 130 MB. |
+| `collabUrl` | Adresse des Relays für „Gemeinsam arbeiten“ (relativ zur Seite, z. B. `/collab`, oder `wss://…`). **Ohne Eintrag ist die Funktion aus** (kein Menüpunkt), siehe `docs/collab.md`. |
 | `embedOrigins` | Seiten, die den Editor einbetten dürfen, siehe `docs/embed.md`. **Ohne Eintrag darf niemand**; `["*"]` erlaubt alle. |
 
 ## Offline und Updates

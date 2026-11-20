@@ -1,5 +1,6 @@
 import { studentDe } from './student.de'
 import { welcomeDe } from './welcome.de'
+import { collabDe } from './collab.de'
 import { engineDe } from './engine.de'
 /** Deutsche Texte. Der Schlüsselsatz hier ist maßgeblich; `en.ts` muss denselben Satz haben (Typ + Test). */
 export const de = {
@@ -319,6 +320,8 @@ export const de = {
   'history.status.missing': 'fehlt jetzt',
   'history.status.new': 'neuer',
   'history.restoreFile': 'Diese Datei zurückholen',
+  'history.restoreAllShared': 'Achtung: Ihr arbeitet gemeinsam – der Stand wird für alle in diesem Raum zurückgesetzt.',
+  'history.reason.before-join': 'Vor dem Beitritt',
   'history.restoreAll': 'Alles auf diesen Stand setzen',
   'history.restoreAllConfirm': 'Alle Textdateien werden auf diesen Stand gesetzt, neuere Dateien werden entfernt. Den jetzigen Stand merkt sich der Verlauf, du kannst also wieder zurück. Bilder bleiben unverändert.',
   'history.restored': '„{path}“ ist wieder wie damals.',
@@ -395,5 +398,6 @@ export const de = {
 
   ...studentDe,
   ...welcomeDe,
+  ...collabDe,
   ...engineDe,
 } as const

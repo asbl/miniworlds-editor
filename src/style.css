@@ -586,3 +586,32 @@ input[type=text], input[type=search], select {
 .git-dialog { width: min(600px, calc(100vw - 32px)); }
 .git-dialog form { overflow-wrap: anywhere; }
 .git-changes { max-height: 160px; overflow: auto; font-family: monospace; }
+/* working together */
+.collab-button { padding: 3px 10px; border: 1px solid var(--border, currentColor); border-radius: 4px; }
+.collab-button.on { border-color: var(--accent); }
+.collab-button.on.offline, .collab-button.on.connecting { border-color: var(--warn-fg); }
+.collab-name { display: flex; flex-direction: column; gap: 4px; margin: 8px 0; }
+.collab-status { margin: 0 0 8px; font-weight: 600; }
+.collab-status.offline { color: var(--warn-fg); }
+.collab-people { list-style: none; margin: 4px 0 8px; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.collab-people li { display: flex; align-items: center; gap: 8px; }
+.collab-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.collab-own-name { min-width: 0; }
+/* the others' cursors and selections (y-codemirror.next); the name is also shown on the flag */
+.cm-ySelectionInfo { font-family: system-ui, sans-serif; font-size: 12px; padding: 1px 4px; color: #fff; z-index: 10; }
+.collab-badge { font-size: 12px; padding: 0 6px; border: 1px solid currentColor; border-radius: 8px; opacity: .8; }
+.collab-follow { margin-left: auto; padding: 2px 8px; }
+.collab-follow[aria-pressed=true] { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.collab-people li { flex-wrap: wrap; }
+.console-sources { display: flex; gap: 4px; flex-wrap: wrap; padding: 4px 8px 0; font-size: 0.85rem; }
+.console-sources button { padding: 2px 10px; border-radius: 12px 12px 0 0; background: transparent; border: 1px solid var(--border, #8884); border-bottom: none; }
+.console-sources button[aria-selected="true"] { background: var(--panel, #8882); font-weight: 600; }
+.console-live { color: #3cb44b; }
+.collab-join { margin-top: 16px; padding-top: 12px; border-top: 1px solid var(--border, #8884); }
+.collab-code { margin: 8px 0; }
+.share-code { font-family: ui-monospace, monospace; font-size: 1.25rem; letter-spacing: 0.04em; text-align: center; }
+.collab-problem { color: var(--danger, #c0392b); margin: 6px 0 0; }
+.collab-pair { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.collab-readonly, .collab-readlabel { margin: 8px 0 4px; }
+.collab-follow-bar { display: flex; align-items: center; gap: 8px; padding: 4px 12px; background: var(--accent); color: var(--accent-fg); }
+.collab-follow-bar button { padding: 1px 8px; border: 1px solid currentColor; }

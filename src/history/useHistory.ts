@@ -4,12 +4,12 @@ import type { Fs, Workspace } from '../workspace'
 import { History, type Snapshot, type SnapshotReason } from './history'
 import { readTexts } from './restore'
 
-/** An automatic snapshot while working: not more often than this, and only if something changed. */
+/** An automatic snapshot while working: not more often than this, and only if something changed (working together: more often, since somebody else's mistake lands here at once). */
 const TIMER_MS = 3 * 60 * 1000
 const CHECK_MS = 30 * 1000
 
 /** Snapshots of the project: when opened, before every run, now and then while editing, before deleting, and on request. */
-export function useHistory(workspace: Workspace, fs: Fs, session: Session | null) {
+export function useHistory(workspace: Workspace, fs: Fs, session: Session | null, timerMs = TIMER_MS) {
   const history = useMemo(() => (workspace.history ? new History(workspace.history) : null), [workspace])
   const [snapshots, setSnapshots] = useState<Snapshot[]>([])
   const changed = useRef(false)
@@ -50,13 +50,13 @@ export function useHistory(workspace: Workspace, fs: Fs, session: Session | null
     if (!session) return
     const off = session.subscribeEdits(() => (changed.current = true))
     const timer = setInterval(() => {
-      if (changed.current && Date.now() - lastAuto.current >= TIMER_MS) void record('timer')
+      if (changed.current && Date.now() - lastAuto.current >= timerMs) void record('timer')
     }, CHECK_MS)
     return () => {
       off()
       clearInterval(timer)
     }
-  }, [session, record])
+  }, [session, record, timerMs])
 
   return { history, snapshots, record, reload }
 }

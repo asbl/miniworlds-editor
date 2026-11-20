@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { Workspace, FileEntry } from '../workspace'
+import type { Collab } from '../collab/collab'
+import { useCollabInfo } from '../collab/useCollabInfo'
+import { useRemoteConsoles, useShareRun } from '../collab/useShareRun'
 import { t, useLang } from '../i18n'
 import { useLanguage } from '../language/useLanguage'
 import type { LanguageService } from '../language/service'
@@ -54,13 +57,18 @@ interface Props {
   registerFlush: (flush: (() => Promise<void>) | null) => void
   /** The project belongs to a page that embeds the editor: no "saved in the browser" notes. */
   embedded?: boolean
+  /** The project is shared with others: their changes arrive through this. */
+  collab?: Collab | null
 }
 
 /**
  * One open project: wires the project's state (files, session, program, world, class model, history) together and
  * lays out the toolbar, the three columns (sidebar, editor, world) and the dialogs. The parts live in `./project/`.
  */
-export function ProjectView({ workspace, projectName, runner, catalog, language, registerFlush, embedded = false }: Props) {
+/** Working together: a safe state every minute, so that what somebody deletes by mistake is not older than that. */
+const COLLAB_HISTORY_MS = 60 * 1000
+
+export function ProjectView({ workspace, projectName, runner, catalog, language, registerFlush, embedded = false, collab = null }: Props) {
   const lang = useLang()
   const { fs } = workspace
   const [entries, setEntries] = useState<FileEntry[]>([])
@@ -79,8 +87,39 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   const metaFlush = useRef<() => Promise<void>>(async () => {})
 
   const refresh = useCallback(async () => setEntries(await fs.list()), [fs])
-  const { mount, host, session } = useEditorSession({ fs, lang, registerFlush, flushMeta: metaFlush, refresh, onCursor: setCursor, onProblems: setProblems })
+  const { mount, host, session } = useEditorSession({ fs, collab, lang, registerFlush, flushMeta: metaFlush, refresh, onCursor: (position) => {
+      setCursor(position)
+      collab?.setFocus(position.path, position.line)
+    }, onProblems: setProblems })
   const state = useSessionState(session)
+  const collabInfo = useCollabInfo(collab)
+  useShareRun(collab, runner)
+  const remoteConsoles = useRemoteConsoles(collab)
+  // somebody who watches, or whose turn it is not, cannot type
+  useEffect(() => {
+    host.current?.setLocked(collabInfo?.locked ?? false)
+  }, [collabInfo?.locked, session, host])
+  // "follow": open the file and line another person is at, whenever that changes
+  const followed = collabInfo?.following != null ? collabInfo.people.find((p) => p.id === collabInfo.following) : undefined
+  const followKey = followed?.focus ? `${followed.focus.path}:${followed.focus.line}` : ''
+  useEffect(() => {
+    if (!followed?.focus || !session) return
+    setPane('editor')
+    void session.open(followed.focus.path, { line: followed.focus.line, column: 0, length: 0 })
+  }, [followKey, session])
+  // what the others changed: the file list, tabs of files that are gone, text that was replaced under an open editor
+  useEffect(() => {
+    if (!collab || !session) return
+    collab.onRemote = (change) => {
+      void refresh()
+      for (const path of change.removed) void session.removed(path)
+      for (const path of change.replaced) void session.reload(path)
+      if (change.written.length > 0) session.externalChange()
+    }
+    return () => {
+      collab.onRemote = () => {}
+    }
+  }, [collab, session, refresh])
   const kind = detectKind(entries)
   const tabDecided = useRef(false)
   useEffect(() => {
@@ -89,7 +128,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
     if (kind !== 'project') setTab((now) => (now === startTab ? 'files' : now))
   }, [entries, kind, startTab])
 
-  const historyApi = useHistory(workspace, fs, session)
+  const historyApi = useHistory(workspace, fs, session, collab ? COLLAB_HISTORY_MS : undefined)
   const { settings, loaded: settingsLoaded, update: updateSettings } = useSettings(fs, kind, projectName, session)
   const { data: versions, status: catalogStatus } = useCatalog(catalog)
   const [mode, setMode] = useMode(projectName)
@@ -137,7 +176,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   })
 
   const files = useFileOps({ fs, session, entries, kind, refresh, metaApi, historyApi })
-  const history = useHistoryActions(fs, session, historyApi, refresh)
+  const history = useHistoryActions(fs, session, historyApi, refresh, !!collab && !collab.readOnly)
   const renameClassDialog = useRenameClass({ fs, session, kind, runner, classModel, metaApi, historyApi, refresh, onRenamed: classView.setPicked })
   const copyReport = useReport({ fs, session, runner, lang, settings, entries })
 
@@ -188,6 +227,8 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
 
   function onKeyDown(event: KeyboardEvent) {
     const mod = event.ctrlKey || event.metaKey
+    // typing yourself ends "follow"
+    if (collab?.following != null && !mod && event.key.length === 1) collab.follow(null)
     if (mod && event.key === 'Enter') {
       event.preventDefault()
       if (program.busy && program.state.phase === 'booting') return // already queued; stopping would discard the start-up
@@ -312,6 +353,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
           name={projectName}
           runner={runner}
           trace={trace}
+          remote={collab ? { ...remoteConsoles, onSeen: (id) => collab.markRunSeen(id), onClear: (id) => collab.clearRun(id) } : undefined}
           onReport={() => void copyReport()}
           onJump={(loc) => {
             setPane('editor') // a link in the console: show the line it points to

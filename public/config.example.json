@@ -3,5 +3,6 @@
   "links": [
     { "label": "Miniworlds Blocks", "url": "https://miniworlds.opencoding.de/?ide=miniworldsBlocks" }
   ],
-  "embedOrigins": ["https://moodle.example.org"]
+  "embedOrigins": ["https://moodle.example.org"],
+  "collabUrl": "/collab"
 }

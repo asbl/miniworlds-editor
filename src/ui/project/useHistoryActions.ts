@@ -15,7 +15,7 @@ export interface ViewedSnapshot {
 }
 
 /** What a pupil can do with the saved states: look at one, name it, delete it, bring back a file or everything. */
-export function useHistoryActions(fs: Fs, session: Session | null, historyApi: ReturnType<typeof useHistory>, refresh: () => Promise<void>) {
+export function useHistoryActions(fs: Fs, session: Session | null, historyApi: ReturnType<typeof useHistory>, refresh: () => Promise<void>, shared = false) {
   const [viewing, setViewing] = useState<ViewedSnapshot | null>(null)
 
   async function openSnapshot(snapshot: Snapshot) {
@@ -67,7 +67,7 @@ export function useHistoryActions(fs: Fs, session: Session | null, historyApi: R
 
   async function restoreEverything() {
     if (!viewing || !historyApi.history || !session) return
-    if (!(await confirmDialog(t('history.restoreAll'), t('history.restoreAllConfirm'), false))) return
+    if (!(await confirmDialog(t('history.restoreAll'), t('history.restoreAllConfirm') + (shared ? ` ${t('history.restoreAllShared')}` : ''), false))) return
     try {
       await restoreAll({ fs, session, history: historyApi.history }, viewing.snapshot.id)
       await refresh()

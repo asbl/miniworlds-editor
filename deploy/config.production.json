@@ -6,5 +6,6 @@
     { "label": "Java-IDE", "url": "https://miniworlds.opencoding.de/?ide=java" },
     { "label": "Java Blocks", "url": "https://miniworlds.opencoding.de/?ide=javaBlocks" }
   ],
-  "embedOrigins": ["https://www.opencoding.de"]
+  "embedOrigins": ["https://www.opencoding.de"],
+  "collabUrl": "/collab"
 }

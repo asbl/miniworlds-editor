@@ -19,6 +19,20 @@ services:
       - ./html:/usr/share/nginx/html:ro
       - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
+  # Relay for "work together" (optional; without it the editor simply hides the feature). Not reachable from outside:
+  # nginx passes /collab/ on to it. The origin list keeps other sites (and forks) from using it.
+  collab:
+    build: ./collab
+    runtime: "php-security-compat"   # this server runs every container with it (plain runc does not start here)
+    container_name: editor-collab
+    restart: unless-stopped
+    networks:
+      - traefik_default
+    environment:
+      COLLAB_ORIGINS: "https://editor.opencoding.de"
+      COLLAB_TRUST_PROXY: "2" # Traefik and nginx in front of the relay
+    mem_limit: 512m
+
 networks:
   traefik_default:
     external: true

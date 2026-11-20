@@ -12,6 +12,7 @@ import { attachInput, canvasPoint } from '../runtime/input'
 import type { Runner } from '../runtime/runner'
 import type { TraceLocation } from '../runtime/traceback'
 import { BootPlaceholder } from './BootPlaceholder'
+import type { RemoteConsole } from '../collab/useShareRun'
 import { Console } from './Console'
 import { openContextMenu } from './ContextMenu'
 import { infoDialog } from './dialogs'
@@ -36,7 +37,16 @@ export interface TasksProps {
   hasCheck?: (index: number) => boolean
 }
 
-export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace, name = '' }: { runner: Runner; onJump: (location: TraceLocation) => void; onReport?: () => void; miniworlds?: MiniworldsProps; tasks?: TasksProps; trace?: TraceView; name?: string }) {
+/** The output of the other people's programs (working together): shown in the console, one source at a time. */
+export interface RemoteConsoles {
+  runs: RemoteConsole[]
+  /** The person whose output to show as soon as they start a program (followed, or driving). */
+  preferred: number | null
+  onSeen: (id: number) => void
+  onClear: (id: number) => void
+}
+
+export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace, remote, name = '' }: { runner: Runner; onJump: (location: TraceLocation) => void; onReport?: () => void; miniworlds?: MiniworldsProps; tasks?: TasksProps; trace?: TraceView; remote?: RemoteConsoles; name?: string }) {
   useLang()
   const state = useRunnerState(runner)
   const slot = useRef<HTMLDivElement>(null)
@@ -49,6 +59,20 @@ export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace,
   const [guides, setGuides] = useState<Guides>(loadGuides)
   const [mouse, setMouse] = useState<WorldPoint | null>(null)
   const docked = !popup && !fullscreen
+  // whose output the console shows: null is this person's own
+  const [watching, setWatching] = useState<number | null>(null)
+  const watched = watching === null ? undefined : remote?.runs.find((r) => r.id === watching)
+  const preferred = remote?.runs.find((r) => r.id === remote.preferred)
+  useEffect(() => {
+    if (state.phase === 'running') setWatching(null) // one's own program: one's own output
+  }, [state.phase])
+  useEffect(() => {
+    if (preferred && preferred.running) setWatching(preferred.id)
+  }, [preferred?.id, preferred?.started])
+  useEffect(() => {
+    if (watching !== null && !watched) setWatching(null) // the person left
+    else if (watched && watched.unseen > 0) remote?.onSeen(watched.id)
+  }, [watching, watched?.unseen, watched?.lines.length])
 
   // The canvas element is replaced with every new worker (it can be handed over only once): mount the current one.
   useEffect(() => {
@@ -274,7 +298,24 @@ export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace,
           </ol>
         </details>
       )}
-      <Console lines={state.lines} onClear={() => runner.clearConsole()} onJump={onJump} waiting={state.input} onAnswer={(text) => runner.answerInput(text)} onReport={onReport} />
+      {remote && remote.runs.length > 0 && (
+        <div class="console-sources" role="tablist" aria-label={t('collab.console.sources')}>
+          <button type="button" role="tab" aria-selected={watched === undefined} onClick={() => setWatching(null)}>
+            {t('collab.console.mine')}
+          </button>
+          {remote.runs.map((run) => (
+            <button key={run.id} type="button" role="tab" aria-selected={watched?.id === run.id} onClick={() => setWatching(run.id)}>
+              <span class="collab-dot" style={{ background: run.color }} aria-hidden="true" /> {run.name}
+              {run.running ? <span class="console-live" title={t('collab.console.running')}> ●</span> : run.unseen > 0 && watched?.id !== run.id ? ' •' : ''}
+            </button>
+          ))}
+        </div>
+      )}
+      {watched ? (
+        <Console lines={watched.lines} onClear={() => remote?.onClear(watched.id)} onJump={onJump} />
+      ) : (
+        <Console lines={state.lines} onClear={() => runner.clearConsole()} onJump={onJump} waiting={state.input} onAnswer={(text) => runner.answerInput(text)} onReport={onReport} />
+      )}
     </section>
   )
 }

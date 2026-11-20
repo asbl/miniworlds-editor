@@ -5,6 +5,10 @@ oben das Menü **Git**. Die Einstellung gilt für diesen Browser, nicht für get
 Projekte oder eingebettete Editoren. Deaktivieren blendet die Werkzeuge wieder aus;
 vorhandene Commits bleiben erhalten.
 
+Während einer gemeinsamen Sitzung sind die Git-Werkzeuge ausgeblendet. Nach
+**Gemeinsames Arbeiten beenden** stehen sie für die gespeicherte Projektkopie
+wieder zur Verfügung.
+
 ## Repository laden
 
 1. **Git → Repository klonen …** öffnen.
