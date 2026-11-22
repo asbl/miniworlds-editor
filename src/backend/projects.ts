@@ -31,7 +31,22 @@ export class BackendProjects {
     const result = await client.json<{ token: string; project_id: number; personal_code: string | null }>('/api/claim', 'POST', { code, password })
     client.token = result.token
     // Store the token before fetching: a consumed template code cannot be redeemed again after a network interruption.
-    const name = `Server-Projekt ${result.project_id}`
+    let name: string | undefined
+    for (const key of Object.keys(this.meta).filter(k => k.startsWith(prefix(this.base)))) {
+      try {
+        if ((JSON.parse(this.meta.getItem(key)!) as RecordData).id === result.project_id) name = key.slice(prefix(this.base).length)
+      } catch { /* unrelated or damaged metadata */ }
+    }
+    if (!name) {
+      const key = Object.keys(this.secrets).find(k => k.startsWith(prefix(this.base)) && k.endsWith(':project-id') && this.secrets.getItem(k) === String(result.project_id))
+      if (key) name = key.slice(prefix(this.base).length, -':project-id'.length)
+    }
+    if (!name) {
+      const base = `Server-Projekt ${result.project_id}`
+      name = base
+      for (let n = 2; await this.store.exists(name); n++) name = `${base} (${n})`
+    }
+    this.secrets.setItem(`${this.key(name)}:project-id`, String(result.project_id))
     this.secrets.setItem(this.key(name), result.token)
     if (result.personal_code) this.secrets.setItem(`${this.key(name)}:new-code`, result.personal_code)
     await this.attach(name, client)
@@ -85,6 +100,7 @@ export class BackendProjects {
   async logout(connection: BackendConnection) {
     connection.dispose()
     this.secrets.removeItem(this.key(connection.name))
+    this.secrets.removeItem(`${this.key(connection.name)}:project-id`)
     this.acknowledgeCode(connection.name)
     this.meta.removeItem(this.key(connection.name))
     this.connections.delete(connection.name)
