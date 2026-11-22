@@ -1,0 +1,218 @@
+import type { Fs, ProjectStore, Workspace } from '../workspace'
+import { withLock, exclusiveFs } from '../workspace/locked'
+import { normalizePath } from '../workspace/types'
+import { BackendClient, ApiError, encode, decode, type RemoteProject } from './client'
+
+interface RecordData {
+  id: number; revision: number; dirty: boolean; project: RemoteProject
+  answerDrafts?: Record<string, { answers: Record<string, { checked: boolean }>; base_version: number }>
+}
+const hasDraft = (data: RecordData) => data.dirty || Object.keys(data.answerDrafts ?? {}).length > 0
+export type SyncStatus = 'saved' | 'pending' | 'saving' | 'offline' | 'conflict' | 'login' | 'readonly'
+const prefix = (base: string) => `miniworlds-backend:${base}:`
+
+/** Project files remain in the ordinary local store, so failed saves survive a reload and can always be exported. */
+export class BackendProjects {
+  private connections = new Map<string, BackendConnection>()
+  constructor(readonly store: ProjectStore, readonly base: string, private meta: Storage = localStorage, private secrets: Storage = sessionStorage) {}
+  key(name: string) { return `${prefix(this.base)}${name}` }
+  async open(name: string, workspace: Workspace): Promise<BackendConnection | null> {
+    if (this.connections.has(name)) return this.connections.get(name)!
+    const value = this.meta.getItem(this.key(name))
+    if (!value) return null
+    const data = JSON.parse(value) as RecordData
+    const client = new BackendClient(this.base, this.secrets.getItem(this.key(name)))
+    const connection = new BackendConnection(name, workspace, client, data, this.meta, this.key(name))
+    this.connections.set(name, connection)
+    return connection
+  }
+  async claim(code: string, password: string): Promise<{ name: string; personalCode: string | null }> {
+    const client = new BackendClient(this.base)
+    const result = await client.json<{ token: string; project_id: number; personal_code: string | null }>('/api/claim', 'POST', { code, password })
+    client.token = result.token
+    // Store the token before fetching: a consumed template code cannot be redeemed again after a network interruption.
+    const name = `Server-Projekt ${result.project_id}`
+    this.secrets.setItem(this.key(name), result.token)
+    if (result.personal_code) this.secrets.setItem(`${this.key(name)}:new-code`, result.personal_code)
+    await this.attach(name, client)
+    return { name, personalCode: result.personal_code }
+  }
+  /** Resume the token saved before an interrupted first download. */
+  async resume(name: string) {
+    const token = this.secrets.getItem(this.key(name))
+    if (!token) throw new ApiError(401, 'Bitte den Projektcode erneut eingeben.')
+    return this.attach(name, new BackendClient(this.base, token))
+  }
+  private async attach(name: string, client: BackendClient) {
+    const workspace = await this.store.open(name)
+    await withLock(this.key(name), async () => {
+      const project = await client.json<RemoteProject>('/api/play/project')
+      const raw = this.meta.getItem(this.key(name))
+      const old = raw ? JSON.parse(raw) as RecordData : null
+      if (!old || !hasDraft(old)) {
+        const files: Record<string, Uint8Array> = {}
+        for (const [path, content] of Object.entries(project.save?.files ?? {})) {
+          if (normalizePath(path) !== path) throw new Error('Ungültiger Projektpfad')
+          files[path] = decode(content)
+        }
+        if (!project.save?.files) files['main.py'] = new TextEncoder().encode(project.save?.source ?? '')
+        if (project.save?.db) files['save.db'] = decode(project.save.db)
+        for (const asset of project.save?.files ? [] : project.media) {
+          const path = asset.filename ?? asset.orig_name.replace(/[^\w.\-]/g, '_')
+          if (normalizePath(path) !== path) throw new Error('Ungültiger Medienpfad')
+          if (!(path in files)) files[path] = new Uint8Array(await (await client.request(`/api/play/media/${asset.id}/file`)).arrayBuffer())
+        }
+        await exclusiveFs(workspace.fs, async fs => {
+          for (const entry of await fs.list()) if (entry.kind === 'file' && !(entry.path in files)) await fs.remove(entry.path)
+          for (const [path, bytes] of Object.entries(files)) await fs.write(path, bytes)
+        })
+        this.meta.setItem(this.key(name), JSON.stringify({ id: project.project_id, revision: project.revision, dirty: false, project: { ...project, save: null } } satisfies RecordData))
+      } else {
+        // Keep the revision of the draft. A changed server will yield a conflict instead of overwriting either side.
+        this.meta.setItem(this.key(name), JSON.stringify({ ...old, project: { ...project, save: null } }))
+      }
+    })
+    this.connections.get(name)?.dispose()
+    this.connections.delete(name)
+    return this.open(name, workspace)
+  }
+  pendingCodes(): { name: string; code: string }[] {
+    return Object.keys(this.secrets).filter(k => k.startsWith(prefix(this.base)) && k.endsWith(':new-code'))
+      .map(k => ({ name: k.slice(prefix(this.base).length, -':new-code'.length), code: this.secrets.getItem(k)! }))
+  }
+  acknowledgeCode(name: string) { this.secrets.removeItem(`${this.key(name)}:new-code`) }
+  setToken(connection: BackendConnection, token: string) { connection.client.token = token; this.secrets.setItem(this.key(connection.name), token) }
+  async logout(connection: BackendConnection) {
+    connection.dispose()
+    this.secrets.removeItem(this.key(connection.name))
+    this.acknowledgeCode(connection.name)
+    this.meta.removeItem(this.key(connection.name))
+    this.connections.delete(connection.name)
+    await this.store.remove(connection.name)
+  }
+}
+
+export class BackendConnection {
+  readonly workspace: Workspace
+  status: SyncStatus
+  error = ''
+  private listeners = new Set<() => void>()
+  private timer?: ReturnType<typeof setTimeout>
+  private disposed = false
+  private blocked = false
+  private lockKey: string
+  constructor(readonly name: string, readonly local: Workspace, readonly client: BackendClient,
+    private data: RecordData, private meta: Storage, private key: string) {
+    this.lockKey = key
+    this.status = !client.token ? 'login' : data.project.read_only ? 'readonly' : hasDraft(data) ? 'pending' : 'saved'
+    const connection = this
+    this.workspace = { ...local, kind: local.kind, fs: this.observe(local.fs), get readOnly() { return connection.project.read_only } }
+    if (hasDraft(data) && client.token) this.schedule()
+  }
+  get project() {
+    return { ...this.data.project, tasks: this.data.project.tasks.map(task => ({ ...task,
+      answers: this.data.answerDrafts?.[task.assignment_id]?.answers ?? task.answers,
+    })) }
+  }
+  get revision() { return this.load().revision }
+  get dirty() { return hasDraft(this.load()) }
+  subscribe(listener: () => void) { this.listeners.add(listener); return () => { this.listeners.delete(listener) } }
+  private emit(status: SyncStatus, error = '') { this.status = status; this.error = error; this.listeners.forEach(f => f()) }
+  private load() { this.data = JSON.parse(this.meta.getItem(this.key) ?? JSON.stringify(this.data)) as RecordData; return this.data }
+  private persist() { this.meta.setItem(this.key, JSON.stringify(this.data)) }
+  private observe(raw: Fs, inside = false): Fs {
+    const mutate = async (action: () => Promise<void>) => {
+      const perform = async () => {
+        if (this.disposed) throw new Error('Abgemeldet')
+        this.load()
+        if (this.project.read_only) throw new Error(this.project.read_only_reason ?? 'Schreibgeschützt')
+        this.data.dirty = true
+        this.persist() // before writing: even an interrupted write is treated as an unsaved draft
+        await action()
+        if (!this.blocked) this.emit('pending')
+        this.schedule()
+      }
+      return inside ? perform() : withLock(this.lockKey, perform)
+    }
+    return {
+      list: () => raw.list(), read: p => raw.read(p), readBytes: p => raw.readBytes(p), exists: p => raw.exists(p),
+      write: async (p, c) => {
+        // Metadata hooks may write the same contents even in a read-only project.
+        const bytes = typeof c === 'string' ? new TextEncoder().encode(c) : c
+        if (await raw.exists(p)) { const old = await raw.readBytes(p); if (old.length === bytes.length && old.every((b, i) => b === bytes[i])) return }
+        return mutate(() => raw.write(p, c))
+      },
+      remove: p => mutate(() => raw.remove(p)), rename: (a, b) => mutate(() => raw.rename(a, b)),
+      exclusive: action => withLock(this.lockKey, () => exclusiveFs(raw, fs => action(this.observe(fs, true)))),
+    }
+  }
+  private schedule() {
+    clearTimeout(this.timer)
+    if (!this.blocked && !this.disposed) this.timer = setTimeout(() => { void this.sync() }, 1500)
+  }
+  async sync(): Promise<void> {
+    clearTimeout(this.timer)
+    if (this.disposed || this.blocked) return
+    await withLock(this.lockKey, async () => {
+      this.load()
+      if (!hasDraft(this.data)) return
+      if (!this.client.token) { this.emit('login'); return }
+      this.emit('saving')
+      try {
+        if (this.data.dirty) {
+          const files = await exclusiveFs(this.local.fs, async fs => {
+            const result: Record<string, string> = {}
+            for (const entry of await fs.list()) if (entry.kind === 'file') result[entry.path] = encode(await fs.readBytes(entry.path))
+            return result
+          })
+          const result = await this.client.json<{ revision: number }>('/api/play/save', 'PUT', {
+            source: files['main.py'] ? new TextDecoder().decode(decode(files['main.py'])) : '', db: files['save.db'] ?? null,
+            files, base_revision: this.data.revision,
+          })
+          this.data.revision = result.revision
+          this.data.dirty = false
+          this.persist()
+        }
+        for (const [id, draft] of Object.entries(this.data.answerDrafts ?? {})) {
+          const result = await this.client.json<{ version: number }>(`/api/play/tasks/${id}/answers`, 'PUT', draft)
+          const task = this.data.project.tasks.find(t => t.assignment_id === Number(id))
+          if (task) { task.answers = draft.answers; task.version = result.version }
+          delete this.data.answerDrafts![id]
+          this.persist()
+        }
+        this.emit('saved')
+      } catch (error) {
+        const status = error instanceof ApiError ? error.status : 0
+        if ([401, 403, 409, 413, 422].includes(status)) this.blocked = true
+        this.emit(status === 409 ? 'conflict' : status === 401 ? 'login' : 'offline', error instanceof Error ? error.message : String(error))
+        // Transient failures retry; authorization and conflicts require an explicit action.
+        if (!this.blocked && !this.disposed) this.timer = setTimeout(() => { void this.sync() }, 15000)
+      }
+    })
+  }
+  async retry() { this.blocked = false; await this.sync() }
+  async answer(assignment: number, item: number, checked: boolean) {
+    await withLock(this.lockKey, async () => {
+      this.load()
+      const task = this.project.tasks.find(t => t.assignment_id === assignment)
+      if (!task || this.project.read_only || task.status === 'submitted') throw new Error('Aufgabe ist nicht bearbeitbar.')
+      this.data.answerDrafts ??= {}
+      const old = this.data.answerDrafts[assignment]
+      this.data.answerDrafts[assignment] = { base_version: old?.base_version ?? task.version,
+        answers: { ...task.answers, [item]: { checked } } }
+      this.persist()
+      this.emit('pending')
+    })
+    await this.sync()
+  }
+  async refreshTasks() {
+    const project = await this.client.json<RemoteProject>('/api/play/project')
+    await withLock(this.lockKey, async () => {
+      this.load()
+      this.data.project = { ...project, save: null }
+      this.persist()
+    })
+    this.listeners.forEach(f => f())
+  }
+  dispose() { this.disposed = true; clearTimeout(this.timer) }
+}

@@ -32,6 +32,8 @@ export interface Workspace {
    * the search, the run or an export. Absent where there is none (tests).
    */
   readonly history?: Fs
+  /** Remote snapshots can still be run and exported, but cannot be edited. */
+  readonly readOnly?: boolean
 }
 
 export function normalizePath(path: string): string {

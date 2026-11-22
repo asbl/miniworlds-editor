@@ -26,6 +26,8 @@ import { FIRST_REMINDER_MS, loadBackupRecord, saveBackupRecord, shouldRemind } f
 import { hasSeenWelcome, markWelcomeSeen } from './welcome/firstRun'
 import { ImportGuide, Welcome, type ImportActions } from './welcome/Welcome'
 import { ProjectView } from './ProjectView'
+import { BackendProjects, type BackendConnection } from '../backend/projects'
+import { BackendPanel } from '../backend/BackendPanel'
 import type { Collab } from '../collab/collab'
 import { History } from '../history/history'
 import { readTexts } from '../history/restore'
@@ -66,6 +68,8 @@ interface AppProps {
 }
 
 export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog: injectedCatalog, language: injectedLanguage }: AppProps) {
+  const backend = useMemo(() => config.backendUrl ? new BackendProjects(store, config.backendUrl) : null, [store, config.backendUrl])
+  const [backendConnection, setBackendConnection] = useState<BackendConnection | null>(null)
   const runner = useMemo(() => injected ?? createBrowserRunner(config.pyodideBase), [injected, config.pyodideBase])
   const language = useMemo(() => injectedLanguage ?? createBrowserLanguageService(config.pyodideBase, isLowMemory(config.lowMemory)), [injectedLanguage, config.pyodideBase, config.lowMemory])
   const catalog = useMemo(() => injectedCatalog ?? new Catalog(browserKeyValue()), [injectedCatalog])
@@ -121,10 +125,10 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
 
   // after a while of work in a project that was never backed up (or not for a week): say where the project lives
   useEffect(() => {
-    if (!name || workspace?.kind === 'memory' || !shouldRemind(loadBackupRecord(), Date.now())) return
+    if (!name || backendConnection || workspace?.kind === 'memory' || !shouldRemind(loadBackupRecord(), Date.now())) return
     const timer = setTimeout(() => setBackupNote((now) => now ?? 'hint'), FIRST_REMINDER_MS)
     return () => clearTimeout(timer)
-  }, [name, workspace])
+  }, [name, workspace, backendConnection])
 
   async function backup() {
     await flush.current?.()
@@ -142,9 +146,16 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
 
   async function show(next: string) {
     await flush.current?.()
+    await backendConnection?.sync()
     await endSession()
     const list = await store.list()
-    const ws = await store.open(next)
+    const local = await store.open(next)
+    let connection = backend ? await backend.open(next, local) : null
+    if (connection?.client.token && !connection.dirty) {
+      try { connection = await backend!.resume(next) } catch { /* local draft remains available; saving rechecks authorization and revision */ }
+    }
+    const ws = connection?.workspace ?? local
+    setBackendConnection(connection)
     rememberProject(next)
     setProjects(list.includes(next) ? list : await store.list())
     plainWorkspace.current = ws
@@ -154,7 +165,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     closeOverlay()
     // a project that was shared when it was closed joins its room again (in the background: the project is usable at once)
     const invite = deserializeInvite(savedRoom(next))
-    if (invite && config.collabUrl) void connect(next, ws, invite, savedName() || t('collab.you'), { quiet: true })
+    if (!connection && invite && config.collabUrl) void connect(next, ws, invite, savedName() || t('collab.you'), { quiet: true })
   }
 
   /** Leave the session of the project that is open (the stored project stays). */
@@ -521,13 +532,13 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     >
       <header class="topbar">
         <h1 class="brand">{t('app.title')}</h1>
-        {name && <Menu label={`${t('project.menu')}: ${name} ▾`} items={projectItems} />}
-        {preferences.git && workspace && !collab && <Menu label="Git ▾" items={[
+        {name && <Menu label={`${t('project.menu')}: ${name} ▾`} items={backendConnection ? projectItems.filter(item => item.label !== t('project.rename') && item.label !== t('project.delete')) : projectItems} />}
+        {preferences.git && workspace && !collab && !backendConnection && <Menu label="Git ▾" items={[
           { label: t('git.title'), onSelect: guarded(async () => { await flush.current?.(); setGitDialog('project') }) },
           { label: t('git.clone'), onSelect: guarded(async () => { await flush.current?.(); setGitDialog('clone') }) },
         ]} />}
         <span class="spacer" />
-        {name && collabAvailable && (
+        {name && collabAvailable && !backendConnection && (
           <button
             type="button"
             class={collab ? `collab-button on ${collabInfo?.status ?? ''}` : 'collab-button'}
@@ -559,6 +570,17 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
           items={LANGS.map((l) => ({ label: LANG_NAMES[l], checked: l === lang, onSelect: () => setLang(l) }))}
         />
       </header>
+      {backend && <BackendPanel manager={backend} connection={backendConnection} flush={() => flush.current?.() ?? Promise.resolve()} onOpen={show} onLogout={async () => {
+        flush.current = null
+        setBackendConnection(null)
+        const rest = await store.list()
+        if (rest[0]) await show(rest[0])
+        else {
+          const starter = t('project.untitled')
+          await createStarterProject(store, starter, 'project', await newestVersion())
+          await show(starter)
+        }
+      }} />}
       {backupNote && (
         <div class="notice" role="status">
           <span>{t('backup.hint')}</span>

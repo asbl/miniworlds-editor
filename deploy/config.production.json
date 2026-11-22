@@ -7,5 +7,6 @@
     { "label": "Java Blocks", "url": "https://miniworlds.opencoding.de/?ide=javaBlocks" }
   ],
   "embedOrigins": ["https://www.opencoding.de"],
-  "collabUrl": "/collab"
+  "collabUrl": "/collab",
+  "backendUrl": "https://backend.editor.opencoding.de"
 }

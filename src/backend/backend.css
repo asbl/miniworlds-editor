@@ -1,0 +1,7 @@
+.backend-panel { flex-shrink: 0; max-height: 38vh; overflow: auto; border-bottom: 1px solid var(--border); }
+.backend-panel .notice { flex-wrap: wrap; }
+.backend-panel > p, .backend-panel > small, .backend-panel > details { margin: 6px 12px; }
+.backend-panel article { align-items: flex-start; }
+.backend-panel article > div { width: 100%; }
+.backend-dialog label { display: flex; flex-direction: column; gap: 4px; margin: 12px 0; }
+.backend-dialog input { padding: 7px; }

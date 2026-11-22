@@ -25,9 +25,11 @@ export interface AppConfig {
    * null (the default) switches the feature off: no menu entry. The relay is not part of the editor, see docs/collab.md.
    */
   collabUrl: string | null
+  /** Optional classroom storage. null keeps the static editor entirely independent. */
+  backendUrl: string | null
 }
 
-export const DEFAULT_CONFIG: AppConfig = { pyodideBase: PYODIDE_BASE, links: [], embedOrigins: [], lowMemory: 'auto', collabUrl: null }
+export const DEFAULT_CONFIG: AppConfig = { pyodideBase: PYODIDE_BASE, links: [], embedOrigins: [], lowMemory: 'auto', collabUrl: null, backendUrl: null }
 
 const isHttpUrl = (value: string): boolean => /^https?:\/\//i.test(value)
 
@@ -66,6 +68,15 @@ export function parseAppConfig(raw: unknown, page: string): AppConfig {
     })
   }
   if (typeof r.lowMemory === 'boolean') config.lowMemory = r.lowMemory
+  if (typeof r.backendUrl === 'string' && r.backendUrl.trim()) {
+    try {
+      const url = new URL(r.backendUrl.trim(), page)
+      if (!url.username && !url.password && !url.search && !url.hash &&
+          (url.protocol === 'https:' || url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) {
+        config.backendUrl = url.href.replace(/\/+$/, '')
+      }
+    } catch { /* invalid addresses disable remote storage */ }
+  }
   if (typeof r.collabUrl === 'string' && r.collabUrl.trim()) config.collabUrl = collabAddress(r.collabUrl.trim(), page)
   if ('embedOrigins' in r) {
     // present but unusable (a string, numbers …) stays "nobody": a typo must not open the door

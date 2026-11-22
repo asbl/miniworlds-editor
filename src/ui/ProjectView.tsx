@@ -99,8 +99,8 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   const remoteConsoles = useRemoteConsoles(collab)
   // somebody who watches, or whose turn it is not, cannot type
   useEffect(() => {
-    host.current?.setLocked(collabInfo?.locked ?? false)
-  }, [collabInfo?.locked, session, host])
+    host.current?.setLocked(workspace.readOnly || (collabInfo?.locked ?? false))
+  }, [workspace.readOnly, collabInfo?.locked, session, host])
   // "follow": open the file and line another person is at, whenever that changes
   const followed = collabInfo?.following != null ? collabInfo.people.find((p) => p.id === collabInfo.following) : undefined
   const followKey = followed?.focus ? `${followed.focus.path}:${followed.focus.line}` : ''
