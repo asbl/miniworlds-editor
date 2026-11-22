@@ -4,7 +4,7 @@
  "description": "Fliege mit dem Raumschiff (←/→ oder A/D), schieße mit der Leertaste auf Asteroiden und weiche aus. Eine Berührung beendet das Spiel.",
  "tasks": [
   {
-   "text": "Starte mit Run und schieße einen Asteroiden ab (Leertaste; die Welt muss angeklickt sein).",
+   "text": "Starte mit Weiter und schieße einen Asteroiden ab (Leertaste; die Welt muss angeklickt sein).",
    "check": {
     "type": "gone",
     "cls": "Laser"

@@ -4,7 +4,7 @@
  "description": "Steuere den Spieler mit den Pfeiltasten oder WASD und sammle Münzen. Ein Text zählt die Punkte.",
  "tasks": [
   {
-   "text": "Starte mit Run und sammle alle Münzen (Pfeiltasten oder WASD; zum Steuern muss die Welt angeklickt sein).",
+   "text": "Starte mit Weiter und sammle alle Münzen (Pfeiltasten oder WASD; zum Steuern muss die Welt angeklickt sein).",
    "check": {
     "type": "gone",
     "cls": "Muenze"

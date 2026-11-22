@@ -51,7 +51,7 @@ function newNode(name: string, kind: ClassKind, lib: boolean, info: ModelClass |
 }
 
 function measure(node: Node, details: boolean): void {
-  let longest = node.name.length + (STEREOTYPE[node.kind] ? 2 : 0) + 4
+  let longest = node.name.length + (STEREOTYPE[node.kind] ? 2 : 0) + 8
   let height = HEAD_H
   if (!node.lib && details) {
     const info = node.info as ModelClass

@@ -88,10 +88,13 @@ export function SearchPanel({ session, focusSignal, onChanged }: { session: Sess
           .*
         </button>
       </div>
-      <input type="text" placeholder={t('search.replace')} aria-label={t('search.replace')} value={replacement} onInput={(e) => setReplacement(e.currentTarget.value)} />
-      <button type="button" class="wide" disabled={!result || result.hits.length === 0} onClick={() => void replaceAll()}>
-        {t('search.replaceAll')}
-      </button>
+      <details class="search-replace">
+        <summary>{t('search.replaceToggle')}</summary>
+        <input type="text" placeholder={t('search.replace')} aria-label={t('search.replace')} value={replacement} onInput={(e) => setReplacement(e.currentTarget.value)} />
+        <button type="button" class="wide" disabled={!result || result.hits.length === 0} onClick={() => void replaceAll()}>
+          {t('search.replaceAll')}
+        </button>
+      </details>
       <p class="search-info" role="status">
         {message ??
           (result

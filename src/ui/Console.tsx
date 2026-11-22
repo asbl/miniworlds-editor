@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'preact/hooks'
+import { useEffect, useRef, useState, useId } from 'preact/hooks'
 import { t, useLang } from '../i18n'
+import { openContextMenu } from './ContextMenu'
 import { linkify, type TraceLocation } from '../runtime/traceback'
 import type { ConsoleLine } from '../runtime/runner'
 
@@ -22,6 +23,14 @@ export function Console({
   onReport?: () => void
 }) {
   useLang()
+  const logId = useId()
+  const [expanded, setExpanded] = useState(() => !!waiting || lines.some((line) => line.kind !== 'system'))
+  const lastOutput = [...lines].reverse().find((line) => line.kind !== 'system')
+  useEffect(() => {
+    if (lastOutput || waiting) setExpanded(true)
+    else setExpanded(false)
+  }, [lastOutput?.id, waiting?.id])
+  const open = expanded || !!waiting
   const box = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
   const field = useRef<HTMLInputElement>(null)
@@ -29,29 +38,30 @@ export function Console({
   useEffect(() => {
     const el = box.current
     if (el && stick.current) el.scrollTop = el.scrollHeight
-  }, [lines, waiting])
+  }, [lines, waiting, open])
 
   useEffect(() => {
-    if (waiting) field.current?.focus()
-  }, [waiting?.id])
+    if (waiting && open) field.current?.focus()
+  }, [waiting?.id, open])
 
   return (
-    <section class="console" aria-label={t('console.title')}>
+    <section class={open ? 'console' : 'console collapsed'} aria-label={t('console.title')}>
       <div class="console-head">
-        <span>{t('console.title')}</span>
+        <button type="button" class="console-toggle" aria-expanded={open} aria-controls={logId} disabled={!!waiting} onClick={() => setExpanded(!open)}>
+          <span aria-hidden="true">{open ? '▾' : '▸'}</span> {t('console.title')}
+        </button>
         <span class="console-actions">
-          {onReport && (
-            <button type="button" onClick={onReport} title={t('console.reportTitle')}>
-              {t('console.report')}
-            </button>
-          )}
-          <button type="button" onClick={onClear} disabled={lines.length === 0}>
-            {t('console.clear')}
-          </button>
+          {open && <button type="button" onClick={onClear} disabled={lines.length === 0}>{t('console.clear')}</button>}
+          {onReport && <button type="button" aria-label={t('console.actions')} aria-haspopup="menu" onClick={(e) => {
+            const rect = e.currentTarget.getBoundingClientRect()
+            openContextMenu(rect.right, rect.bottom, [{ text: t('console.report'), run: onReport }])
+          }}>⋯</button>}
         </span>
       </div>
       <div
         class="console-lines"
+        id={logId}
+        hidden={!open}
         ref={box}
         role="log"
         aria-live="polite"

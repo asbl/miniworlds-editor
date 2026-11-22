@@ -133,7 +133,7 @@ export function ClassPanel({ view, fs, session, entries, kind, classModel, gf, m
     void session?.open(info.file, { line: member.line, column: 0, length: 0 })
   }
 
-  function onMenu(event: MouseEvent, info: ModelClass | null, name: string) {
+  function onMenu(event: Pick<MouseEvent, 'clientX' | 'clientY'>, info: ModelClass | null, name: string) {
     const base = baseOf(info, name)
     const items: Parameters<typeof openContextMenu>[2] = [{ header: name }]
     if (info?.kind === 'actor') {
@@ -146,7 +146,6 @@ export function ClassPanel({ view, fs, session, entries, kind, classModel, gf, m
     if (info) items.push({ text: t('uml.menu.source'), run: () => onSelect(info, name) })
     if (info && (info.kind === 'actor' || info.kind === 'world')) items.push({ text: t('uml.menu.react'), run: () => onReact(info) })
     if (info && kind === 'project') items.push({ text: t('class.rename'), run: () => onRenameClass(info) })
-    if (info?.kind === 'actor') items.push({ text: t('uml.menu.image'), run: () => setImageFor(name) })
     if (info?.kind === 'actor') items.push({ text: t('uml.menu.costumes'), run: () => setCostumesFor(name) })
     if (info?.kind === 'world') items.push({ text: t('uml.menu.background'), run: () => setImageFor(name) })
     if (info?.kind === 'world') items.push({ text: t('uml.menu.toolbar'), run: () => setToolbarFor(name) })

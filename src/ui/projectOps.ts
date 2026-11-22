@@ -1,3 +1,5 @@
+import { h } from 'preact'
+import { ProjectChoices } from './project/ProjectChoices'
 import { t } from '../i18n'
 import { getLang } from '../i18n'
 import { createProject } from '../project/create'
@@ -49,31 +51,18 @@ export async function createStarterProject(store: ProjectStore, name: string, ki
 
 /** Dialog flow; returns the new project's name or null when cancelled. */
 export async function promptNewProject(store: ProjectStore, miniworlds: string | null): Promise<string | null> {
+  let choice = 'project'
   const values = await openDialog({
     title: t('project.new'),
+    body: h(ProjectChoices, { onChange: (kind: string) => { choice = kind } }),
     fields: [
       { kind: 'text', key: 'name', label: t('project.name'), initial: await uniqueProjectName(store, t('project.untitled')) },
-      {
-        kind: 'radio',
-        key: 'kind',
-        label: t('project.kind'),
-        initial: 'project',
-        options: [
-          { value: 'project', label: t('project.kind.project'), hint: t('project.kind.project.hint') },
-          { value: 'legacy', label: t('project.kind.legacy'), hint: t('project.kind.legacy.hint') },
-          ...TEMPLATES.map((tpl) => {
-            const text = tpl.text[getLang()] ?? tpl.text.de
-            return { value: `tpl:${tpl.id}`, label: t('project.kind.template', { title: text.title, level: text.level }), hint: text.description }
-          }),
-        ],
-      },
     ],
     submit: 'dialog.create',
     validate: async (v) => nameProblem(store, String(v.name)),
   })
   if (!values) return null
   const name = validateProjectName(String(values.name))
-  const choice = String(values.kind)
   const template = TEMPLATES.find((tpl) => `tpl:${tpl.id}` === choice)
   if (template) await createFromTemplate((await store.open(name)).fs, { template, lang: getLang(), name, miniworlds })
   else await createStarterProject(store, name, choice as 'project' | 'legacy', miniworlds)

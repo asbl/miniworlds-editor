@@ -94,9 +94,6 @@ input[type=text], input[type=search], select {
 .tree .row-main { flex: 1; min-width: 0; display: flex; align-items: center; text-align: left; padding: 3px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree .dir { color: var(--muted); }
 .tree .twisty { display: inline-block; width: 14px; flex: none; }
-.row-actions { display: none; flex: none; }
-.row:hover .row-actions, .row:focus-within .row-actions { display: flex; }
-.row-actions button { padding: 1px 5px; font-size: 12px; }
 .dot { color: var(--accent); }
 
 .search { padding: 8px; display: flex; flex-direction: column; gap: 6px; overflow: auto; min-height: 0; }
@@ -603,3 +600,23 @@ input[type=text], input[type=search], select {
 .collab-readonly, .collab-readlabel { margin: 8px 0 4px; }
 .collab-follow-bar { display: flex; align-items: center; gap: 8px; padding: 4px 12px; background: var(--accent); color: var(--accent-fg); }
 .collab-follow-bar button { padding: 1px 8px; border: 1px solid currentColor; }
+
+/* Actions stay visible on touch screens; primary content keeps its full hit area. */
+.file-actions, .uml-actions { flex: none; min-width: 30px; min-height: 30px; padding: 2px 6px; }
+.uml-header { display: flex; align-items: center; }
+.uml-header .uml-head { flex: 1; min-width: 0; }
+.uml-actions { border-radius: 0; }
+.search-replace summary { cursor: pointer; padding: 4px 0; }
+.search-replace input { width: 100%; margin: 6px 0; }
+.search-replace > button { width: 100%; }
+.world-panel > .console.collapsed { flex: 0 0 auto; min-height: 0; }
+.console-lines[hidden] { display: none; }
+.console-toggle { flex: 1; text-align: left; }
+.console-head .menu { position: relative; }
+.costume-change { display: block; padding: 0; }
+.costume-change img { display: block; }
+.project-choices { margin-bottom: 12px; }
+.project-choices fieldset { border: 0; padding: 0; margin: 10px 0; }
+.project-choices legend { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
+.project-choices summary { cursor: pointer; }
+.project-templates small { display: block; font-size: 12px; margin: 2px 0 6px; }

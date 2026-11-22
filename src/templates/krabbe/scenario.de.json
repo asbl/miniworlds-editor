@@ -1,10 +1,10 @@
 {
  "title": "Krabbe frisst Würmer",
  "level": "Einstieg",
- "description": "Eine Krabbe läuft über das Feld und frisst Würmer. Ideal zum Kennenlernen: Figuren platzieren, Act, Methoden aufrufen.",
+ "description": "Eine Krabbe läuft über das Feld und frisst Würmer. Ideal zum Kennenlernen: Figuren platzieren, Schritt, Methoden aufrufen.",
  "tasks": [
   {
-   "text": "Rechtsklick auf die Welt → „Neu: Krabbe“ und „Neu: Wurm“. Drücke dann mehrmals Act.",
+   "text": "Rechtsklick auf die Welt → „Neu: Krabbe“ und „Neu: Wurm“. Drücke dann mehrmals Schritt.",
    "check": {
     "type": "all",
     "of": [
@@ -45,7 +45,7 @@
    }
   },
   {
-   "text": "Gib der Krabbe ein Bild: Rechtsklick auf die Klasse im Diagramm → „Bild festlegen…“.",
+   "text": "Gib der Krabbe ein Bild: Klasse im Diagramm → ⋯ → „Aussehen …“.",
    "check": {
     "type": "image",
     "cls": "Krabbe"

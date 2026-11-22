@@ -163,20 +163,20 @@ with sync_playwright() as p:
     check("the diagram shows the classes", eventually(lambda: page.locator(".uml-box .uml-name", has_text="Figur").count() >= 1 and page.locator(".uml-box .uml-name", has_text="Spiel").count() >= 1, 90000), page.locator(".uml-panel").inner_text()[:300])
 
     def menu(cls, item):
-        page.locator(".uml-box", has=page.locator(".uml-name", has_text=cls)).first.click(button="right")
+        page.locator(".uml-box", has=page.locator(".uml-name", has_text=cls)).first.locator(".uml-actions").click()
         page.locator(".context-menu button", has_text=item).click()
 
     # --- 4. the event assistant
     menu("Figur", "Reagieren auf")
     page.get_by_label("Taste: wird gedrückt (einmal)").check()
-    page.get_by_role("button", name="Weiter").click()
+    page.locator("dialog[open]").get_by_role("button", name="Weiter", exact=True).click()
     page.locator("dialog select").select_option("left")
     page.get_by_role("button", name="Anlegen").click()
     check("the assistant writes the method for the key", eventually(lambda: "def on_key_down_left(self):" in page.locator(".cm-content").inner_text(), 10000), page.locator(".cm-content").inner_text()[-300:])
     page.wait_for_timeout(600)
     menu("Figur", "Reagieren auf")
     page.get_by_label("Taste: wird gedrückt (einmal)").check()
-    page.get_by_role("button", name="Weiter").click()
+    page.locator("dialog[open]").get_by_role("button", name="Weiter", exact=True).click()
     page.locator("dialog select").select_option("left")
     page.get_by_role("button", name="Anlegen").click()
     check("an existing method is shown, not written twice", eventually(lambda: page.locator("dialog", has_text="gibt es schon").count() == 1, 10000))
@@ -184,13 +184,15 @@ with sync_playwright() as p:
     check("only one such method", page.locator(".cm-content").inner_text().count("def on_key_down_left") == 1)
 
     # --- 7. costumes and animation
-    menu("Figur", "Kostüme und Animation")
-    for _ in range(2):
+    menu("Figur", "Aussehen")
+    check("animation controls stay hidden without frames", page.locator(".costume-options").count() == 0)
+    for n in range(2):
         page.get_by_role("button", name="Bild hinzufügen").click()
         page.locator(".imggrid[role=tabpanel] .imgcard").first.click()
         page.wait_for_timeout(500)
+        check(f"animation controls depend on frame count {n + 1}", page.locator(".costume-options").count() == (1 if n else 0))
     check("two frames are in the strip", eventually(lambda: page.locator(".costume-frame").count() == 2, 10000))
-    page.get_by_role("button", name="OK").click()
+    page.get_by_role("button", name="Animation übernehmen").click()
     check("the code gets the costume and the animation", eventually(lambda: "self.costume.add_images([" in page.locator(".cm-content").inner_text() and "self.animate_loop(speed=" in page.locator(".cm-content").inner_text(), 10000), page.locator(".cm-content").inner_text()[:600])
 
     # --- 9. control panel
@@ -198,7 +200,7 @@ with sync_playwright() as p:
     page.get_by_role("button", name="＋ Knopf").click()
     page.get_by_role("button", name="＋ Zähler").click()
     check("the mock lists two widgets", page.locator(".toolbar-item").count() == 2)
-    page.get_by_role("button", name="OK").click()
+    page.get_by_role("button", name="Bedienfeld einfügen").click()
     check("the code builds the panel", eventually(lambda: "mw.Toolbar()" in page.locator(".cm-content").inner_text() and "def on_message(self, message):" in page.locator(".cm-content").inner_text(), 10000), page.locator(".cm-content").inner_text()[:800])
 
     # all of it runs on the engine

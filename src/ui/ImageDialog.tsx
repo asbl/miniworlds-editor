@@ -97,12 +97,12 @@ export function ImageDialog({ fs, className, mode = 'actor', current, onChoose, 
   }
 
   return (
-    <dialog ref={ref} class="dialog wide-dialog" onCancel={(e) => (e.preventDefault(), onClose())}>
+    <dialog ref={ref} class="dialog wide-dialog" aria-label={t(mode === 'world' ? 'image.titleWorld' : 'image.title', { name: className })} onCancel={(e) => (e.preventDefault(), onClose())}>
       <div class="dialog-body">
         <h2>{t(mode === 'world' ? 'image.titleWorld' : 'image.title', { name: className })}</h2>
+        {mine.length > 0 && <>
         <h3 class="muted small">{t('image.inProject')}</h3>
         <div class="imggrid">
-          {mine.length === 0 && <p class="muted small">{t('image.none')}</p>}
           {mine.map((m) => (
             <button type="button" key={m.path} class={m.path === current ? 'imgcard current' : 'imgcard'} title={m.path} onClick={() => onChoose(m.path)}>
               <img src={m.url} alt="" />
@@ -110,6 +110,7 @@ export function ImageDialog({ fs, className, mode = 'actor', current, onChoose, 
             </button>
           ))}
         </div>
+        </>}
         <h3 class="muted small">{t('image.library')}</h3>
         <div class="chips" role="tablist" aria-label={t('image.library')}>
           {CATEGORIES.map((c) => (

@@ -1,10 +1,10 @@
 {
  "title": "Crab eats worms",
  "level": "Beginner",
- "description": "A crab walks across the field and eats worms. Ideal for getting to know the editor: create actors, Act, call methods.",
+ "description": "A crab walks across the field and eats worms. Ideal for getting to know the editor: create actors, Step, call methods.",
  "tasks": [
   {
-   "text": "Right-click the world → \"New: Krabbe\" and \"New: Wurm\". Then press Act a few times.",
+   "text": "Right-click the world → \"New: Krabbe\" and \"New: Wurm\". Then press Step a few times.",
    "check": {
     "type": "all",
     "of": [
@@ -45,7 +45,7 @@
    }
   },
   {
-   "text": "Give the crab an image: right-click the class in the diagram → \"Set image …\".",
+   "text": "Give the crab an image: class menu (⋯) in the diagram → \"Appearance …\".",
    "check": {
     "type": "image",
     "cls": "Krabbe"

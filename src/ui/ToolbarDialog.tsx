@@ -35,6 +35,7 @@ export function ToolbarDialog({ className, initial, hasHandler, onApply, onClose
   const [dock, setDock] = useState<Dock>(initial?.dock ?? 'right')
   const [widgets, setWidgets] = useState<WidgetSpec[]>(initial?.widgets ?? [])
   const [handler, setHandler] = useState(!hasHandler)
+  const [selected, setSelected] = useState<number | null>(null)
   const [over, setOver] = useState<number | null>(null)
 
   useEffect(() => {
@@ -42,10 +43,17 @@ export function ToolbarDialog({ className, initial, hasHandler, onApply, onClose
   }, [])
 
   const names = () => new Set(widgets.flatMap((w) => (w.kind === 'counter' ? [w.name] : [])))
-  const insert = (widget: WidgetSpec, at: number) => setWidgets((list) => [...list.slice(0, at), widget, ...list.slice(at)])
+  const insert = (widget: WidgetSpec, at: number) => {
+    setWidgets((list) => [...list.slice(0, at), widget, ...list.slice(at)])
+    setSelected(at)
+  }
   const update = (i: number, patch: Partial<WidgetSpec>) => setWidgets((list) => list.map((w, k) => (k === i ? ({ ...w, ...patch } as WidgetSpec) : w)))
-  const remove = (i: number) => setWidgets((list) => list.filter((_, k) => k !== i))
-  const move = (from: number, to: number) =>
+  const remove = (i: number) => {
+    setWidgets((list) => list.filter((_, k) => k !== i))
+    setSelected(null)
+  }
+  const move = (from: number, to: number) => {
+    setSelected(to)
     setWidgets((list) => {
       if (from === to || from < 0 || from >= list.length) return list
       const copy = [...list]
@@ -53,6 +61,7 @@ export function ToolbarDialog({ className, initial, hasHandler, onApply, onClose
       copy.splice(Math.min(to, copy.length), 0, item as WidgetSpec)
       return copy
     })
+  }
 
   function drop(event: DragEvent, at: number) {
     event.preventDefault()
@@ -65,13 +74,13 @@ export function ToolbarDialog({ className, initial, hasHandler, onApply, onClose
 
   const counterNames = widgets.flatMap((w) => (w.kind === 'counter' ? [w.name] : []))
   const nameProblem = counterNames.some((n) => !validName(n)) ? t('toolbar.badName') : new Set(counterNames).size !== counterNames.length ? t('toolbar.dupName') : null
+  const selectedWidget = selected === null ? undefined : widgets[selected]
   const vertical = dock !== 'bottom'
 
   return (
-    <dialog ref={ref} class="dialog wide-dialog" onCancel={(e) => (e.preventDefault(), onClose())}>
+    <dialog ref={ref} class="dialog wide-dialog" aria-labelledby="toolbar-title" onCancel={(e) => (e.preventDefault(), onClose())}>
       <div class="dialog-body">
-        <h2>{t('toolbar.title', { name: className })}</h2>
-        <p class="dialog-message">{t('toolbar.intro')}</p>
+        <h2 id="toolbar-title">{t('toolbar.title', { name: className })}</h2>
         <div class="toolbar-builder">
           <div class="toolbar-palette" role="group" aria-label={t('toolbar.palette')}>
             {KINDS.map((kind) => (
@@ -101,6 +110,8 @@ export function ToolbarDialog({ className, initial, hasHandler, onApply, onClose
                   <li
                     key={i}
                     class={over === i ? 'toolbar-item over' : 'toolbar-item'}
+                    onClickCapture={() => setSelected(i)}
+                    onFocusIn={() => setSelected(i)}
                     draggable
                     onDragStart={(e) => e.dataTransfer?.setData(DRAG_TYPE, `move:${i}`)}
                     onDragOver={(e) => (e.preventDefault(), e.stopPropagation(), setOver(i))}
@@ -143,13 +154,13 @@ export function ToolbarDialog({ className, initial, hasHandler, onApply, onClose
           </label>
         </div>
         {nameProblem && <p class="error-text small">{nameProblem}</p>}
-        <p class="muted small">{t('toolbar.counterHint')}</p>
+        {selectedWidget?.kind === 'counter' && <p class="muted small">{t('toolbar.counterHint', { name: selectedWidget.name })}</p>}
         <div class="dialog-buttons">
           <button type="button" onClick={onClose}>
             {t('dialog.cancel')}
           </button>
           <button type="button" class="primary" disabled={widgets.length === 0 || nameProblem !== null} onClick={() => onApply({ dock, widgets }, handler && !hasHandler)}>
-            {t('dialog.ok')}
+            {t(initial ? 'toolbar.apply' : 'toolbar.insert')}
           </button>
         </div>
       </div>

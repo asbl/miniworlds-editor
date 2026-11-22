@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'preact/hooks'
 import type { FileEntry } from '../workspace'
 import { t, useLang } from '../i18n'
+import { openContextMenu } from './ContextMenu'
 
 const plain = (text: string) => text.replace(/\s*…$/, '')
 
@@ -77,14 +78,15 @@ export function FileTree({ entries, active, dirty, onOpen, onRename, onDelete }:
               {dirty.has(node.path) && <span class="dot" role="img" aria-label={t('tabs.unsaved')}> ●</span>}
             </button>
           )}
-          <span class="row-actions">
-            <button type="button" title={t('files.rename')} aria-label={`${plain(t('files.rename'))} ${node.path}`} onClick={() => onRename(node.path)}>
-              ✎
-            </button>
-            <button type="button" title={t('files.delete')} aria-label={`${plain(t('files.delete'))} ${node.path}`} onClick={() => onDelete(node.path)}>
-              🗑
-            </button>
-          </span>
+          <button type="button" class="file-actions" aria-label={t('files.actions', { path: node.path })} aria-haspopup="menu" onClick={(e) => {
+            const box = e.currentTarget.getBoundingClientRect()
+            openContextMenu(box.right, box.bottom, [
+              { header: node.name },
+              { text: plain(t('files.rename')), run: () => onRename(node.path) },
+              '-',
+              { text: t('files.delete'), danger: true, run: () => onDelete(node.path) },
+            ])
+          }}>⋯</button>
         </li>
       )
       return node.kind === 'dir' && isOpen ? [row, ...rows(node.children, depth + 1)] : [row]

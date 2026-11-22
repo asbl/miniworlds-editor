@@ -108,6 +108,8 @@ with sync_playwright() as p:
     page.goto(URL)
     page.wait_for_selector(".cm-content")
 
+    check("empty console starts collapsed", page.locator(".console-toggle").get_attribute("aria-expanded") == "false")
+
     # --- boot, first run of the starter project
     t0 = time.time()
     check("python boots in the background", wait_ready(page), status(page))
@@ -145,6 +147,11 @@ with sync_playwright() as p:
     page.click(".toolbar .run.stop")
     eventually(lambda: "Bereit" in status(page), 10000)
 
+    # Closing the console is a layout choice; a new error must reveal it again.
+    if page.locator(".console-toggle").get_attribute("aria-expanded") == "true":
+        page.locator(".console-toggle").click()
+    check("console can be collapsed", page.locator(".console-lines").is_hidden())
+
     # --- error in main.py: traceback, jump and mark
     set_main(page, 'import miniworlds as mw\nx = 1\nraise ValueError("boom")\n')
     run(page)
@@ -158,6 +165,8 @@ with sync_playwright() as p:
     run(page)
     check("a known error comes with a hint in plain words", eventually(lambda: page.locator(".line.hint").count() == 1 and "Tipp:" in page.locator(".line.hint").inner_text() and "„figur“" in page.locator(".line.hint").inner_text(), 20000), console(page)[-300:])
     check("the status after it", eventually(lambda: "Bereit" in status(page), 5000))
+
+    check("errors reopen the console", page.locator(".console-lines").is_visible())
 
     # --- error inside a class file: jump there via the console link
     set_main(page, "from classes.Figur import Figur\nimport miniworlds as mw\nw = mw.World(200, 100)\nFigur((10, 10))\nw.run()\n")
@@ -188,6 +197,9 @@ with sync_playwright() as p:
     check("world keeps running with sound", "Läuft" in status(page))
     page.click(".toolbar .run.stop")
     eventually(lambda: "Bereit" in status(page), 10000)
+
+    if page.locator(".console-toggle").get_attribute("aria-expanded") == "true":
+        page.locator(".console-toggle").click()
 
     # --- input() waits for a line in the console (details in test/input.py)
     set_main(page, 'name = input("Name? ")\nprint("hi", name)\n')

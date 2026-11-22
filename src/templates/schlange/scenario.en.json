@@ -4,7 +4,7 @@
  "description": "Steer the snake with the arrow keys and eat apples. It grows with every apple. Touching the wall or yourself ends the game.",
  "tasks": [
   {
-   "text": "Start with Run and eat an apple (arrow keys; the world has to be clicked).",
+   "text": "Start with Continue and eat an apple (arrow keys; the world has to be clicked).",
    "check": {
     "type": "actors",
     "cls": "Glied"

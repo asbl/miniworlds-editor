@@ -4,7 +4,7 @@
  "description": "Steuere die Schlange mit den Pfeiltasten und fresse Äpfel. Sie wächst mit jedem Apfel. Wer die Wand oder sich selbst berührt, verliert.",
  "tasks": [
   {
-   "text": "Starte mit Run und friss einen Apfel (Pfeiltasten; die Welt muss angeklickt sein).",
+   "text": "Starte mit Weiter und friss einen Apfel (Pfeiltasten; die Welt muss angeklickt sein).",
    "check": {
     "type": "actors",
     "cls": "Glied"

@@ -4,7 +4,7 @@
  "description": "Ein Ball springt durch das Feld und wird vom Schläger zurückgeschlagen. Der Schläger wird mit W/S oder Pfeil hoch/runter bewegt.",
  "tasks": [
   {
-   "text": "Starte mit Run und halte den Ball im Spiel.",
+   "text": "Starte mit Weiter und halte den Ball im Spiel.",
    "check": {
     "type": "frames",
     "min": 300

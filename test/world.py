@@ -77,7 +77,8 @@ with sync_playwright() as p:
     check("leaving full screen returns the world to the panel", eventually(lambda: page.evaluate("document.fullscreenElement === null") and page.locator(".world-wrap .world-canvas").count() == 1, 5000))
 
     # ---- the report for a teacher (clipboard, or a text to copy by hand when the browser refuses)
-    page.get_by_role("button", name="Bericht kopieren").click()
+    page.get_by_role("button", name="Konsolenaktionen").click()
+    page.get_by_role("menuitem", name="Bericht kopieren").click()
     def reported():
         if "Bericht in die Zwischenablage" in console(page):
             return True

@@ -28,7 +28,7 @@ interface Props {
   images?: Record<string, string>
   onSelect: (info: ModelClass | null, name: string) => void
   onMember: (info: ModelClass, kind: 'attribute' | 'method', member: Member) => void
-  onMenu: (event: MouseEvent, info: ModelClass | null, name: string) => void
+  onMenu: (event: Pick<MouseEvent, 'clientX' | 'clientY'>, info: ModelClass | null, name: string) => void
 }
 
 /** The class diagram: boxes with attributes and methods, inheritance arrows, counters. Knows neither editor nor world. */
@@ -60,22 +60,28 @@ export function UmlDiagram({ model, details, counts, marks, stale, images = {}, 
             style={{ left: `${node.x}px`, top: `${node.y}px`, width: `${node.w}px`, minHeight: `${node.h}px` }}
             onContextMenu={(e) => (e.preventDefault(), onMenu(e, info, node.name))}
           >
-            <button
-              type="button"
-              class="uml-head"
-              title={info ? `${node.name} — ${info.file}, ${t('uml.line', { n: info.line })}` : `${node.name} (miniworlds)`}
-              data-stale={stale.has(node.name) ? t('uml.stale') : undefined}
-              onClick={() => onSelect(info, node.name)}
-            >
-              {info && images[node.name] && <img class="uml-img" src={images[node.name]} alt="" />}
-              <span class="uml-stereo">{STEREOTYPE[node.kind]}</span>
-              <span class="uml-name">{node.name}</span>
-              {count ? (
-                <span class="uml-count" aria-label={t('uml.objects')}>
-                  {count}×
-                </span>
-              ) : null}
-            </button>
+            <div class="uml-header">
+              <button
+                type="button"
+                class="uml-head"
+                title={info ? `${node.name} — ${info.file}, ${t('uml.line', { n: info.line })}` : `${node.name} (miniworlds)`}
+                data-stale={stale.has(node.name) ? t('uml.stale') : undefined}
+                onClick={() => onSelect(info, node.name)}
+              >
+                {info && images[node.name] && <img class="uml-img" src={images[node.name]} alt="" />}
+                <span class="uml-stereo">{STEREOTYPE[node.kind]}</span>
+                <span class="uml-name">{node.name}</span>
+                {count ? (
+                  <span class="uml-count" aria-label={t('uml.objects')}>
+                    {count}×
+                  </span>
+                ) : null}
+              </button>
+              <button type="button" class="uml-actions" aria-label={t('uml.actions', { name: node.name })} aria-haspopup="menu" onClick={(e) => {
+                const box = e.currentTarget.getBoundingClientRect()
+                onMenu({ clientX: box.right, clientY: box.bottom }, info, node.name)
+              }}>⋯</button>
+            </div>
             {info && details && (
               <>
                 <ul class="uml-attrs">

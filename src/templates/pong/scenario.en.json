@@ -4,7 +4,7 @@
  "description": "A ball bounces through the field and is hit back by the paddle. Move the paddle with W/S or the up/down arrows.",
  "tasks": [
   {
-   "text": "Start with Run and keep the ball in play.",
+   "text": "Start with Continue and keep the ball in play.",
    "check": {
     "type": "frames",
     "min": 300

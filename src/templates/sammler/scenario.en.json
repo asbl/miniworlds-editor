@@ -4,7 +4,7 @@
  "description": "Steer the player with the arrow keys or WASD and collect coins. A text counts the points.",
  "tasks": [
   {
-   "text": "Start with Run and collect all coins (arrow keys or WASD; the world has to be clicked to steer).",
+   "text": "Start with Continue and collect all coins (arrow keys or WASD; the world has to be clicked to steer).",
    "check": {
     "type": "gone",
     "cls": "Muenze"

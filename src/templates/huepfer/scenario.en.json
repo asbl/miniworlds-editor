@@ -4,7 +4,7 @@
  "description": "Steer the figure with ←/→ or A/D and jump onto the platforms with the space bar or ↑. Collect all three coins. Gravity is programmed by hand: tempo_y grows every frame.",
  "tasks": [
   {
-   "text": "Start with Run and collect all three coins (the world has to be clicked).",
+   "text": "Start with Continue and collect all three coins (the world has to be clicked).",
    "check": {
     "type": "fewer",
     "cls": "Muenze"

@@ -70,10 +70,9 @@ export const engineEn: Record<keyof typeof engineDe, string> = {
   'event.message': 'a message arrives',
 
   // ---- costumes and animation (src/ui/CostumeDialog.tsx) ----
-  'uml.menu.costumes': 'Costumes and animation …',
-  'costume.title': '{name}: Costumes and animation',
-  'costume.intro': 'Put several pictures in a row: the actor shows them one after the other. The preview already plays the way you set it.',
-  'costume.preview': 'Animation preview',
+  'uml.menu.costumes': 'Appearance …',
+  'costume.title': '{name}: Appearance',
+  'costume.preview': 'Preview',
   'costume.none': 'No picture yet',
   'costume.frames': 'Pictures of the animation',
   'costume.frame': 'Picture {n}',
@@ -89,7 +88,6 @@ export const engineEn: Record<keyof typeof engineDe, string> = {
   // ---- control panel builder (src/ui/ToolbarDialog.tsx) ----
   'uml.menu.toolbar': 'Build a control panel …',
   'toolbar.title': '{name}: Build a control panel',
-  'toolbar.intro': 'Drag buttons, labels and counters into the panel next to the world (or click them). Change the order by dragging or with the arrows.',
   'toolbar.palette': 'Pieces for the panel',
   'toolbar.addHint': 'Drag or click',
   'toolbar.kind.button': 'Button',
@@ -114,6 +112,11 @@ export const engineEn: Record<keyof typeof engineDe, string> = {
   'toolbar.handlerExists': 'The class has on_message already: add the buttons there.',
   'toolbar.badName': 'A name in the code may only contain letters, digits and _, and must not start with a digit.',
   'toolbar.dupName': 'Two counters have the same name.',
-  'toolbar.counterHint': 'A button sends its text as a message to the world (on_message). Raise a counter with self.name.add(1).',
+  'toolbar.counterHint': 'Increase the counter: self.{name}.add(1).',
   'toolbar.oneLineSetup': 'The on_setup method of {name} is written on one line. Spread it over several lines, then the panel can be put there.',
+  'costume.change': 'Change picture {n}',
+  'costume.applyAnimation': 'Apply animation',
+  'costume.applyImage': 'Apply picture',
+  'toolbar.insert': 'Insert control panel',
+  'toolbar.apply': 'Apply control panel',
 }

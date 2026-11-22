@@ -42,7 +42,7 @@ with sync_playwright() as p:
     set_main(page, 'x = 10\nprint(x / 0)\n')
     page.click(".toolbar .run")
     check("another run adds another hint", eventually(lambda: page.locator(".line.hint").count() == 2 and "Null" in page.locator(".line.hint").nth(1).inner_text(), 30000), console(page)[-300:])
-    page.get_by_role("button", name="Konsole leeren").click()
+    page.get_by_role("button", name="Leeren", exact=True).click()
 
     # --- 2. guide lines and 3. inspector (miniworlds view)
     page.get_by_role("button", name="Experimentieren", exact=True).click()
@@ -121,6 +121,7 @@ with sync_playwright() as p:
     page.get_by_role("menuitem", name="Neues Projekt").click()
     d = page.locator("dialog[open]")
     d.get_by_label("Projektname").fill("Krabbentest")
+    d.get_by_label("Vorlage", exact=True).check()
     d.get_by_label("Krabbe frisst", exact=False).check()
     d.get_by_role("button", name="Anlegen").click()
     page.wait_for_selector("dialog[open]", state="detached")
@@ -157,7 +158,7 @@ with sync_playwright() as p:
     # --- 6. picture library, background, drawing tool, provenance
     def class_menu(name, item):
         page.get_by_role("tab", name="Klassen").click()
-        page.locator(".uml-box", has=page.locator(".uml-name", has_text=name)).locator(".uml-head").click(button="right")
+        page.locator(".uml-box", has=page.locator(".uml-name", has_text=name)).locator(".uml-actions").click()
         page.locator(".context-menu").get_by_role("menuitem", name=item).click()
 
     def open_file(name):
@@ -166,13 +167,19 @@ with sync_playwright() as p:
 
     page.get_by_role("tab", name="Klassen").click()
     check("the diagram is there", eventually(lambda: page.locator(".uml-box .uml-name", has_text="Krabbe").count() == 1, 120000))
-    class_menu("Krabbe", "Bild festlegen")
-    dialog = page.locator("dialog[open]")
+    class_menu("Krabbe", "Aussehen")
+    appearance = page.locator(".appearance-dialog")
+    if appearance.locator(".costume-change").count():
+        appearance.locator(".costume-change").first.click()
+    else:
+        appearance.get_by_role("button", name="Bild hinzufügen").click()
+    dialog = page.locator("dialog[open]").last
     eventually(lambda: dialog.locator("[role=tab]").count() == 4, 5000)
     tabs = dialog.locator("[role=tab]").all_inner_texts()
     check("the library has four categories", tabs == ["Figuren", "Tiere", "Dinge", "Hintergründe"], str(tabs))
     dialog.get_by_role("tab", name="Tiere").click()
     dialog.get_by_role("button", name="Hai").click()
+    appearance.get_by_role("button", name="Bild übernehmen", exact=True).click()
     page.wait_for_selector("dialog[open]", state="detached")
     open_file("Krabbe.py")
     check("a library picture becomes the costume", eventually(lambda: 'self.add_costume("images/hai.png")' in page.inner_text(".cm-content"), 8000), page.inner_text(".cm-content"))
@@ -190,8 +197,13 @@ with sync_playwright() as p:
     open_file("Spielfeld.py")
     check("the background line is written", eventually(lambda: 'self.add_background("images/wiese.png")' in page.inner_text(".cm-content"), 8000), page.inner_text(".cm-content"))
 
-    class_menu("Wurm", "Bild festlegen")
-    page.locator("dialog[open]").get_by_role("button", name="Selbst zeichnen").click()
+    class_menu("Wurm", "Aussehen")
+    appearance = page.locator(".appearance-dialog")
+    if appearance.locator(".costume-change").count():
+        appearance.locator(".costume-change").first.click()
+    else:
+        appearance.get_by_role("button", name="Bild hinzufügen").click()
+    page.locator("dialog[open]").last.get_by_role("button", name="Selbst zeichnen").click()
     page.wait_for_selector(".pixel-canvas")
     check("saving needs a drawing first", page.get_by_role("button", name="Verwenden").is_disabled())
     canvas = page.locator(".pixel-canvas")
@@ -205,6 +217,7 @@ with sync_playwright() as p:
     page.mouse.click(cb["x"] + 300, cb["y"] + 300)
     check("a drawing can be saved", eventually(lambda: not page.get_by_role("button", name="Verwenden").is_disabled(), 3000))
     page.get_by_role("button", name="Verwenden").click()
+    appearance.get_by_role("button", name="Bild übernehmen", exact=True).click()
     page.wait_for_selector("dialog[open]", state="detached")
     page.get_by_role("tab", name="Dateien").click()
     check("the drawing is a file in images/", eventually(lambda: "gezeichnet.png" in page.locator(".tree").inner_text(), 8000), page.locator(".tree").inner_text())

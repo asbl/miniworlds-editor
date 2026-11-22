@@ -4,7 +4,7 @@
  "description": "Steuere die Figur mit ←/→ oder A/D und springe mit Leertaste oder ↑ auf die Plattformen. Sammle alle drei Münzen. Die Schwerkraft ist selbst programmiert: tempo_y wächst jedes Bild.",
  "tasks": [
   {
-   "text": "Starte mit Run und sammle alle drei Münzen (die Welt muss angeklickt sein).",
+   "text": "Starte mit Weiter und sammle alle drei Münzen (die Welt muss angeklickt sein).",
    "check": {
     "type": "fewer",
     "cls": "Muenze"

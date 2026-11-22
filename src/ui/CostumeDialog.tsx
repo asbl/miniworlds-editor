@@ -29,7 +29,7 @@ export function CostumeDialog({ fs, className, initial, onSource, onApply, onClo
   const urlsRef = useRef(urls)
   urlsRef.current = urls
   const [shown, setShown] = useState(0)
-  const [adding, setAdding] = useState(false)
+  const [adding, setAdding] = useState<number | 'append' | null>(null)
 
   useEffect(() => {
     if (ref.current && !ref.current.open) ref.current.showModal()
@@ -80,10 +80,9 @@ export function CostumeDialog({ fs, className, initial, onSource, onApply, onClo
   const current = frames[Math.min(shown, frames.length - 1)]
 
   return (
-    <dialog ref={ref} class="dialog wide-dialog" onCancel={(e) => (e.preventDefault(), onClose())}>
+    <dialog ref={ref} class="dialog wide-dialog appearance-dialog" aria-labelledby="appearance-title" onCancel={(e) => (e.preventDefault(), onClose())}>
       <div class="dialog-body">
-        <h2>{t('costume.title', { name: className })}</h2>
-        <p class="dialog-message">{t('costume.intro')}</p>
+        <h2 id="appearance-title">{t('costume.title', { name: className })}</h2>
         <div class="costume-main">
           <div class="costume-preview" aria-label={t('costume.preview')}>
             {current && urls[current] ? <img src={urls[current]} alt="" /> : <span class="muted small">{t('costume.none')}</span>}
@@ -91,15 +90,19 @@ export function CostumeDialog({ fs, className, initial, onSource, onApply, onClo
           <ol class="costume-strip" aria-label={t('costume.frames')}>
             {frames.map((path, i) => (
               <li key={`${path}-${i}`} class={i === Math.min(shown, frames.length - 1) && frames.length > 1 ? 'costume-frame current' : 'costume-frame'}>
-                {urls[path] ? <img src={urls[path]} alt={t('costume.frame', { n: i + 1 })} /> : <span class="missing">?</span>}
+                <button type="button" class="costume-change" aria-label={t('costume.change', { n: i + 1 })} onClick={() => setAdding(i)}>
+                  {urls[path] ? <img src={urls[path]} alt="" /> : <span class="missing">?</span>}
+                </button>
                 <span class="small muted">{i + 1}</span>
                 <span class="costume-actions">
+                  {frames.length > 1 && <>
                   <button type="button" disabled={i === 0} onClick={() => move(i, -1)} aria-label={t('costume.earlier')} title={t('costume.earlier')}>
                     ◀
                   </button>
                   <button type="button" disabled={i === frames.length - 1} onClick={() => move(i, 1)} aria-label={t('costume.later')} title={t('costume.later')}>
                     ▶
                   </button>
+                  </>}
                   <button type="button" onClick={() => remove(i)} aria-label={t('costume.remove')} title={t('costume.remove')}>
                     ✕
                   </button>
@@ -107,13 +110,13 @@ export function CostumeDialog({ fs, className, initial, onSource, onApply, onClo
               </li>
             ))}
             <li class="costume-add">
-              <button type="button" onClick={() => setAdding(true)}>
+              <button type="button" onClick={() => setAdding('append')}>
                 ＋ {t('costume.add')}
               </button>
             </li>
           </ol>
         </div>
-        <div class="costume-options">
+        {frames.length > 1 && <div class="costume-options">
           <label class="costume-speed">
             <span>{t('costume.speed')}</span>
             <input type="range" min={1} max={MAX_FPS} value={fps} disabled={frames.length < 2} onInput={(e) => setFps(Number(e.currentTarget.value))} aria-valuetext={t('costume.fps', { n: fps })} />
@@ -123,28 +126,28 @@ export function CostumeDialog({ fs, className, initial, onSource, onApply, onClo
             <input type="checkbox" checked={loop} disabled={frames.length < 2} onChange={(e) => setLoop(e.currentTarget.checked)} />
             <span>{t('costume.loop')}</span>
           </label>
-        </div>
-        <p class="muted small">{t('costume.sameSize')}</p>
+        </div>}
+        {frames.length > 1 && <p class="muted small">{t('costume.sameSize')}</p>}
         <div class="dialog-buttons">
           <button type="button" onClick={onClose}>
             {t('dialog.cancel')}
           </button>
           <button type="button" class="primary" disabled={frames.length === 0} onClick={() => onApply({ frames, speed: frames.length > 1 ? fpsToSpeed(fps) : null, loop })}>
-            {t('dialog.ok')}
+            {t(frames.length > 1 ? 'costume.applyAnimation' : 'costume.applyImage')}
           </button>
         </div>
       </div>
-      {adding && (
+      {adding !== null && (
         <ImageDialog
           fs={fs}
           className={className}
-          current={null}
+          current={typeof adding === 'number' ? frames[adding] ?? null : null}
           onChoose={(path, source) => {
-            setAdding(false)
+            setAdding(null)
             if (source) onSource(path, source)
-            setFrames((list) => [...list, path])
+            setFrames((list) => adding === 'append' ? [...list, path] : list.map((old, i) => i === adding ? path : old))
           }}
-          onClose={() => setAdding(false)}
+          onClose={() => setAdding(null)}
         />
       )}
     </dialog>

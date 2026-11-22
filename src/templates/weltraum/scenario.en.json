@@ -4,7 +4,7 @@
  "description": "Fly the spaceship (←/→ or A/D), shoot asteroids with the space bar and dodge them. One hit ends the game.",
  "tasks": [
   {
-   "text": "Start with Run and shoot an asteroid (space bar; the world has to be clicked).",
+   "text": "Start with Continue and shoot an asteroid (space bar; the world has to be clicked).",
    "check": {
     "type": "gone",
     "cls": "Laser"

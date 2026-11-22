@@ -69,10 +69,9 @@ export const engineDe = {
   'event.message': 'Nachricht kommt an',
 
   // ---- costumes and animation (src/ui/CostumeDialog.tsx) ----
-  'uml.menu.costumes': 'Kostüme und Animation …',
-  'costume.title': '{name}: Kostüme und Animation',
-  'costume.intro': 'Ordne mehrere Bilder in einer Reihe: Die Figur zeigt sie nacheinander. Die Vorschau läuft schon, so wie du es einstellst.',
-  'costume.preview': 'Vorschau der Animation',
+  'uml.menu.costumes': 'Aussehen …',
+  'costume.title': '{name}: Aussehen',
+  'costume.preview': 'Vorschau',
   'costume.none': 'Noch kein Bild',
   'costume.frames': 'Bilder der Animation',
   'costume.frame': 'Bild {n}',
@@ -88,7 +87,6 @@ export const engineDe = {
   // ---- control panel builder (src/ui/ToolbarDialog.tsx) ----
   'uml.menu.toolbar': 'Bedienfeld bauen …',
   'toolbar.title': '{name}: Bedienfeld bauen',
-  'toolbar.intro': 'Ziehe Knöpfe, Beschriftungen und Zähler in das Bedienfeld neben der Welt (oder klicke sie an). Die Reihenfolge änderst du per Ziehen oder mit den Pfeilen.',
   'toolbar.palette': 'Bausteine für das Bedienfeld',
   'toolbar.addHint': 'Ziehen oder anklicken',
   'toolbar.kind.button': 'Knopf',
@@ -113,6 +111,11 @@ export const engineDe = {
   'toolbar.handlerExists': 'Die Klasse hat on_message schon: ergänze die Knöpfe dort.',
   'toolbar.badName': 'Ein Name im Code darf nur Buchstaben, Ziffern und _ enthalten und nicht mit einer Ziffer beginnen.',
   'toolbar.dupName': 'Zwei Zähler haben denselben Namen.',
-  'toolbar.counterHint': 'Ein Knopf schickt seinen Text als Nachricht an die Welt (on_message). Einen Zähler erhöhst du mit self.name.add(1).',
+  'toolbar.counterHint': 'Zähler erhöhen: self.{name}.add(1).',
   'toolbar.oneLineSetup': 'Die Methode on_setup von {name} steht in einer Zeile. Verteile sie auf mehrere Zeilen, dann kann das Bedienfeld dort eingefügt werden.',
+  'costume.change': 'Bild {n} ändern',
+  'costume.applyAnimation': 'Animation übernehmen',
+  'costume.applyImage': 'Bild übernehmen',
+  'toolbar.insert': 'Bedienfeld einfügen',
+  'toolbar.apply': 'Bedienfeld übernehmen',
 } as const
