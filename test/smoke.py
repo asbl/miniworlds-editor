@@ -155,12 +155,13 @@ with sync_playwright() as p:
 
     # --- ZIP export contains the project, import creates a new project
     with page.expect_download() as dl:
-        menu(page, "Projekt", "Als ZIP exportieren")
+        menu(page, "Projekt", "ZIP herunterladen")
     path = dl.value.path()
     names = zipfile.ZipFile(path).namelist()
     check("zip has files", {"main.py", "project.toml", "images/krabbe.png"} <= set(names), names)
     with page.expect_file_chooser() as chooser:
-        menu(page, "Projekt", "ZIP importieren")
+        menu(page, "Projekt", "Importieren")
+        page.get_by_role("button", name="ZIP-Datei auswählen").click()
     chooser.value.set_files({"name": "Gast.zip", "mimeType": "application/zip", "buffer": open(path, "rb").read()})
     page.wait_for_selector("dialog[open]")
     page.locator("dialog[open]").get_by_role("button", name="OK").click()

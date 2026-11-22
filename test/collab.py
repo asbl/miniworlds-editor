@@ -214,6 +214,7 @@ try:
         # --- pair programming: Anna drives, Ben cannot type until he takes the wheel
         a.locator(".collab-button").click()
         ad = a.locator("dialog[open]")
+        ad.locator(".collab-roles summary").click()
         ad.get_by_role("button", name="Ich fahre").click()
         ad.get_by_role("button", name="Schließen").click()
         a.wait_for_selector("dialog[open]", state="detached")

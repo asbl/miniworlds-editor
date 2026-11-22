@@ -60,22 +60,18 @@ export function ShareDialog({ context, onClose }: { context: ShareContext; onClo
         <h2>{t('share.title', { name: context.name })}</h2>
         <p>{t('share.intro')}</p>
 
-        {report.library.length + report.drawn.length + report.uploads.length > 0 && (
+        {report.uploads.length > 0 && (
           <section class="share-images" aria-label={t('share.images')}>
             <h3 class="muted small">{t('share.images')}</h3>
-            {report.library.length > 0 && <p class="share-ok">✓ {t('share.libraryImages', { n: report.library.length })}</p>}
-            {report.drawn.length > 0 && <p class="share-ok">✓ {t('share.drawnImages', { n: report.drawn.length })}</p>}
             {report.uploads.length > 0 && (
               <div class="share-uploads">
-                <p class="share-warn">⚠ {t('share.uploadedImages', { n: report.uploads.length })}</p>
+                <p class="muted small">{t('share.vouch')}</p>
                 {report.uploads.map((path) => (
                   <label key={path} class="share-upload">
-                    <input type="checkbox" checked={allowed.has(path)} onChange={() => toggle(path)} />
+                    <input type="checkbox" aria-label={t('share.includeImage', { path })} checked={allowed.has(path)} onChange={() => toggle(path)} />
                     <img src={previews[path]} alt="" />
                     <span>
                       <code>{path}</code>
-                      <br />
-                      <span class="muted small">{t('share.vouch')}</span>
                     </span>
                   </label>
                 ))}
@@ -97,7 +93,7 @@ export function ShareDialog({ context, onClose }: { context: ShareContext; onClo
                 {copied ? t('share.copied') : t('share.copy')}
               </button>
             </div>
-            <p class="muted small">{link.length > LINK_WARN ? t('share.long', { n: link.length }) : t('share.length', { n: link.length })}</p>
+            {link.length > LINK_WARN && <p class="muted small">{t('share.long', { n: link.length })}</p>}
             {qr ? (
               <div class="share-qr" role="img" aria-label={t('share.qr')} dangerouslySetInnerHTML={{ __html: qrSvg(qr) }} />
             ) : (

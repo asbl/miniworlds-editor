@@ -94,12 +94,13 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
   const [collabAvailable, setCollabAvailable] = useState(false)
   const collabInfo = useCollabInfo(collab)
   const filesInput = useRef<HTMLInputElement>(null)
-  /** The card for a first visit, or the import hints (from the menu). */
+  const [pythonSettingsOpen, setPythonSettingsOpen] = useState(false)
+  /** The card for a first visit, or the import choices (from the menu). */
   const [overlay, setOverlay] = useState<'welcome' | 'import' | null>(null)
   /** The project made for a first visit; replaced when the visitor picks a template or imports a program. */
   const firstProject = useRef<string | null>(null)
-  /** `hint`: the reminder that the project lives only on this device; `done`: the backup that was just made. */
-  const [backupNote, setBackupNote] = useState<'hint' | 'done' | null>(null)
+  /** The reminder that the project lives only on this device. */
+  const [backupNote, setBackupNote] = useState<'hint' | null>(null)
   useEffect(() => registerServiceWorker((handle) => setUpdate(handle)), [])
 
   // the menu entry exists only where a relay is set up and answers
@@ -129,13 +130,9 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     await flush.current?.()
     await exportProjectZip(store, current)
     saveBackupRecord(Date.now())
-    setBackupNote('done')
+    // The browser does not report whether the download was saved or cancelled.
+    setBackupNote(null)
   }
-  useEffect(() => {
-    if (backupNote !== 'done') return
-    const timer = setTimeout(() => setBackupNote(null), 6000)
-    return () => clearTimeout(timer)
-  }, [backupNote])
 
   /** New projects pin the newest known engine version (so the update warning can work later). Offline: unpinned. */
   async function newestVersion(): Promise<string | null> {
@@ -456,10 +453,8 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     },
     { label: t('project.share'), divider: true, onSelect: guarded(async () => { await flush.current?.(); setSharing(await collectShareContext(await store.open(current), current, browserKeyValue())) }) },
     { label: t('project.exportZip'), onSelect: guarded(async () => { await flush.current?.(); await exportProjectZip(store, current) }) },
-    { label: t('project.importFolder'), onSelect: () => folderInput.current?.click() },
-    { label: t('project.importZip'), onSelect: () => zipInput.current?.click() },
-    { label: t('project.importFiles'), onSelect: () => filesInput.current?.click() },
     { label: t('project.importHelp'), onSelect: () => setOverlay('import') },
+    { label: t('python.menu'), onSelect: () => setPythonSettingsOpen(true) },
     { label: t('welcome.reopen'), onSelect: () => setOverlay('welcome') },
     ...projects.map((p, i) => ({ label: p, checked: p === name, divider: i === 0, onSelect: guarded(() => show(p)) })),
   ]
@@ -510,6 +505,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
         if (folders) {
           e.preventDefault()
           e.stopPropagation()
+          closeOverlay()
           guarded(async () => showMade(await importProjectFolders(store, folders)))()
           return
         }
@@ -518,6 +514,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
         if (files.length > 0 && files.every((f) => /\.zip$/i.test(f.name))) {
           e.preventDefault()
           e.stopPropagation()
+          closeOverlay()
           guarded(async () => showMade(await importProjectDropped(store, files)))()
         }
       }}
@@ -564,17 +561,13 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
       </header>
       {backupNote && (
         <div class="notice" role="status">
-          <span>{backupNote === 'done' ? t('backup.done', { name: current }) : t('backup.hint')}</span>
-          {backupNote === 'hint' && (
-            <>
-              <button type="button" class="primary" onClick={guarded(backup)}>
-                {t('backup.hint.now')}
-              </button>
-              <button type="button" onClick={() => (saveBackupRecord(Date.now()), setBackupNote(null))}>
-                {t('backup.hint.later')}
-              </button>
-            </>
-          )}
+          <span>{t('backup.hint')}</span>
+          <button type="button" class="primary" onClick={guarded(backup)}>
+            {t('backup.hint.now')}
+          </button>
+          <button type="button" onClick={() => (saveBackupRecord(Date.now()), setBackupNote(null))}>
+            {t('backup.hint.later')}
+          </button>
         </div>
       )}
       {collabNote && (
@@ -622,7 +615,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
           </button>
         </div>
       )}
-      {workspace && name && <ProjectView key={`${name}:${revision}${collab ? `#${collab.invite.room}` : ''}`} collab={collab} workspace={workspace} projectName={name} runner={runner} catalog={catalog} language={language} registerFlush={(f) => (flush.current = f)} />}
+      {workspace && name && <ProjectView pythonSettingsOpen={pythonSettingsOpen} onClosePythonSettings={() => setPythonSettingsOpen(false)} key={`${name}:${revision}${collab ? `#${collab.invite.room}` : ''}`} collab={collab} workspace={workspace} projectName={name} runner={runner} catalog={catalog} language={language} registerFlush={(f) => (flush.current = f)} />}
       <input
         ref={zipInput}
         type="file"
@@ -631,7 +624,10 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
         onChange={(e) => {
           const file = e.currentTarget.files?.[0]
           e.currentTarget.value = ''
-          if (file) guarded(async () => showMade(await importProjectZip(store, file)))()
+          if (file) {
+            closeOverlay()
+            guarded(async () => showMade(await importProjectZip(store, file)))()
+          }
         }}
       />
       {collabOpen && (
@@ -686,7 +682,10 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
           const list = e.currentTarget.files
           const source = list && list.length > 0 ? fromFileList(list) : null
           e.currentTarget.value = ''
-          if (source) guarded(async () => showMade(await importProjectFolder(store, source)))()
+          if (source) {
+            closeOverlay()
+            guarded(async () => showMade(await importProjectFolder(store, source)))()
+          }
         }}
       />
       <LoadingBanner runner={runner} language={language} onReload={() => void (flush.current?.() ?? Promise.resolve()).then(() => location.reload())} />

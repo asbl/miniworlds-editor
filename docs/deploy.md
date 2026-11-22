@@ -62,7 +62,7 @@ Liegt neben `index.html` und lässt sich ändern, ohne neu zu bauen (Vorlage: `c
 ## Offline und Updates
 
 - Beim ersten Besuch lädt der Service Worker die App-Dateien (ca. 0,7 MB, dazu die ruff-WASM mit 3,5 MB gzip). Pyodide und die benutzten miniworlds-Versionen kommen beim ersten Start dazu
-  und liegen dann im Cache (ca. 17 MB, 0,3 MB je weitere Version). Danach startet der Editor ohne Netz; nicht geladene Versionen sind dann im Versionsmenü gesperrt (die Liste fragt den Cache selbst, nicht eine Merkliste).
+  und liegen dann im Cache (ca. 17 MB, 0,3 MB je weitere Version). Danach startet der Editor ohne Netz; nicht geladene Versionen sind dann unter „Projekt → Python …“ gesperrt (die Liste fragt den Cache selbst, nicht eine Merkliste).
 - Eine neue Veröffentlichung wird im Hintergrund geladen, aber **nicht** mitten in der Arbeit aktiviert: Der Editor zeigt „Eine neue Version ist bereit“, ein Klick auf „Neu laden“ wechselt.
   Vor dem Wechsel werden Eingaben gespeichert; andere offene Tabs werden zum Neuladen aufgefordert. Offene Tabs prüfen stündlich. Der Cache der App-Dateien enthält einen Hash, der Laufzeit-Cache (Pyodide, Wheels, PyPI) trägt die Pyodide-Version im Namen; Veraltetes wird beim Wechsel gelöscht, Antworten, die HTML statt einer Datei sind, werden nicht gespeichert, und es bleiben höchstens 40 Wheels.
 - Ein Schulnetz, das `cdn.jsdelivr.net` sperrt, braucht `npm run selfhost`. Dann kommt Pyodide samt numpy, pygame-ce, jedi und micropip vom eigenen Server (11 Dateien, ca. 16 MB).

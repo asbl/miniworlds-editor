@@ -11,12 +11,10 @@ export function BootPlaceholder({ step }: { step: BootStep | null }) {
   const progress = bootProgress(step)
   return (
     <div class="boot-placeholder" role="status">
-      <strong>{t('world.preparing')}</strong>
-      <span>{t('world.preparing.step', { n: progress.step, total: progress.total, what: t(`boot.what.${progress.what}` as const) })}</span>
+      <strong>{t(`boot.what.${progress.what}` as const)}</strong>
       <div class="boot-bar" aria-hidden="true">
         <span style={{ width: `${progress.percent}%` }} />
       </div>
-      <small>{t('world.preparing.first')}</small>
     </div>
   )
 }

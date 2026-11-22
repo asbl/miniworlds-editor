@@ -74,7 +74,7 @@ with sync_playwright() as p:
     page.goto(URL)
     page.wait_for_selector(".cm-content")
     check("python boots", wait_ready(page))
-    page.get_by_role("button", name="miniworlds", exact=True).click()
+    page.get_by_role("button", name="Experimentieren", exact=True).click()
     set_main(page, WORLD)
     page.wait_for_timeout(1500)
     page.click(".toolbar .run")

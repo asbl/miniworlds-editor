@@ -54,27 +54,10 @@ export function ImportWays({ actions }: { actions: ImportActions }) {
         {t('import.drop')}
       </div>
       <ul class="import-list">
-        <li>
-          <strong>{t('import.folder')}</strong>
-          <span class="muted">{t('import.folder.text')}</span>
-          <button type="button" onClick={actions.pickFolder}>{t('import.folder.button')}</button>
-        </li>
-        <li>
-          <strong>{t('import.zip')}</strong>
-          <span class="muted">{t('import.zip.text')}</span>
-          <button type="button" onClick={actions.pickZip}>{t('import.zip.button')}</button>
-        </li>
-        <li>
-          <strong>{t('import.files')}</strong>
-          <span class="muted">{t('import.files.text')}</span>
-          <button type="button" onClick={actions.pickFiles}>{t('import.files.button')}</button>
-        </li>
-        <li>
-          <strong>{t('import.paste')}</strong>
-          <span class="muted">{t('import.paste.text')}</span>
-        </li>
+        <li><button type="button" onClick={actions.pickFolder}>{t('import.folder.button')}</button></li>
+        <li><button type="button" onClick={actions.pickZip}>{t('import.zip.button')}</button></li>
+        <li><button type="button" onClick={actions.pickFiles}>{t('import.files.button')}</button></li>
       </ul>
-      <p class="muted small">{t('import.tips')}</p>
     </div>
   )
 }
@@ -110,7 +93,6 @@ export function Welcome({ actions, onTemplate, onStart }: WelcomeProps) {
   return (
     <Modal label={t('welcome.title')} onClose={onStart}>
       <h2>{t('welcome.title')}</h2>
-      <p>{t('welcome.intro')}</p>
       <div class="welcome-choices">
         <button type="button" class="welcome-card primary-card" onClick={onStart} autofocus>
           <strong>{t('welcome.empty')}</strong>
@@ -133,12 +115,7 @@ export function Welcome({ actions, onTemplate, onStart }: WelcomeProps) {
         </button>
         {importing && <ImportWays actions={actions} />}
       </div>
-      <p class="muted small">{t('welcome.footer')}</p>
-      <div class="dialog-buttons">
-        <button type="button" class="primary" onClick={onStart}>
-          {t('welcome.go')}
-        </button>
-      </div>
+
     </Modal>
   )
 }

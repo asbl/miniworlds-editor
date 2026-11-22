@@ -108,7 +108,7 @@ with sync_playwright() as p:
     check("python boots", eventually(lambda: "Bereit" in page.inner_text(".world-status"), 120000))
 
     # --- miniworlds view starts the world paused
-    page.get_by_role("button", name="miniworlds", exact=True).click()
+    page.get_by_role("button", name="Experimentieren", exact=True).click()
     page.click(".toolbar .run")
     check("world is ready and paused at step 0", eventually(lambda: "Schritt 0" in info(page), 40000), info(page))
     check("starter world has one actor", actors(page) == 1, info(page))
@@ -116,20 +116,20 @@ with sync_playwright() as p:
     check("world classes are not offered as actors", "Spielfeld" not in page.inner_text(".mw-class-buttons"))
 
     # --- act / run / pause / speed
-    page.get_by_role("button", name="Act", exact=True).click()
+    page.get_by_role("button", name="Schritt", exact=True).click()
     check("act advances one frame", eventually(lambda: frame(page) == 1), info(page))
-    check("act keeps it paused", "Run" in page.locator(".mw-controls").inner_text())
-    page.get_by_role("button", name="Run").click()
+    check("act keeps it paused", "Weiter" in page.locator(".mw-controls").inner_text())
+    page.get_by_role("button", name="Weiter").click()
     check("run lets frames pass", eventually(lambda: frame(page) > 20, 15000), info(page))
-    check("act disabled while running", page.get_by_role("button", name="Act", exact=True).is_disabled())
+    check("act disabled while running", page.get_by_role("button", name="Schritt", exact=True).is_disabled())
     page.get_by_role("button", name="Pause").click()
-    eventually(lambda: "Run" in page.locator(".mw-controls").inner_text())
+    eventually(lambda: "Weiter" in page.locator(".mw-controls").inner_text())
     f1 = frame(page)
     page.wait_for_timeout(600)
     check("pause stops the frames", frame(page) == f1, f"{f1} -> {frame(page)}")
 
     # --- create from the world's context menu and by arming the class
-    page.get_by_role("button", name="Reset").click()
+    page.get_by_role("button", name="Zurücksetzen").click()
     check("reset restarts at step 0", eventually(lambda: "Schritt 0" in info(page), 40000), info(page))
     right_click(page, 60, 60)
     check("world menu lists classes", eventually(lambda: page.locator(".context-menu").count() == 1))
@@ -183,7 +183,7 @@ with sync_playwright() as p:
     # --- start setup is remembered and replayed on reset
     check("journal file is written", eventually(lambda: "miniworlds.json" in page.locator(".tree").inner_text(), 5000))
     check("setup steps counted", re.search(r"Startaufstellung: \d+ Schritte", more(page)) is not None)
-    page.get_by_role("button", name="Reset").click()
+    page.get_by_role("button", name="Zurücksetzen").click()
     check("reset replays the setup", eventually(lambda: "Startaufstellung wiederhergestellt" in console(page), 40000), console(page)[-300:])
     check("same number of actors after reset", eventually(lambda: actors(page) == 4, 10000), info(page))
     more(page, "Aufstellung leeren")
@@ -191,7 +191,7 @@ with sync_playwright() as p:
     check("journal file is gone when empty", eventually(lambda: "miniworlds.json" not in page.locator(".tree").inner_text(), 5000))
 
     # --- late edits (after the first frame) are not recorded
-    page.get_by_role("button", name="Act", exact=True).click()
+    page.get_by_role("button", name="Schritt", exact=True).click()
     eventually(lambda: frame(page) == 1)
     right_click(page, 50, 50)
     menu_click(page, "Neu: Figur")

@@ -16,7 +16,7 @@ URL = f"http://localhost:{PORT}/"
 
 with sync_playwright() as p:
     browser = getattr(p, BROWSER).launch()
-    context = browser.new_context()
+    context = browser.new_context(locale="de-DE")
     page = context.new_page()
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
@@ -59,7 +59,10 @@ with sync_playwright() as p:
     context.set_offline(True)  # navigator.onLine; the Service Worker's own requests are not affected by it
     check("app shell starts without server", eventually(lambda: page.locator(".tree").count() > 0, 30000))
     check("project is still there", eventually(lambda: page.locator(".tree .row-main", has_text="main.py").count() > 0, 10000))
-    check("offline note in the version bar", eventually(lambda: page.locator(".toolbar .muted").count() > 0, 30000))
+    page.get_by_role("button", name="Projekt:").click()
+    page.get_by_role("menuitem", name="Python …").click()
+    check("offline note in Python settings", eventually(lambda: "offline" in page.locator("dialog[open]").inner_text().lower(), 30000))
+    page.get_by_role("button", name="Schließen", exact=True).click()
     check("world boots from the cache", wait_ready(page, 150000))
     page.click(".toolbar .run")
     check("program runs without network", eventually(lambda: "offline hallo" in console(page), 60000))

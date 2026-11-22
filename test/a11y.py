@@ -22,7 +22,7 @@ def violations(page):
 with sync_playwright() as p:
     browser = getattr(p, BROWSER).launch()
     for label, size in (("wide", {"width": 1366, "height": 800}), ("narrow", {"width": 390, "height": 800})):
-        page = browser.new_page(viewport=size)
+        page = browser.new_page(viewport=size, locale="de-DE")
         page.add_init_script(FILES_FIRST)
         page.goto(URL)
         page.wait_for_selector(".tree, .pane-tabs", timeout=30000)
@@ -36,6 +36,13 @@ with sync_playwright() as p:
         found = violations(page)
         check(f"{label}: no violations with a menu open", found == [], json.dumps(found))
         page.keyboard.press("Escape")
+        for item in ("Python …", "Importieren …"):
+            page.get_by_role("button", name="Projekt:").click()
+            page.get_by_role("menuitem", name=item, exact=True).click()
+            page.wait_for_selector("dialog[open]")
+            found = violations(page)
+            check(f"{label}: no violations in {item}", found == [], json.dumps(found))
+            page.keyboard.press("Escape")
         page.locator(".sidebar-tabs [role=tab]", has_text="Klassen").click()
         page.wait_for_timeout(500)
         found = violations(page)
@@ -48,11 +55,11 @@ with sync_playwright() as p:
         page.close()
     # dark scheme (contrast) and the miniworlds view with a running world (controls, class list)
     for scheme in ("light", "dark"):
-        page = browser.new_page(viewport={"width": 1366, "height": 800}, color_scheme=scheme)
+        page = browser.new_page(viewport={"width": 1366, "height": 800}, color_scheme=scheme, locale="de-DE")
         page.add_init_script(FILES_FIRST)
         page.goto(URL)
         page.wait_for_selector(".tree")
-        page.locator(".segmented button", has_text="miniworlds").click()
+        page.locator(".segmented button", has_text="Experimentieren").click()
         check(f"{scheme}: world ready", eventually(lambda: "Bereit" in page.inner_text(".world-status") or "Ready" in page.inner_text(".world-status"), 150000))
         page.wait_for_timeout(1500)
         found = violations(page)

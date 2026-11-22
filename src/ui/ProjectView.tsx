@@ -48,6 +48,8 @@ import { askEvent } from '../events/reactDialog'
 import { infoDialog } from './dialogs'
 
 interface Props {
+  pythonSettingsOpen?: boolean
+  onClosePythonSettings?: () => void
   workspace: Workspace
   projectName: string
   runner: Runner
@@ -68,7 +70,7 @@ interface Props {
 /** Working together: a safe state every minute, so that what somebody deletes by mistake is not older than that. */
 const COLLAB_HISTORY_MS = 60 * 1000
 
-export function ProjectView({ workspace, projectName, runner, catalog, language, registerFlush, embedded = false, collab = null }: Props) {
+export function ProjectView({ workspace, projectName, runner, catalog, language, registerFlush, pythonSettingsOpen, onClosePythonSettings, embedded = false, collab = null }: Props) {
   const lang = useLang()
   const { fs } = workspace
   const [entries, setEntries] = useState<FileEntry[]>([])
@@ -267,6 +269,8 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
       }}
     >
       <ProjectToolbar
+        pythonSettingsOpen={pythonSettingsOpen}
+        onClosePythonSettings={onClosePythonSettings}
         projectName={projectName}
         runner={runner}
         program={program}

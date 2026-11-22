@@ -1,4 +1,4 @@
-import { useState } from 'preact/hooks'
+import { useEffect, useRef, useState } from 'preact/hooks'
 import { t } from '../../i18n'
 import type { Catalog } from '../../packages/catalog'
 import { updateStatus } from '../../packages/versions'
@@ -7,11 +7,13 @@ import { useCachedVersions } from '../../pwa/offline'
 import { useOnline } from '../../pwa/useOnline'
 import type { Runner } from '../../runtime/runner'
 import type { SyntaxProblem } from '../useAutoReload'
-import { Menu, type MenuItem } from '../Menu'
+import type { MenuItem } from '../Menu'
 import type { useProgram } from '../useProgram'
 import type { Pane } from './layout'
 
 interface Props {
+  pythonSettingsOpen?: boolean
+  onClosePythonSettings?: () => void
   projectName: string
   runner: Runner
   program: ReturnType<typeof useProgram>
@@ -39,6 +41,13 @@ interface Props {
 
 /** Everything above the three columns: run, mode, version, packages, notices, and the pane tabs on narrow screens. */
 export function ProjectToolbar(p: Props) {
+  const pythonDialog = useRef<HTMLDialogElement>(null)
+  const [localPythonOpen, setLocalPythonOpen] = useState(false)
+  const pythonOpen = p.pythonSettingsOpen ?? localPythonOpen
+  const closePython = () => p.onClosePythonSettings ? p.onClosePythonSettings() : setLocalPythonOpen(false)
+  useEffect(() => {
+    if (pythonOpen && pythonDialog.current && !pythonDialog.current.open) pythonDialog.current.showModal()
+  }, [pythonOpen])
   const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null)
   const { program, settings, versions } = p
   const pinned = settings.miniworlds
@@ -81,18 +90,15 @@ export function ProjectToolbar(p: Props) {
             ▶ {t('run.run')}
           </button>
         )}
-        <button type="button" onClick={() => p.runner.restart()} title={t('run.restart')} aria-label={t('run.restart')}>
-          ↻
-        </button>
         <div class="segmented" role="group" aria-label={t('mode.label')}>
-          <button type="button" aria-pressed={p.view === 'program'} onClick={() => p.onView('program')}>
+          <button type="button" aria-pressed={p.view === 'program'} title={t('mode.programHint')} onClick={() => p.onView('program')}>
             {t('mode.program')}
           </button>
           <button
             type="button"
             aria-pressed={p.view === 'miniworlds'}
             disabled={!p.miniworldsSupported}
-            title={p.miniworldsSupported ? undefined : t('mode.needsFull')}
+            title={t(p.miniworldsSupported ? 'mode.miniworldsHint' : 'mode.needsFull')}
             onClick={() => p.onView('miniworlds')}
           >
             {t('mode.miniworlds')}
@@ -105,13 +111,27 @@ export function ProjectToolbar(p: Props) {
           </label>
         )}
         <span class="spacer" />
-        <Menu label={`${t('version.label', { version: pinned ?? t('version.newest') })} ▾`} title={t('version.menuTitle')} items={versionItems} align="right" />
-        {noNetwork && <span class="muted small">{t('version.offline')}</span>}
-        <button type="button" onClick={p.onShowPackages}>
-          {t('packages.button')}
-          {settings.packages.length > 0 ? ` (${settings.packages.length})` : ''}
-        </button>
+        {p.pythonSettingsOpen === undefined && <button type="button" onClick={() => setLocalPythonOpen(true)}>{t('python.menu')}</button>}
       </div>
+      {pythonOpen && (
+        <dialog ref={pythonDialog} class="dialog python-settings" aria-labelledby="python-title" onCancel={(e) => { e.preventDefault(); closePython() }}>
+          <div class="dialog-body">
+            <h2 id="python-title">{t('python.settings')}</h2>
+            <label class="python-version">
+              {t('version.menuTitle')}
+              <select value={versionItems.findIndex((item) => item.checked)} onChange={(e) => versionItems[Number(e.currentTarget.value)]?.onSelect()}>
+                {versionItems.map((item, i) => <option key={i} value={i} disabled={item.disabled}>{item.label}</option>)}
+              </select>
+            </label>
+            {noNetwork && <p class="muted small">{t('version.offline')}</p>}
+            <div class="dialog-buttons">
+              <button type="button" onClick={() => { closePython(); p.runner.restart() }}>{t('run.restart')}</button>
+              <button type="button" onClick={() => { closePython(); p.onShowPackages() }}>{t('packages.button')}{settings.packages.length ? ` (${settings.packages.length})` : ''}</button>
+              <button type="button" class="primary" onClick={closePython}>{t('dialog.close')}</button>
+            </div>
+          </div>
+        </dialog>
+      )}
       {update?.kind === 'update-available' && dismissedUpdate !== update.latest && (
         <div class="notice" role="status">
           <span>

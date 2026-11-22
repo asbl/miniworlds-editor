@@ -90,7 +90,8 @@ export function CollabDialog({ collab, onStart, onStop, onJoin, onCode, onRename
               {t('collab.name')}
               <input value={name} maxLength={MAX_NAME} onInput={(e) => setName(e.currentTarget.value)} />
             </label>
-            <p class="muted small">{t('collab.privacy')}</p>
+            <p class="muted small">{t('collab.access')}</p>
+            <details><summary>{t('collab.privacyTitle')}</summary><p class="muted small">{t('collab.privacy')}</p></details>
             <div class="dialog-buttons">
               <button type="button" onClick={onClose}>
                 {t('dialog.cancel')}
@@ -157,10 +158,11 @@ export function CollabDialog({ collab, onStart, onStop, onJoin, onCode, onRename
               </div>
             )}
             {readLink && (
-              <>
+              <details class="collab-read-access">
+                <summary>{t('collab.readOnlyBadge')}</summary>
                 <p class="muted small collab-readlabel">{t('collab.readLink')}</p>
                 <CopyRow link={readLink} label={t('collab.readLink')} button={t('collab.readLink.copy')} />
-              </>
+              </details>
             )}
             <h3 class="muted small">{t('collab.people')}</h3>
             <ul class="collab-people">
@@ -176,17 +178,16 @@ export function CollabDialog({ collab, onStart, onStop, onJoin, onCode, onRename
                   {p.readOnly && <span class="collab-badge">👁 {t('collab.readOnlyBadge')}</span>}
                   {p.id === info.driver && <span class="collab-badge driver">🚗 {t('collab.pair.driver')}</span>}
                   {!p.self && (
-                    <button type="button" class="collab-follow" aria-pressed={info.following === p.id} onClick={() => collab.follow(info.following === p.id ? null : p.id)}>
+                    <button type="button" class="collab-follow" aria-pressed={info.following === p.id} title={t('collab.follow.hint')} onClick={() => collab.follow(info.following === p.id ? null : p.id)}>
                       {info.following === p.id ? t('collab.unfollow') : t('collab.follow')}
                     </button>
                   )}
                 </li>
               ))}
             </ul>
-            <p class="muted small">{t('collab.follow.hint')}</p>
             {!info.readOnly && (
-              <>
-                <h3 class="muted small">{t('collab.pair')}</h3>
+              <details class="collab-roles" open={info.driver !== null}>
+                <summary>{t('collab.pair')}</summary>
                 <p class="muted small">{t('collab.pair.hint')}</p>
                 <div class="collab-pair">
                   <button type="button" disabled={info.driver === collab.id} onClick={() => collab.takeWheel()}>
@@ -197,9 +198,10 @@ export function CollabDialog({ collab, onStart, onStop, onJoin, onCode, onRename
                   </button>
                   {driverName && info.driver !== collab.id && <span class="muted small">{t('collab.pair.locked', { name: driverName })}</span>}
                 </div>
-              </>
+              </details>
             )}
-            <p class="muted small">{t('collab.privacy')}</p>
+            <p class="muted small">{t('collab.access')}</p>
+            <details><summary>{t('collab.privacyTitle')}</summary><p class="muted small">{t('collab.privacy')}</p></details>
             <div class="dialog-buttons">
               <button type="button" class="danger" disabled={busy} onClick={() => void run(onStop)}>
                 {t('collab.stop')}

@@ -35,7 +35,7 @@ with sync_playwright() as p:
     # --- 2. the import hints inside the card
     page.click("dialog.welcome .welcome-import button")
     ways = page.inner_text("dialog.welcome .import-ways")
-    check("the import hints name folder, ZIP, Python files and copy-paste", all(w in ways for w in ("Ordner", "ZIP-Datei", "Python-Dateien", "Code kopieren")), ways[:300])
+    check("the import dialog offers folder, ZIP and Python files", all(w in ways for w in ("Ordner", "ZIP-Datei", "Python-Dateien")), ways[:300])
     check("they say nothing gets overwritten", "überschrieben" in ways)
 
     # a single .py file becomes main.py of a new project and replaces the untouched starter project
@@ -51,7 +51,7 @@ with sync_playwright() as p:
     page.click(".topbar .menu-button >> nth=0")
     items = page.inner_text(".menu-items")
     check("the untouched starter project was replaced, not left behind", "Mein Projekt" not in items, items)
-    check("the project menu points to the import help and the welcome card", "Programm importieren – wie?" in items and "Erste Schritte" in items, items)
+    check("the project menu points to the import help and the welcome card", "Importieren" in items and "Erste Schritte" in items, items)
     page.keyboard.press("Escape")
 
     # --- 3. once only
@@ -62,9 +62,9 @@ with sync_playwright() as p:
 
     # --- 4. the card can be opened again and the import guide stands on its own
     page.click(".topbar .menu-button >> nth=0")
-    page.locator(".menu-items button", has_text="Programm importieren – wie?").click()
+    page.locator(".menu-items button", has_text="Importieren").click()
     page.wait_for_selector("dialog.welcome[open] .import-ways")
-    check("the guide opens from the menu", "Dein Programm importieren" in page.inner_text("dialog.welcome"))
+    check("the guide opens from the menu", "Projekt importieren" in page.inner_text("dialog.welcome"))
     page.keyboard.press("Escape")
     check("Escape closes it", eventually(lambda: page.locator("dialog.welcome").count() == 0, 3000))
 
@@ -74,7 +74,8 @@ with sync_playwright() as p:
         z.writestr("main.py", "import miniworlds as mw\nwelt = mw.World(100, 100)\nwelt.run()\n")
     with page.expect_file_chooser() as chooser:
         page.click(".topbar .menu-button >> nth=0")
-        page.locator(".menu-items button", has_text="ZIP importieren").click()
+        page.locator(".menu-items button", has_text="Importieren").click()
+        page.get_by_role("button", name="ZIP-Datei auswählen").click()
     chooser.value.set_files(zpath)
     page.wait_for_selector("dialog.dialog[open]")  # "1 Dateien importiert."
     page.click("dialog.dialog[open] button.primary")
@@ -84,7 +85,8 @@ with sync_playwright() as p:
     open(b, "w").write("X = 1\n")
     page.click(".topbar .menu-button >> nth=0")
     with page.expect_file_chooser() as chooser:
-        page.locator(".menu-items button", has_text="Python-Dateien importieren").click()
+        page.locator(".menu-items button", has_text="Importieren").click()
+        page.get_by_role("button", name="Python-Dateien auswählen").click()
     chooser.value.set_files([a, b])
     check("several files keep their names (main.py stays main.py)", eventually(lambda: "Projekt: main" in topbar(page), 20000), topbar(page))
     page.click(".sidebar-tabs [role=tab] >> text=Dateien")
@@ -96,7 +98,8 @@ with sync_playwright() as p:
     with page.expect_download() as download:
         page.click(".backup-button")
     check("it downloads the project as a ZIP", download.value.suggested_filename.endswith(".zip"), download.value.suggested_filename)
-    check("and confirms it", eventually(lambda: "Gesichert" in page.inner_text(".notice"), 3000))
+    download.value.cancel()
+    check("does not claim the download was saved (it may be cancelled)", eventually(lambda: page.locator(".notice").count() == 0, 3000))
     check("the status bar says where the project lives", "nur auf diesem gerät" in page.inner_text(".status").lower(), page.inner_text(".status"))
     ctx.close()
 

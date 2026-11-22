@@ -48,7 +48,7 @@ export function MiniworldsControls({ controller, state, onReset, onInsert }: Pro
   return (
     <div class="gf">
       <div class="mw-controls">
-        <button type="button" disabled={!state.active || !state.paused} onClick={() => void controller.act()}>
+        <button type="button" disabled={!state.active || !state.paused} title={t('miniworlds.actHint')} onClick={() => void controller.act()}>
           {t('miniworlds.act')}
         </button>
         <button type="button" disabled={!state.active} class="primary-ish" onClick={() => void controller.togglePause()}>

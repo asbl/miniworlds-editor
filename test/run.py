@@ -209,6 +209,8 @@ with sync_playwright() as p:
     check("runs again after hard stop (re-boot)", eventually(lambda: "wieder da" in console(page), 90000), console(page)[-200:])
 
     # --- packages
+    page.get_by_role("button", name="Projekt:").click()
+    page.get_by_role("menuitem", name="Python …").click()
     page.get_by_role("button", name="Pakete").click()
     dialog = page.locator("dialog[open]")
     dialog.get_by_label("Paket").fill("six==1.16.0")
@@ -228,11 +230,13 @@ with sync_playwright() as p:
     check("no restart was needed", console(page).count("Bereit mit miniworlds") == boots)
 
     # --- version picker and update warning
-    page.locator(".toolbar .menu-button", has_text="miniworlds").click()
-    items = page.get_by_role("menuitemradio").all_inner_texts()
+    page.get_by_role("button", name="Projekt:").click()
+    page.get_by_role("menuitem", name="Python …").click()
+    items = page.locator("#python-title + label option").all_inner_texts()
     check("version list offered", len(items) > 10 and "Neueste" in items[0], items[:4])
     check("limited versions are labelled", any("eingeschränkt" in i for i in items))
-    page.get_by_role("menuitemradio", name="4.4.0.15").click()
+    page.get_by_label("miniworlds-Version dieses Projekts").select_option(label="4.4.0.15")
+    page.get_by_role("button", name="Schließen", exact=True).click()
     check("update warning for older pinned version", eventually(lambda: "Neue miniworlds-Version" in page.inner_text(".notice"), 5000))
     page.locator(".tree .row-main", has_text="project.toml").click()
     check("pinned version saved in project.toml", eventually(lambda: 'miniworlds = "4.4.0.15"' in page.inner_text(".cm-content"), 5000), page.inner_text(".cm-content"))

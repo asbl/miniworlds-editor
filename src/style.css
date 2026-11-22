@@ -144,6 +144,9 @@ input[type=text], input[type=search], select {
 .dialog-buttons button { padding: 6px 14px; border: 1px solid var(--border); }
 .dialog-buttons .primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
 .dialog-buttons .primary:hover:not(:disabled) { background: var(--accent); filter: brightness(1.1); }
+.python-settings .dialog-buttons { flex-wrap: wrap; }
+.python-version { display: grid; gap: 6px; }
+.python-version select { width: 100%; min-width: 0; }
 .dialog-buttons .danger { background: var(--danger-bg); border-color: var(--danger-bg); color: var(--danger-fg); }
 
 
@@ -444,26 +447,17 @@ input[type=text], input[type=search], select {
 @media (pointer: coarse) { .splitter { width: 14px; margin: 0 -7px; } .splitter::after { inset: 0 6px; } }
 /* the failing line stays red even while the cursor is in it */
 .editor .cm-error-line, .editor .cm-activeLine.cm-error-line { background: color-mix(in srgb, var(--danger) 22%, transparent); }
-/* Start-up banner: big, at the bottom, dismissible */
-.loading-banner { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 50; width: min(720px, calc(100vw - 24px)); padding: 14px 18px 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--accent); border-radius: 10px; box-shadow: 0 8px 32px #0005; }
+/* Compact start-up status, with details only on failure. */
+.loading-banner { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%); z-index: 50; width: min(480px, calc(100vw - 24px)); padding: 10px 14px; color: var(--fg); background: var(--bg); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 4px 16px #0003; }
 .loading-banner.failed { border-color: var(--danger); }
-.loading-banner.done { border-color: var(--border); }
 .loading-head { display: flex; align-items: center; gap: 10px; }
-.loading-head h2 { flex: 1; margin: 0; font-size: 17px; }
+.loading-head > span { flex: 1; }
 .loading-close { padding: 2px 8px; font-size: 16px; line-height: 1; }
-.loading-banner p { margin: 8px 0 10px; line-height: 1.45; }
-.loading-bar { height: 6px; margin-bottom: 10px; overflow: hidden; background: var(--panel); border-radius: 3px; }
-.loading-bar span { display: block; width: 35%; height: 100%; background: var(--accent); border-radius: 3px; animation: loading-slide 1.4s ease-in-out infinite; }
-@keyframes loading-slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
-@media (prefers-reduced-motion: reduce) { .loading-bar span { width: 100%; animation: none; opacity: 0.5; } }
-.loading-parts { margin: 0 0 12px; padding: 0; list-style: none; display: grid; gap: 4px; }
-.loading-icon { display: inline-block; width: 1.4em; font-weight: 700; }
-.loading-parts .ready .loading-icon { color: #16a34a; }
-.loading-parts .failed .loading-icon { color: var(--danger); }
-.loading-parts .loading .loading-icon { color: var(--accent); }
-.loading-actions { display: flex; justify-content: flex-end; gap: 8px; }
-.loading-actions button { padding: 5px 14px; border: 1px solid var(--border); }
-.loading-actions .primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
+.loading-banner > small { color: var(--muted); }
+.loading-banner p { margin: 8px 0; }
+.loading-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+.collab-dialog details { margin: 12px 0; }
+.collab-dialog summary, .loading-banner summary { cursor: pointer; }
 
 /* ---- welcome card and import hints ---- */
 .dialog.welcome { width: min(680px, calc(100vw - 24px)); max-height: calc(100vh - 24px); }
@@ -481,8 +475,7 @@ input[type=text], input[type=search], select {
 .drop-zone { display: grid; place-items: center; min-height: 64px; margin: 8px 0; padding: 8px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: 8px; }
 .drop-zone.over { border-color: var(--accent); color: var(--fg); background: var(--selected); }
 .import-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.import-list li { display: grid; grid-template-columns: 110px 1fr auto; align-items: center; gap: 4px 10px; }
-@media (max-width: 560px) { .import-list li { grid-template-columns: 1fr; } }
+.import-list li { display: grid; grid-template-columns: 1fr; align-items: center; gap: 4px 10px; }
 .small { font-size: 12px; }
 .backup-button { border: 1px solid var(--border); padding: 4px 10px; border-radius: 4px; }
 @media (max-width: 560px) { .backup-button { padding: 4px 6px; } }
@@ -490,16 +483,11 @@ input[type=text], input[type=search], select {
 /* ---- start-up: the world while Python loads, a slim banner on small screens ---- */
 .boot-placeholder { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 12px; text-align: center; line-height: 1.35; color: #e5e7eb; background: #1b1e24; }
 .boot-placeholder strong { font-size: 15px; }
-.boot-placeholder small { color: #9aa3b2; }
 .boot-bar { width: min(240px, 80%); height: 6px; overflow: hidden; background: #343a46; border-radius: 3px; }
 .boot-bar span { display: block; height: 100%; background: #60a5fa; border-radius: 3px; transition: width 0.6s ease; }
 .run.queued { background: var(--panel); color: var(--fg); border: 1px solid var(--border); }
 @media (max-width: 700px) {
-  /* on a phone the big card would hide the editor, the world and the console: keep only the title and the bar */
   .loading-banner { bottom: 8px; padding: 8px 12px 10px; }
-  .loading-banner p, .loading-banner .loading-parts, .loading-banner .loading-actions { display: none; }
-  .loading-banner .loading-head h2 { font-size: 14px; }
-  .loading-banner .loading-bar { margin: 6px 0 0; }
   .loading-banner.failed .loading-actions { display: flex; margin-top: 8px; }
   .loading-banner.failed p { display: block; font-size: 13px; }
 }

@@ -77,7 +77,7 @@ with sync_playwright() as p:
 
     # --- miniworlds view with the template
     check("python boots", eventually(lambda: "Bereit" in page.inner_text(".world-status"), 120000))
-    page.get_by_role("button", name="miniworlds", exact=True).click()
+    page.get_by_role("button", name="Experimentieren", exact=True).click()
     page.click(".toolbar .run")
     check("template world is ready", eventually(lambda: "Schritt 0" in page.inner_text(".mw-info"), 40000), page.inner_text(".mw-info"))
     check("both actor classes can be created", all(n in page.inner_text(".mw-class-buttons") for n in ("+ Krabbe", "+ Wurm")), page.inner_text(".mw-class-buttons"))

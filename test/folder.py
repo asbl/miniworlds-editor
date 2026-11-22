@@ -44,7 +44,7 @@ with sync_playwright() as p:
 
     # ---- folder picker
     page.get_by_role("button", name="Projekt:").click()
-    check("the project menu offers the folder import", page.get_by_role("menuitem", name="Ordner importieren").count() + page.locator(".menu-items button", has_text="Ordner importieren").count() >= 1)
+    check("the project menu offers import", page.get_by_role("menuitem", name="Importieren").count() + page.locator(".menu-items button", has_text="Importieren").count() >= 1)
     page.keyboard.press("Escape")
     page.locator("input[webkitdirectory]").set_input_files(folder)
     check("the folder becomes a project of the same name", eventually(lambda: "Projekt: Meine Krabbe" in page.inner_text(".topbar"), 20000), page.inner_text(".topbar"))

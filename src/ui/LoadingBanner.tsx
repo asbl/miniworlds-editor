@@ -2,17 +2,10 @@ import { useEffect, useRef, useState } from 'preact/hooks'
 import type { LanguageService } from '../language/service'
 import type { Runner } from '../runtime/runner'
 import { t } from '../i18n'
-import { loadingView, type PartStatus } from './loading'
+import { loadingView } from './loading'
 import { useRunnerState } from './hooks'
 
-const DONE_VISIBLE_MS = 2500
-
-const ICON: Record<PartStatus, string> = { waiting: '○', loading: '◌', ready: '✓', failed: '⚠' }
-
-/**
- * Large dismissible card at the bottom while Python, miniworlds and the editor help come up.
- * Makes clear that the editor can already be used, and what only works a little later.
- */
+/** Compact start-up status; failure details stay available until dismissed. */
 export function LoadingBanner({ runner, language, onReload }: { runner: Runner; language: LanguageService; onReload: () => void }) {
   const runnerState = useRunnerState(runner)
   const [languageState, setLanguageState] = useState(language.state)
@@ -26,13 +19,10 @@ export function LoadingBanner({ runner, language, onReload }: { runner: Runner; 
   const view = loadingView(runnerState, languageState, bootSeen.current)
 
   const [hidden, setHidden] = useState(false)
-  // once everything is there: a short "ready" and then away (and it stays away, also for later restarts)
   useEffect(() => {
-    if (view.status !== 'done') return
-    const timer = setTimeout(() => setHidden(true), DONE_VISIBLE_MS)
-    return () => clearTimeout(timer)
+    if (view.status === 'done') setHidden(true)
   }, [view.status])
-  if (hidden) return null
+  if (hidden || view.status === 'done') return null
 
   const worldText =
     view.world === 'ready'
@@ -47,33 +37,23 @@ export function LoadingBanner({ runner, language, onReload }: { runner: Runner; 
   return (
     <section class={`loading-banner ${view.status}`} role="status" aria-live="polite" aria-label={t('loading.title')}>
       <div class="loading-head">
-        <h2>{t(`loading.title.${view.status}` as const)}</h2>
+        <span>{view.status === 'failed' ? t('loading.title.failed') : t(view.world === 'ready' ? 'loading.help.loading' : 'loading.compact')}</span>
         <button type="button" class="loading-close" onClick={() => setHidden(true)} aria-label={t('loading.hide')} title={t('loading.hide')}>
           ✕
         </button>
       </div>
-      <p>{t(`loading.text.${view.status}` as const)}</p>
-      {view.status !== 'done' && <div class="loading-bar" aria-hidden="true"><span /></div>}
-      <ul class="loading-parts">
-        <li class={view.world}>
-          <span class="loading-icon" aria-hidden="true">{ICON[view.world]}</span>
-          <strong>{t('loading.world')}</strong> <span class="muted">– {worldText}</span>
-        </li>
-        <li class={view.help}>
-          <span class="loading-icon" aria-hidden="true">{ICON[view.help]}</span>
-          <strong>{t('loading.help')}</strong> <span class="muted">– {helpText}</span>
-        </li>
-      </ul>
-      <div class="loading-actions">
-        {view.status === 'failed' && (
-          <button type="button" class="primary" onClick={onReload}>
-            {t('pwa.reload')}
-          </button>
-        )}
-        <button type="button" onClick={() => setHidden(true)}>
-          {t('loading.hide')}
-        </button>
-      </div>
+      {view.status === 'failed' ? (
+        <>
+          <p>{t('loading.text.failed')}</p>
+          <details>
+            <summary>{t('uml.details')}</summary>
+            <p>{t('loading.world')}: {worldText}<br />{t('loading.help')}: {helpText}</p>
+          </details>
+          <div class="loading-actions">
+            <button type="button" class="primary" onClick={onReload}>{t('pwa.reload')}</button>
+          </div>
+        </>
+      ) : <small>{t('loading.canEdit')}</small>}
     </section>
   )
 }

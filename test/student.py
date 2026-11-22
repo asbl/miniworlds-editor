@@ -45,7 +45,7 @@ with sync_playwright() as p:
     page.get_by_role("button", name="Konsole leeren").click()
 
     # --- 2. guide lines and 3. inspector (miniworlds view)
-    page.get_by_role("button", name="miniworlds", exact=True).click()
+    page.get_by_role("button", name="Experimentieren", exact=True).click()
     set_main(page, "import miniworlds as mw\n\n\nclass Figur(mw.Circle):\n    def __init__(self, position=(0, 0)):\n        super().__init__(position, 15)\n        self.zaehler = 3\n\n    def act(self):\n        self.move(2)\n\n\nwelt = mw.World(400, 300)\nFigur((200, 150))\nwelt.run()\n")
     page.wait_for_timeout(1500)  # the editor reloads a running world after edits: let the typing settle first
     page.click(".toolbar .run")
@@ -83,7 +83,7 @@ with sync_playwright() as p:
         return int(m.group(1)) if m else -1
 
     y0 = inspector_y()
-    page.get_by_role("button", name="Run").click()
+    page.get_by_role("button", name="Weiter").click()
     check("the inspector follows the running actor", eventually(lambda: inspector_y() != y0 and inspector_y() != -1, 8000), f"{y0} -> {inspector_y()}")
     page.get_by_role("button", name="Pause").click()
     page.locator(".inspector-close").click()
@@ -127,7 +127,7 @@ with sync_playwright() as p:
     check("task panel starts at 0", eventually(lambda: "Aufgaben (0/5)" in page.locator(".tasks").inner_text(), 10000))
     check("tasks with a check are marked", page.locator(".tasks .auto-check").count() >= 3)
     check("python is ready", wait_ready(page))
-    page.get_by_role("button", name="miniworlds", exact=True).click()
+    page.get_by_role("button", name="Experimentieren", exact=True).click()
     page.click(".toolbar .run")
     check("template world is ready", eventually(lambda: "Schritt 0" in info(page), 60000), info(page))
     box = page.locator(".world-canvas").bounding_box()
@@ -137,11 +137,11 @@ with sync_playwright() as p:
         page.mouse.click(box["x"] + x, box["y"] + 150)
         check(f"{cls} is placed", eventually(lambda: f"{n} Figuren" in info(page), 5000), info(page))
     for _ in range(3):
-        page.get_by_role("button", name="Act", exact=True).click()
+        page.get_by_role("button", name="Schritt", exact=True).click()
         page.wait_for_timeout(300)
     check("placing both and stepping ticks the first task", eventually(lambda: "Aufgaben (1/5)" in page.locator(".tasks").inner_text(), 8000), page.locator(".tasks").inner_text())
     page.locator(".tasks input[type=checkbox]").first.uncheck()
-    page.get_by_role("button", name="Act", exact=True).click()
+    page.get_by_role("button", name="Schritt", exact=True).click()
     page.wait_for_timeout(1200)
     check("a task the pupil un-ticked is not ticked again", "Aufgaben (0/5)" in page.locator(".tasks").inner_text(), page.locator(".tasks").inner_text())
     page.locator(".tree .row-main", has_text="Krabbe.py").click()
