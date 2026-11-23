@@ -118,11 +118,13 @@ try:
         a.wait_for_timeout(700)
         a.locator(".collab-button").click()
         dialog = a.locator("dialog[open]")
-        dialog.get_by_role("button", name="Gemeinsam starten").click()
+        dialog.get_by_role("button", name="Multiplayer starten").click()
         check("the invitation link appears", eventually(lambda: dialog.locator(".share-link").count() == 2, 10000))
         link = dialog.locator(".share-link").first.input_value()
         check("it is a room link", re.match(r"^http://localhost:\d+/#room=[a-z0-9]{4}-[a-z0-9]{4}\.[a-z0-9]{12}\.[a-z0-9]{12}\.[a-z0-9]{22}$", link) is not None, link)
-        check("it comes with a QR code", dialog.locator(".share-qr svg").count() == 1)
+        check("the QR code starts collapsed", not dialog.locator(".share-qr").is_visible())
+        dialog.locator(".collab-qr summary").click()
+        check("the QR code can be shown", dialog.locator(".share-qr svg").is_visible())
         check("the connection is up", eventually(lambda: "Verbunden" in dialog.inner_text(), 8000), dialog.inner_text()[:200])
         read_link = dialog.locator(".share-link").nth(1).input_value()
         check("there is a read-only link that does not hold the write key", "#watch=" in read_link and link.split(".")[1] not in read_link, read_link)
@@ -135,11 +137,36 @@ try:
 
         # --- Ben joins by the link
         ctx_b, b = new_person(browser, "Ben")
+        # Simulate a project saved by the version with the old German title.
+        b.goto(URL)
+        b.wait_for_selector(".cm-content")
+        room_code = link.split("#room=", 1)[1]
+        legacy_project = "Gemeinsam arbeiten " + room_code.split(".", 1)[0]
+        b.evaluate("""async ({name, invite}) => {
+            const root = await navigator.storage.getDirectory();
+            for (const folder of ['projects', 'history']) {
+                const parent = await root.getDirectoryHandle(folder, {create: true});
+                const dir = await parent.getDirectoryHandle(name, {create: true});
+                const file = await dir.getFileHandle(folder === 'projects' ? 'main.py' : 'audit-marker.txt', {create: true});
+                const writer = await file.createWritable();
+                await writer.write(folder === 'projects' ? 'old local copy' : 'existing history');
+                await writer.close();
+            }
+            localStorage.setItem('miniworlds-editor.collabRooms', JSON.stringify({[name]: invite}));
+        }""", {"name": legacy_project, "invite": "room:" + room_code})
         b.goto(link)
         b.wait_for_selector("dialog[open]")
         check("he is asked for his name first", b.locator("dialog[open] input").first.input_value() == "Ben")
         b.locator("dialog[open]").get_by_role("button", name="OK").click()
-        check("his project is a new one named after the room", eventually(lambda: "Gemeinsam arbeiten" in b.locator(".menu-button", has_text="Projekt").first.inner_text(), 15000))
+        check("his existing project with the old title is reused", eventually(lambda: legacy_project in b.locator(".menu-button", has_text="Projekt").first.inner_text(), 15000))
+        check("the old history is preserved and no extra room project is created", b.evaluate("""async (name) => {
+            const root = await navigator.storage.getDirectory();
+            const history = await root.getDirectoryHandle('history');
+            const file = await (await history.getDirectoryHandle(name)).getFileHandle('audit-marker.txt');
+            const projects = await root.getDirectoryHandle('projects');
+            for await (const [project] of projects.entries()) if (project.startsWith('Multiplayer ')) return false;
+            return await (await file.getFile()).text() === 'existing history';
+        }""", legacy_project))
         b.wait_for_selector(".cm-content")
         b.locator(".tree .row-main", has_text="main.py").click()
         check("he sees Anna's code", eventually(lambda: "zeile eins" in editor_text(b), 8000), editor_text(b))
@@ -201,10 +228,10 @@ try:
         # --- Ben follows Anna into another file
         b.locator(".collab-button").click()
         bd = b.locator("dialog[open]")
-        bd.locator(".collab-people li", has_text="Anna").get_by_role("button", name="Folgen").click()
+        bd.locator(".collab-people li", has_text="Anna").get_by_role("button", name="Ansicht folgen").click()
         bd.get_by_role("button", name="Schließen").click()
         b.wait_for_selector("dialog[open]", state="detached")
-        check("Ben sees that he follows", eventually(lambda: b.locator(".collab-follow-bar", has_text="Du folgst Anna").count() == 1, 5000))
+        check("Ben sees that he follows", eventually(lambda: b.locator(".collab-follow-bar", has_text="Du folgst der Ansicht von Anna").count() == 1, 5000))
         a.locator(".tree .row-main", has_text="notiz.txt").click()
         a.click(".cm-content")
         check("his editor goes where Anna is", eventually(lambda: any("notiz.txt" in t for t in b.locator(".tab.active").all_inner_texts()), 8000), str(b.locator(".tab.active").all_inner_texts()))
@@ -215,17 +242,33 @@ try:
         a.locator(".collab-button").click()
         ad = a.locator("dialog[open]")
         ad.locator(".collab-roles summary").click()
-        ad.get_by_role("button", name="Ich fahre").click()
+        ad.get_by_role("button", name="Bearbeitung übernehmen").click()
         ad.get_by_role("button", name="Schließen").click()
         a.wait_for_selector("dialog[open]", state="detached")
-        check("Ben is told that Anna drives", eventually(lambda: b.locator(".collab-follow-bar", has_text="Anna fährt gerade").count() == 1, 8000))
+        check("Ben is told that Anna drives", eventually(lambda: b.locator(".collab-follow-bar", has_text="Anna bearbeitet gerade allein").count() == 1, 8000))
+        a.locator(".collab-button").click()
+        own_name = a.locator(".collab-own-name")
+        own_name.fill("W" * 24)
+        own_name.dispatch_event("change")
+        a.locator("dialog[open]").get_by_role("button", name="Schließen").click()
+        check("a maximum-length name reaches the banner", eventually(lambda: "W" * 24 in b.locator(".collab-follow-bar").inner_text(), 8000))
+        for width in (320, 390):
+            b.set_viewport_size({"width": width, "height": 860})
+            check(f"the multiplayer banner fits at {width}px", b.evaluate("document.documentElement.scrollWidth <= innerWidth + 1"))
+            take = b.locator(".collab-follow-bar").get_by_role("button", name="Bearbeitung übernehmen")
+            check(f"the takeover button stays inside the screen at {width}px", take.evaluate("el => { const r = el.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; }"))
+        b.set_viewport_size({"width": 1300, "height": 800})
+        a.locator(".collab-button").click()
+        a.locator(".collab-own-name").fill("Anna")
+        a.locator(".collab-own-name").dispatch_event("change")
+        a.locator("dialog[open]").get_by_role("button", name="Schließen").click()
         b.locator(".tree .row-main", has_text="main.py").click()
         check("his editor is locked", eventually(lambda: b.locator(".cm-content").get_attribute("contenteditable") == "false", 5000))
-        b.locator(".collab-follow-bar").get_by_role("button", name="Ich fahre").click()
+        b.locator(".collab-follow-bar").get_by_role("button", name="Bearbeitung übernehmen").click()
         check("he takes the wheel and can type", eventually(lambda: b.locator(".cm-content").get_attribute("contenteditable") == "true", 5000))
-        check("and Anna is locked now", eventually(lambda: a.locator(".collab-follow-bar", has_text="Ben fährt gerade").count() == 1, 8000))
+        check("and Anna is locked now", eventually(lambda: a.locator(".collab-follow-bar", has_text="Ben bearbeitet gerade allein").count() == 1, 8000))
         b.locator(".collab-button").click()
-        b.locator("dialog[open]").get_by_role("button", name="Alle dürfen tippen").click()
+        b.locator("dialog[open]").get_by_role("button", name="Alle dürfen bearbeiten").click()
         b.locator("dialog[open]").get_by_role("button", name="Schließen").click()
         check("everybody may type again", eventually(lambda: a.locator(".collab-follow-bar").count() == 0 and a.locator(".cm-content").get_attribute("contenteditable") == "true", 8000))
 
@@ -275,9 +318,9 @@ try:
         # --- Anna leaves
         a.locator(".collab-button").click()
         dialog = a.locator("dialog[open]")
-        dialog.get_by_role("button", name="Gemeinsames Arbeiten beenden").click()
+        dialog.get_by_role("button", name="Multiplayer verlassen").click()
         a.get_by_role("button", name="OK").click()
-        check("she is alone again", eventually(lambda: a.locator(".collab-button").inner_text().strip() == "👥 Gemeinsam", 8000), a.locator(".collab-button").inner_text())
+        check("she is alone again", eventually(lambda: a.locator(".collab-button").inner_text().strip() == "👥 Multiplayer", 8000), a.locator(".collab-button").inner_text())
         check("Git is available again for the saved copy", a.get_by_role("button", name="Git ▾", exact=True).count() == 1)
         a.locator(".tree .row-main", has_text="main.py").click()
         check("her text is still there", eventually(lambda: "zeile eins" in editor_text(a), 8000), editor_text(a))

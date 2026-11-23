@@ -1,8 +1,8 @@
 {
   "pyodideBase": "./pyodide/v0.29.3/full/",
-  "links": [
-    { "label": "Miniworlds Blocks", "url": "https://miniworlds.opencoding.de/?ide=miniworldsBlocks" }
+  "embedOrigins": [
+    "https://moodle.example.org"
   ],
-  "embedOrigins": ["https://moodle.example.org"],
-  "collabUrl": "/collab"
+  "collabUrl": "/collab",
+  "imprint": "Example Operator\nExample Street 1\n12345 Example City\ncontact@example.org"
 }

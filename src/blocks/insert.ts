@@ -1,3 +1,6 @@
+import { parser } from '@lezer/python'
+import type { SyntaxNode } from '@lezer/common'
+
 export interface Block {
   id: string
   group: 'move' | 'input' | 'collide' | 'flow' | 'world'
@@ -40,6 +43,60 @@ export function statementAnchor(doc: string, cursor: number): Anchor {
   const lines = doc.slice(0, Math.max(0, start - 1)).split('\n')
   const previous = start === 0 ? undefined : [...lines].reverse().find((l) => l.trim() !== '')
   return { from: start, to: end, insert: previous === undefined ? '' : below(previous) }
+}
+
+/** Check the scope where the new statement will actually land, including blank lines and def headers. */
+export function hasSelf(doc: string, anchor: Anchor): boolean {
+  const at = anchor.from + anchor.insert.length
+  const source = doc.slice(0, anchor.from) + anchor.insert + '__block__' + doc.slice(anchor.to)
+  for (let node: SyntaxNode | null = parser.parse(source).resolveInner(at, 1); node; node = node.parent) {
+    if (node.name === 'ClassDefinition') return false
+    if (node.name === 'FunctionDefinition') {
+      const params = node.getChild('ParamList')
+      if (params?.getChildren('VariableName').some((p) => source.slice(p.from, p.to) === 'self')) return true
+    }
+  }
+  return false
+}
+
+export interface RegisterTarget {
+  name: string
+  className: string
+}
+
+/** Top-level instances available before the world's blocking run() call. No Python worker required. */
+export function registrationSite(doc: string): { targets: RegisterTarget[]; anchor: Anchor } {
+  const instances = new Map<string, string>()
+  let end = doc.length
+  for (let node = parser.parse(doc).topNode.firstChild; node; node = node.nextSibling) {
+    const text = doc.slice(node.from, node.to)
+    if (node.name === 'ExpressionStatement' && /^\s*[\p{L}_][\p{L}\p{N}_]*\.run\s*\(/u.test(text)) {
+      end = node.from
+      break
+    }
+    if (node.name !== 'AssignStatement') continue
+    const name = node.firstChild
+    if (name?.name !== 'VariableName') continue
+    const variable = doc.slice(name.from, name.to)
+    instances.delete(variable) // a later assignment may no longer be an instance
+    const call = node.lastChild
+    if (call?.name !== 'CallExpression') continue
+    const callee = call.firstChild
+    if (!callee || !['VariableName', 'MemberExpression'].includes(callee.name)) continue
+    const className = doc.slice(callee.from, callee.to)
+    if (/^[\p{Lu}_][\p{L}\p{N}_]*$/u.test(className.split('.').at(-1)!)) instances.set(variable, className)
+  }
+  return {
+    targets: [...instances].map(([name, className]) => ({ name, className })),
+    anchor: { from: end, to: end, insert: (end > 0 ? (doc[end - 1] === '\n' ? '\n' : '\n\n') : '') },
+  }
+}
+
+/** A registered handler stays at module level, after its object exists and before run(). */
+export function registeredBlock(doc: string, block: Block, target: string): { anchor: Anchor; code: string } | null {
+  const site = registrationSite(doc)
+  if (block.kind !== 'method' || !site.targets.some((t) => t.name === target)) return null
+  return { anchor: site.anchor, code: `@${target}.register\n${block.code}\n\n` }
 }
 
 /**

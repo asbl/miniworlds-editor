@@ -39,7 +39,7 @@ interface Props {
   api: ComponentChildren
 }
 
-/** The left column: files, class diagram, search and history in one place, one at a time. */
+/** The left column: files, class diagram, reference and search; history opens from the status line. */
 export function Sidebar(p: Props) {
   const lang = useLang()
   const upload = useRef<HTMLInputElement>(null)
@@ -70,9 +70,6 @@ export function Sidebar(p: Props) {
           <button type="button" role="tab" aria-selected={tab === 'search'} onClick={p.onOpenSearch} title="Ctrl+Shift+F">
             {t('search.title')}
           </button>
-          <button type="button" role="tab" aria-selected={tab === 'history'} onClick={() => (p.onTab('history'), void p.historyApi.reload())}>
-            {t('history.title')}
-          </button>
         </div>
         {tab === 'files' && <Menu label="+" title={t('files.newFile')} items={addMenu} align="right" />}
       </div>
@@ -84,7 +81,10 @@ export function Sidebar(p: Props) {
       ) : tab === 'api' ? (
         p.api
       ) : tab === 'history' ? (
-        <HistoryPanel snapshots={p.historyApi.snapshots} available={p.historyApi.history !== null} onOpen={p.onOpenSnapshot} onSave={p.onSaveVersion} />
+        <div role="region" aria-label={t('history.title')} class="history-region">
+          <h2 class="history-heading">{t('history.title')}</h2>
+          <HistoryPanel snapshots={p.historyApi.snapshots} available={p.historyApi.history !== null} onOpen={p.onOpenSnapshot} onSave={p.onSaveVersion} />
+        </div>
       ) : (
         p.session && <SearchPanel session={p.session} focusSignal={p.searchSignal} onChanged={p.onChanged} />
       )}

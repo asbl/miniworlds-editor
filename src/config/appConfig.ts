@@ -10,7 +10,9 @@ export interface ExternalLink {
 export interface AppConfig {
   /** Where Pyodide is loaded from (absolute URL ending in "/"); default: jsDelivr, or the build-time VITE_PYODIDE_BASE. */
   pyodideBase: string
-  /** Other editors (Java, blocks …) shown in the menu "More editors". */
+  /** Legal notice as plain text; operators supply their own in config.json. */
+  imprint: string
+  /** Legacy configuration accepted for compatibility; no longer displayed in the interface. */
   links: ExternalLink[]
   /**
    * Pages that may embed the editor and talk to it. Embedding is opt-in: without an entry (or with a file that cannot be read
@@ -29,7 +31,7 @@ export interface AppConfig {
   backendUrl: string | null
 }
 
-export const DEFAULT_CONFIG: AppConfig = { pyodideBase: PYODIDE_BASE, links: [], embedOrigins: [], lowMemory: 'auto', collabUrl: null, backendUrl: null }
+export const DEFAULT_CONFIG: AppConfig = { pyodideBase: PYODIDE_BASE, imprint: 'Example Operator\nExample Street 1\n12345 Example City\ncontact@example.org', links: [], embedOrigins: [], lowMemory: 'auto', collabUrl: null, backendUrl: null }
 
 const isHttpUrl = (value: string): boolean => /^https?:\/\//i.test(value)
 
@@ -47,6 +49,7 @@ export function parseAppConfig(raw: unknown, page: string): AppConfig {
   const config: AppConfig = { ...DEFAULT_CONFIG, pyodideBase: absoluteBase(DEFAULT_CONFIG.pyodideBase, page) }
   if (typeof raw !== 'object' || raw === null) return config
   const r = raw as Record<string, unknown>
+  if (typeof r.imprint === 'string' && r.imprint.trim()) config.imprint = r.imprint.trim()
   if (typeof r.pyodideBase === 'string' && r.pyodideBase.trim()) {
     try {
       config.pyodideBase = absoluteBase(r.pyodideBase.trim(), page)

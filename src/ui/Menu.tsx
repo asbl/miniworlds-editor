@@ -6,6 +6,7 @@ export interface MenuItem {
   onSelect: () => void
   /** Visually separated group start. */
   divider?: boolean
+  highlighted?: boolean
   disabled?: boolean
   checked?: boolean
   /** With `checked`: an on/off switch (menuitemcheckbox) instead of one of several choices (menuitemradio). */
@@ -14,6 +15,8 @@ export interface MenuItem {
   heading?: boolean
   /** Tooltip. */
   title?: string
+  /** Separate help action, usable without hovering or selecting the item. */
+  help?: { label: string; onSelect: () => void | Promise<void> }
 }
 
 /** Small dropdown menu; closes on outside click, Escape and selection. */
@@ -41,29 +44,49 @@ export function Menu({ label, items, title, align = 'left' }: { label: Component
         {label}
       </button>
       {open && (
-        <div class={`menu-items ${align}`} role="menu">
+        <div class={`menu-items ${align}${items.some((item) => item.help) ? ' with-help' : ''}`} role="menu">
           {items.map((item) =>
             item.heading ? (
               <div class="menu-heading" role="presentation" key={item.label}>
                 {item.label}
               </div>
             ) : (
-            <button
-              type="button"
-              role={item.checked === undefined ? 'menuitem' : item.toggle ? 'menuitemcheckbox' : 'menuitemradio'}
-              aria-checked={item.checked}
-              class={item.divider ? 'divider' : ''}
-              disabled={item.disabled}
-              title={item.title}
-              key={item.label}
-              onClick={() => {
-                setOpen(false)
-                item.onSelect()
-              }}
-            >
-              <span class="check">{item.checked ? '✓' : ''}</span>
-              {item.label}
-            </button>
+              <div class={item.help ? 'menu-item-with-help' : undefined} role="none" key={item.label}>
+                <button
+                  type="button"
+                  role={item.checked === undefined ? 'menuitem' : item.toggle ? 'menuitemcheckbox' : 'menuitemradio'}
+                  aria-checked={item.checked}
+                  class={[item.divider && 'divider', item.highlighted && 'highlighted'].filter(Boolean).join(' ')}
+                  disabled={item.disabled}
+                  title={item.title}
+                  onClick={() => {
+                    setOpen(false)
+                    item.onSelect()
+                  }}
+                >
+                  <span class="check">{item.checked ? '✓' : ''}</span>
+                  {item.label}
+                </button>
+                {item.help && (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    class="menu-help"
+                    aria-label={item.help.label}
+                    title={item.help.label}
+                    onClick={async () => {
+                      setOpen(false)
+                      try {
+                        await item.help?.onSelect()
+                      } finally {
+                        root.current?.querySelector<HTMLButtonElement>('.menu-button')?.focus()
+                      }
+                    }}
+                  >
+                    <span aria-hidden="true">?</span>
+                  </button>
+                )}
+              </div>
             ),
           )}
         </div>

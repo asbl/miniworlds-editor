@@ -77,7 +77,8 @@ with tempfile.TemporaryDirectory(prefix='miniworlds-editor-backend-') as tempora
                 page.on('pageerror', lambda error: errors.append(str(error)))
                 page.goto(URL); page.wait_for_selector('.cm-content')
                 def open_code(code, password=''):
-                    page.get_by_role('button', name='Projekt mit Code öffnen', exact=True).click()
+                    page.locator('.topbar .menu-button').filter(has_text='Projekt:').click()
+                    page.get_by_role('menuitem', name='Projekt mit Code öffnen', exact=True).click()
                     dialog = page.locator('.backend-dialog')
                     dialog.locator('[name=code]').fill(code)
                     dialog.locator('[name=password]').fill(password)
@@ -124,7 +125,8 @@ with tempfile.TemporaryDirectory(prefix='miniworlds-editor-backend-') as tempora
                 template = request('/api/teacher/projects', {'access_mode': 'template_once', 'template_project_id': source['id']}, headers=teacher)['projects'][0]
                 other = browser.new_context(locale='de-DE'); other.add_init_script(FILES_FIRST)
                 other_page = other.new_page(); other_page.goto(URL); other_page.wait_for_selector('.cm-content')
-                other_page.get_by_role('button', name='Projekt mit Code öffnen', exact=True).click()
+                other_page.locator('.topbar .menu-button').filter(has_text='Projekt:').click()
+                other_page.get_by_role('menuitem', name='Projekt mit Code öffnen', exact=True).click()
                 other_page.locator('.backend-dialog [name=code]').fill(template['code']); other_page.locator('.backend-dialog').get_by_role('button', name='Weiter', exact=True).click()
                 check('template shows a personal code and copied program', eventually(lambda: other_page.locator('.backend-panel strong code').count() == 1 and 'other tab' in other_page.locator('.cm-content').inner_text()))
                 check('template cannot be redeemed twice', api.post('/api/claim', json={'code': template['code']}).status_code == 401)

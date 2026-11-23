@@ -78,11 +78,16 @@ def _script(path, source):
 
 
 def _doc_line(completion):
+    """First docstring line, cut at a sentence end when it runs long (the completion tooltip stays compact)."""
     try:
         text = completion.docstring(raw=True, fast=True) or ""
     except Exception:
         return ""
-    return text.strip().split("\n")[0][:140]
+    line = text.strip().split("\n")[0].strip()
+    if len(line) <= 110:
+        return line
+    end = line.rfind(". ", 30, 110)
+    return line[: end + 1] if end >= 0 else line[:109] + "…"
 
 
 def _api_members(chain_class):
@@ -153,7 +158,12 @@ def signature(path, source, line, col):
     for p in s.params:
         text = p.to_string().strip()
         params.append(text[len("param "):] if text.startswith("param ") else text)
-    return json.dumps({"name": s.name, "params": params, "index": s.index})
+    doc = ""
+    try:
+        doc = (s.docstring(raw=True, fast=True) or "").strip().split("\n")[0][:140]
+    except Exception:
+        pass  # a signature without docs is fine
+    return json.dumps({"name": s.name, "params": params, "index": s.index, "doc": doc})
 
 
 def hints(files_json):

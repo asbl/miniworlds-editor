@@ -212,7 +212,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   function insertMember(member: ApiMember) {
     if (!state.active?.endsWith('.py')) return void infoDialog(t('api.title'), t('api.noEditor'))
     setPane('editor')
-    host.current?.insertBlock({ id: 'api', group: 'move', kind: 'statement', code: snippetFor(member) })
+    void host.current?.insertBlockWithPrompt({ id: 'api', group: 'move', kind: 'statement', code: snippetFor(member) })
   }
 
   function openSearch() {
@@ -351,6 +351,12 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
           problems={problems}
           embedded={embedded}
           memoryOnly={memoryOnly}
+          historyOpen={tab === 'history'}
+          onOpenHistory={() => {
+            setTab('history')
+            setPane('files')
+            void historyApi.reload()
+          }}
         />
         {showSplitters && <Splitter panel="world" value={panels.current('world')} onResize={(px) => panels.resize('world', px)} onReset={() => panels.reset('world')} />}
         <WorldPanel

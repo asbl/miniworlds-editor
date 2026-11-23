@@ -7,7 +7,7 @@ import type { LanguageService } from './service'
 /** What the editor asks for; implemented on top of the language service. Every answer may be empty. */
 export interface Assist {
   complete(path: string, source: string, line: number, col: number): Promise<CompletionItem[]>
-  hover(path: string, source: string, line: number, col: number): Promise<{ name: string; doc: string } | null>
+  hover(path: string, source: string, line: number, col: number): Promise<{ name: string; type: string; doc: string } | null>
   /** The call around the cursor, while typing its arguments. */
   signature(path: string, source: string, line: number, col: number): Promise<Signature | null>
   /** Problems of one file: miniworlds hints (they know the whole project) plus ruff. */
@@ -32,7 +32,7 @@ export function createAssist({ service, files, lang }: AssistDeps): Assist {
     },
     async hover(path, source, line, col) {
       const h = await service.hover(path, source, line, col)
-      return h && h.doc ? { name: h.name, doc: h.doc } : null
+      return h && h.doc ? { name: h.name, type: h.type, doc: h.doc } : null
     },
     signature: (path, source, line, col) => (service.dormant ? Promise.resolve(null) : service.signature(path, source, line, col)),
     async lint(path, source) {

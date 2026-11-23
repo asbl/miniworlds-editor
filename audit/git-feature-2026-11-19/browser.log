@@ -1,4 +1,0 @@
-PASS: Git menu absent by default
-CONFIRMED: production build reports Buffer is not defined; commit disabled despite project files
-CONFIRMED: stalled request blocks Close and Escape; no abort control
-Page errors: []

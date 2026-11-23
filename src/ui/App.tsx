@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import { DEFAULT_CONFIG, type AppConfig } from '../config/appConfig'
 import { registerServiceWorker, type PwaHandle } from '../pwa/register'
-import { LANGS, LANG_NAMES, getLang, setLang, t, useLang } from '../i18n'
+import { LANGS, LANG_NAMES, type Lang, getLang, setLang, t, useLang } from '../i18n'
 import type { ProjectStore, Workspace } from '../workspace'
 import { isLowMemory } from '../config/memory'
 import { createBrowserLanguageService } from '../language/browser'
@@ -10,6 +10,7 @@ import { Catalog } from '../packages/catalog'
 import { browserKeyValue } from '../project/settings'
 import { createBrowserRunner } from '../runtime/browser'
 import type { Runner } from '../runtime/runner'
+import licenseText from '../../LICENSE?raw'
 import { ContextMenuHost } from './ContextMenu'
 import { confirmDialog, DialogHost, infoDialog, openDialog } from './dialogs'
 import { launchedProject, parseLaunch, rememberLaunched, withoutLaunch, type Launch } from './launch'
@@ -36,6 +37,7 @@ import { CODE_HOURS, inviteInLink, publishCode, resolveCode } from '../collab/co
 import { parseShortCode } from '../collab/crypto'
 import { useCollabInfo } from '../collab/useCollabInfo'
 import { knownPaths, rememberKnown, rememberName, rememberRoom, savedName, savedRoom } from '../collab/storage'
+import { roomProject } from '../collab/project'
 import { cleanName, deserializeInvite, newInvite, parseInviteHash, serializeInvite, type CollabFailure, type Invite } from '../collab/shared'
 import { collectShareContext, type ShareContext } from '../share/collect'
 import { ShareDialog } from '../share/ShareDialog'
@@ -69,12 +71,17 @@ interface AppProps {
 
 export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog: injectedCatalog, language: injectedLanguage }: AppProps) {
   const backend = useMemo(() => config.backendUrl ? new BackendProjects(store, config.backendUrl) : null, [store, config.backendUrl])
+  const [backendDialog, setBackendDialog] = useState<'claim' | 'password' | null>(null)
   const [backendConnection, setBackendConnection] = useState<BackendConnection | null>(null)
   const runner = useMemo(() => injected ?? createBrowserRunner(config.pyodideBase), [injected, config.pyodideBase])
   const language = useMemo(() => injectedLanguage ?? createBrowserLanguageService(config.pyodideBase, isLowMemory(config.lowMemory)), [injectedLanguage, config.pyodideBase, config.lowMemory])
   const catalog = useMemo(() => injectedCatalog ?? new Catalog(browserKeyValue()), [injectedCatalog])
   const lang = useLang()
   const preferences = usePreferences()
+  useEffect(() => {
+    document.documentElement.dataset.appearance = preferences.appearance
+    document.documentElement.dataset.codeTheme = preferences.codeTheme
+  }, [preferences.appearance, preferences.codeTheme])
   const [gitDialog, setGitDialog] = useState<'project' | 'clone' | null>(null)
   const [revision, setRevision] = useState(0)
   const [projects, setProjects] = useState<string[]>([])
@@ -259,7 +266,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
   /** An invitation link: a project of its own for the room, so that the person's other projects stay untouched. */
   async function joinRoom(invite: Invite) {
     if (!config.collabUrl) return void (await infoDialog(t('collab.joinTitle'), t('collab.unavailable')))
-    const project = `${t('collab.title')} ${invite.room}`
+    const project = await roomProject(store, invite)
     const values = await openDialog({
       title: t('collab.joinTitle'),
       message: t('collab.joinText', { code: invite.room, project }) + (invite.readOnly ? ` ${t('collab.readOnly')}` : ''),
@@ -446,6 +453,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
 
   const current = name as string
   const projectItems = [
+    ...(backend ? [{ label: lang === 'de' ? 'Projekt mit Code öffnen' : 'Open project with code', highlighted: true, onSelect: () => setBackendDialog('claim') }] : []),
     { label: t('project.new'), onSelect: guarded(async () => { await flush.current?.(); const n = await promptNewProject(store, catalog.data?.latest ?? null); if (n) await show(n) }) },
     { label: t('project.rename'), onSelect: guarded(async () => { await flush.current?.(); const n = await promptRenameProject(store, current); if (n) await show(n) }) },
     { label: t('project.duplicate'), onSelect: guarded(async () => { await flush.current?.(); await show(await duplicateProject(store, current)) }) },
@@ -488,7 +496,19 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     const values = await openDialog({
       title: t('prefs.title'),
       message: t('prefs.hint'),
+      body: <div class="settings-legal">
+        <details><summary>{t('prefs.imprint')}</summary><p class="legal-text">{config.imprint}</p></details>
+        <details><summary>{t('prefs.license')}</summary><pre class="legal-text">{licenseText}</pre></details>
+      </div>,
       fields: [
+        { kind: 'select', key: 'lang', label: t('lang.label'), initial: getLang(), options: LANGS.map(value => ({ value, label: LANG_NAMES[value] })) },
+        { kind: 'select', key: 'appearance', label: t('prefs.appearance'), initial: current.appearance, options: [
+          { value: 'system', label: t('prefs.system') }, { value: 'light', label: t('prefs.light') }, { value: 'dark', label: t('prefs.dark') },
+        ] },
+        { kind: 'select', key: 'codeTheme', label: t('prefs.codeTheme'), initial: current.codeTheme, options: [
+          { value: 'default', label: t('prefs.theme.default') }, { value: 'solarized-light', label: 'Solarized Light' },
+          { value: 'solarized-dark', label: 'Solarized Dark' }, { value: 'dracula', label: 'Dracula' },
+        ] },
         {
           kind: 'radio',
           key: 'sidebar',
@@ -502,7 +522,10 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
         { kind: 'checkbox', key: 'git', label: t('git.enable'), initial: current.git === true },
       ],
     })
-    if (values) savePreferences({ sidebar: values.sidebar as Preferences['sidebar'], ...(values.git ? { git: true } : {}) })
+    if (values) {
+      savePreferences({ sidebar: values.sidebar as Preferences['sidebar'], appearance: values.appearance as Preferences['appearance'], codeTheme: values.codeTheme as Preferences['codeTheme'], ...(values.git ? { git: true } : {}) })
+      setLang(values.lang as Lang)
+    }
   }
 
   return (
@@ -553,24 +576,11 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
             {t('backup.button')}
           </button>
         )}
-        {config.links.length > 0 && (
-          <Menu
-            label={`${t('links.menu')} ▾`}
-            align="right"
-            items={config.links.map((link) => ({ label: `${link.label} ↗`, onSelect: () => void window.open(link.url, '_blank', 'noopener') }))}
-          />
-        )}
-        <button type="button" class="menu-button" title={t('prefs.button')} aria-label={t('prefs.button')} onClick={() => void openPreferences()}>
-          ⚙
+        <button type="button" class="settings-button" title={t('prefs.button')} aria-label={t('prefs.button')} onClick={() => void openPreferences()}>
+          <span aria-hidden="true">⚙</span> {t('prefs.button')}
         </button>
-        <Menu
-          label={`🌐 ${LANG_NAMES[lang]} ▾`}
-          title={t('lang.label')}
-          align="right"
-          items={LANGS.map((l) => ({ label: LANG_NAMES[l], checked: l === lang, onSelect: () => setLang(l) }))}
-        />
       </header>
-      {backend && <BackendPanel manager={backend} connection={backendConnection} flush={() => flush.current?.() ?? Promise.resolve()} onOpen={show} onLogout={async () => {
+      {backend && <BackendPanel dialog={backendDialog} onDialogChange={setBackendDialog} manager={backend} connection={backendConnection} flush={() => flush.current?.() ?? Promise.resolve()} onOpen={show} onLogout={async () => {
         flush.current = null
         setBackendConnection(null)
         const rest = await store.list()
@@ -622,7 +632,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
         <div class="collab-follow-bar" role="status">
           <span>{t('collab.pair.locked', { name: collabInfo.people.find((p) => p.id === collabInfo.driver)?.name ?? '' })}</span>
           <button type="button" onClick={() => collab.takeWheel()}>
-            🚗 {t('collab.pair.take')}
+            ✏️ {t('collab.pair.take')}
           </button>
         </div>
       )}

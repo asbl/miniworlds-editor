@@ -168,14 +168,14 @@ with sync_playwright() as p:
 
     # --- 4. the event assistant
     menu("Figur", "Reagieren auf")
-    page.get_by_label("Taste: wird gedrückt (einmal)").check()
+    page.get_by_label("Taste: Beim Drücken einer Taste (einmal)").check()
     page.locator("dialog[open]").get_by_role("button", name="Weiter", exact=True).click()
     page.locator("dialog select").select_option("left")
     page.get_by_role("button", name="Anlegen").click()
     check("the assistant writes the method for the key", eventually(lambda: "def on_key_down_left(self):" in page.locator(".cm-content").inner_text(), 10000), page.locator(".cm-content").inner_text()[-300:])
     page.wait_for_timeout(600)
     menu("Figur", "Reagieren auf")
-    page.get_by_label("Taste: wird gedrückt (einmal)").check()
+    page.get_by_label("Taste: Beim Drücken einer Taste (einmal)").check()
     page.locator("dialog[open]").get_by_role("button", name="Weiter", exact=True).click()
     page.locator("dialog select").select_option("left")
     page.get_by_role("button", name="Anlegen").click()
@@ -208,7 +208,9 @@ with sync_playwright() as p:
     page.locator(".toolbar .run").click()
     check("the world with animation and panel starts", eventually(lambda: "Schritt 0" in info(page) or frame(page) > 0, 90000), info(page) + console(page)[-300:])
     check("no traceback", "Traceback" not in console(page), console(page)[-400:])
-    page.screenshot(path="/home/sbl/.cache/tmp/claude-1000/-home-sbl-code-git-miniworlds/c9f097f5-da97-41ca-8327-c499851cc906/scratchpad/world.png")
+    screenshot_dir = os.path.join(ROOT, ".cache", "test")
+    os.makedirs(screenshot_dir, exist_ok=True)
+    page.screenshot(path=os.path.join(screenshot_dir, f"engine-world-{BROWSER}.png"))
     check("the panel made the world wider (the canvas follows the window)", page.evaluate("document.querySelector('canvas').width") > 400, str(page.evaluate("document.querySelector('canvas').width")))
 
     # --- 3. the reference

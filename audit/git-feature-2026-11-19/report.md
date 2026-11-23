@@ -1,18 +1,19 @@
 # Audit des optionalen Git-Modus
 
 Datum: 19.11.2026. Geprüft wurde der aktuelle, noch nicht committete Stand im
-Repository `/home/sbl/code-git/miniworlds-editor`.
+Repository `miniworlds-editor`.
 
 **Historisches Audit-Ergebnis vor der Korrektur: nicht freigabereif.** Zwei Befunde mit Priorität P1 und ein
 Befund mit Priorität P2 wurden reproduziert. Die anschließenden Korrekturen und deren Validierung stehen in
-[fixes.md](/home/sbl/code-git/miniworlds-editor/audit/git-feature-2026-11-19/fixes.md).
-Die untenstehenden Reproduktionen und Logs dokumentieren den ursprünglichen Stand.
+[fixes.md](fixes.md).
+Die untenstehenden Reproduktionen dokumentieren den ursprünglichen Stand.
+Die genannten Logs sind lokale, ignorierte Prüfartefakte und gehören nicht zum Repository.
 
 ## 1. P1 — Git funktioniert im Produktionsbrowser nicht: `Buffer` fehlt
 
-Fundstellen: [vite.config.ts:9](/home/sbl/code-git/miniworlds-editor/vite.config.ts:9),
-[repository.ts:103](/home/sbl/code-git/miniworlds-editor/src/git/repository.ts:103),
-[GitDialog.tsx:85](/home/sbl/code-git/miniworlds-editor/src/ui/GitDialog.tsx:85).
+Fundstellen: [vite.config.ts:9](../../vite.config.ts),
+[repository.ts:103](../../src/git/repository.ts),
+[GitDialog.tsx:85](../../src/ui/GitDialog.tsx).
 
 Der Alias für das Paket `buffer` ersetzt explizite Modulimporte. Er stellt jedoch
 keine globale Variable `Buffer` bereit. Die eingebundene ESM-Version von
@@ -36,13 +37,13 @@ auch für freie `Buffer`-Referenzen korrekt bereitstellen. Anschließend einen
 Browser-Regressionstest gegen den gebauten Editor ergänzen, der Initialisierung,
 Commit und Wiederöffnen mit OPFS prüft.
 
-Beleg: [browser.log](/home/sbl/code-git/miniworlds-editor/audit/git-feature-2026-11-19/browser.log).
+Beleg: `browser.log`.
 
 ## 2. P1 — Fehlgeschlagener Pull löscht zwischenzeitliche lokale Arbeit
 
-Fundstellen: [repository.ts:119](/home/sbl/code-git/miniworlds-editor/src/git/repository.ts:119),
-[repository.ts:132](/home/sbl/code-git/miniworlds-editor/src/git/repository.ts:132),
-[repository.ts:147](/home/sbl/code-git/miniworlds-editor/src/git/repository.ts:147).
+Fundstellen: [repository.ts:119](../../src/git/repository.ts),
+[repository.ts:132](../../src/git/repository.ts),
+[repository.ts:147](../../src/git/repository.ts).
 
 Der saubere Arbeitsstand wird nur vor dem Netzwerkzugriff geprüft. Danach wird
 eine Kopie der Dateien im RAM abgelegt. Bei jedem Fehler, auch einem reinen
@@ -69,14 +70,14 @@ Netzwerkphase erkennen und schützen. Bei einem reinen Fetch-Fehler keine
 Projektdateien zurückschreiben. Für tatsächlich begonnene Dateiersetzungen einen
 wiederherstellbaren, persistenten Zustand vorhalten.
 
-Beleg: erster Test in [probes.ts](/home/sbl/code-git/miniworlds-editor/audit/git-feature-2026-11-19/probes.ts)
-und [probes.log](/home/sbl/code-git/miniworlds-editor/audit/git-feature-2026-11-19/probes.log).
+Beleg: erster Test in [probes.ts](probes.ts)
+und `probes.log`.
 
 ## 3. P2 — Hängende Netzwerkoperation blockiert den Editor ohne Abbruch
 
-Fundstellen: [repository.ts:25](/home/sbl/code-git/miniworlds-editor/src/git/repository.ts:25),
-[GitDialog.tsx:58](/home/sbl/code-git/miniworlds-editor/src/ui/GitDialog.tsx:58),
-[GitDialog.tsx:116](/home/sbl/code-git/miniworlds-editor/src/ui/GitDialog.tsx:116).
+Fundstellen: [repository.ts:25](../../src/git/repository.ts),
+[GitDialog.tsx:58](../../src/ui/GitDialog.tsx),
+[GitDialog.tsx:116](../../src/ui/GitDialog.tsx).
 
 Die Requests erhalten weder ein Abbruchsignal noch einen eigenen Timeout.
 Gleichzeitig deaktiviert `busy` den Schließen-Button und verhindert Escape.
@@ -91,8 +92,8 @@ Empfehlung: Einen expliziten Abbruch mit `AbortController` und einen definierten
 Netzwerk-Timeout einführen. Die Bereinigung eines abgebrochenen Klons muss das
 neu angelegte Projekt und dessen Git-Daten zuverlässig entfernen.
 
-Belege: [browser.log](/home/sbl/code-git/miniworlds-editor/audit/git-feature-2026-11-19/browser.log)
-und zweiter Test in [probes.ts](/home/sbl/code-git/miniworlds-editor/audit/git-feature-2026-11-19/probes.ts).
+Belege: `browser.log`
+und zweiter Test in [probes.ts](probes.ts).
 
 ## Prüfungen und Grenzen
 

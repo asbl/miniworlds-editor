@@ -1,0 +1,8 @@
+# Optional host-specific settings. Copy to docker-compose.override.yml and adapt.
+# Docker Compose loads that local file automatically alongside docker-compose.yml.
+services:
+  editor:
+    image: "local/editor-nginx:latest"
+    runtime: "custom-runtime"
+  collab:
+    runtime: "custom-runtime"

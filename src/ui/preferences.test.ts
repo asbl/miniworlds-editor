@@ -8,6 +8,12 @@ describe('parsePreferences', () => {
     expect(parsePreferences('{"git":"true"}').git).not.toBe(true)
     expect(parsePreferences('{"git":true}').git).toBe(true)
   })
+  it('restores appearance and editor theme independently', () => {
+    const prefs = parsePreferences('{"appearance":"light","codeTheme":"dracula"}')
+    expect(prefs.appearance).toBe('light')
+    expect(prefs.codeTheme).toBe('dracula')
+    expect(parsePreferences('{"appearance":"unknown","codeTheme":"unknown"}')).toEqual(DEFAULT_PREFERENCES)
+  })
   it('reads a stored choice', () => expect(parsePreferences('{"sidebar":"files"}').sidebar).toBe('files'))
   it('ignores unknown or damaged values', () => {
     expect(parsePreferences('{"sidebar":"search"}')).toEqual(DEFAULT_PREFERENCES)

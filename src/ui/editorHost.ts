@@ -5,7 +5,8 @@ import { indentUnit } from '@codemirror/language'
 import { codeHighlighting } from './highlight'
 import { indentWithTab } from '@codemirror/commands'
 import { snippet } from '@codemirror/autocomplete'
-import { importChange, methodAnchor, statementAnchor, type Block } from '../blocks/insert'
+import { hasSelf, importChange, methodAnchor, registeredBlock, registrationSite, statementAnchor, type Block } from '../blocks/insert'
+import { infoDialog, openDialog } from './dialogs'
 import { python } from '@codemirror/lang-python'
 import { diagnosticCount, openLintPanel } from '@codemirror/lint'
 import type { Assist } from '../language/assist'
@@ -296,13 +297,16 @@ export class EditorHost implements Surface {
 
   /**
    * Put a ready-made block at the cursor (statements) or at the end of the class (methods), add the imports it needs,
-   * and let Tab walk through its fields. False when a method block has no class to go into.
+   * and let Tab walk through its fields. Refuse self outside a function that binds it.
    */
-  insertBlock(block: Block): boolean {
+  insertBlock(block: Block, target?: string): boolean {
     const doc = this.view.state.doc.toString()
     const head = this.view.state.selection.main.head
-    const anchor = block.kind === 'method' ? methodAnchor(doc, head) : statementAnchor(doc, head)
+    const registered = target ? registeredBlock(doc, block, target) : null
+    if (target && !registered) return false
+    const anchor = registered?.anchor ?? (block.kind === 'method' ? methodAnchor(doc, head) : statementAnchor(doc, head))
     if (!anchor) return false
+    if (block.kind === 'statement' && /\bself\b/.test(block.code) && !hasSelf(doc, anchor)) return false
     const imports = importChange(doc, block.imports)
     const changes: { from: number; to?: number; insert: string }[] = [{ from: anchor.from, to: anchor.to, insert: anchor.insert }]
     let start = anchor.from + anchor.insert.length
@@ -311,9 +315,32 @@ export class EditorHost implements Surface {
       if (imports.from <= anchor.from) start += imports.insert.length
     }
     this.view.dispatch({ changes, selection: { anchor: start }, scrollIntoView: true })
-    snippet(block.code)(this.view, null, start, start)
+    snippet(registered?.code ?? block.code)(this.view, null, start, start)
     this.view.focus()
     return true
+  }
+
+  /** Pupil-facing insertion: outside a class, let an event handler attach to a named instance. */
+  async insertBlockWithPrompt(block: Block): Promise<void> {
+    if (this.insertBlock(block)) return
+    if (block.kind === 'statement') return infoDialog(t('blocks.button'), t('blocks.noSelf'))
+    const before = this.view.state.doc.toString()
+    const file = this.current
+    const { targets } = registrationSite(before)
+    if (!targets.length) return infoDialog(t('blocks.button'), t('blocks.noTarget'))
+    const choice = await openDialog({
+      title: t('blocks.button'),
+      message: t('blocks.register'),
+      fields: [{ kind: 'select', key: 'target', label: t('blocks.target'), initial: targets[0]!.name,
+        options: targets.map(({ name, className }) => ({ value: name, label: `${name} (${className})` })) }],
+    })
+    if (!choice) return
+    // Let the modal unmount before focusing the editor and selecting snippet fields.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+    if (file !== this.current || before !== this.view.state.doc.toString()) {
+      return infoDialog(t('blocks.button'), t('blocks.changed'))
+    }
+    this.insertBlock(block, String(choice.target))
   }
 
   /** Insert text at the cursor (or replace the selection) of the file shown. */

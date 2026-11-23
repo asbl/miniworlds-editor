@@ -4,6 +4,12 @@ import { absoluteBase, loadAppConfig, parseAppConfig } from './appConfig'
 const PAGE = 'https://example.org/editor/index.html'
 
 describe('app config', () => {
+  it('accepts operator legal text and falls back for missing or invalid notices', () => {
+    expect(parseAppConfig({ imprint: '  Operator\nAddress\nmail@example.org  ' }, PAGE).imprint).toBe('Operator\nAddress\nmail@example.org')
+    for (const imprint of ['', '   ', null, 3, {}]) {
+      expect(parseAppConfig({ imprint }, PAGE).imprint).toBe(parseAppConfig(null, PAGE).imprint)
+    }
+  })
   it('uses the defaults for anything unusable', () => {
     expect(parseAppConfig(null, PAGE).links).toEqual([])
     expect(parseAppConfig('x', PAGE).embedOrigins).toEqual([]) // embedding is opt-in

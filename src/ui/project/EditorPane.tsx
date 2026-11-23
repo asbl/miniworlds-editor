@@ -5,7 +5,6 @@ import type { LanguageService } from '../../language/service'
 import type { useLanguage } from '../../language/useLanguage'
 import { isTextPath } from '../../project/search'
 import type { Fs } from '../../workspace'
-import { infoDialog } from '../dialogs'
 import type { EditorHost } from '../editorHost'
 import { BinaryViewer } from '../ImageViewer'
 import type { Session, SessionState } from '../session'
@@ -21,10 +20,12 @@ interface Props {
   problems: number
   embedded: boolean
   memoryOnly: boolean
+  historyOpen: boolean
+  onOpenHistory: () => void
 }
 
 /** The middle column: file tabs, the code (or a picture), and the status line. */
-export function EditorPane({ fs, session, state, mount, host, language, languageState, problems, embedded, memoryOnly }: Props) {
+export function EditorPane({ fs, session, state, mount, host, language, languageState, problems, embedded, memoryOnly, historyOpen, onOpenHistory }: Props) {
   const active = state.active
   const showBinary = active !== null && !isTextPath(active)
   const isPython = active !== null && active.endsWith('.py')
@@ -76,7 +77,7 @@ export function EditorPane({ fs, session, state, mount, host, language, language
         {isPython && !showBinary && (
           <BlocksMenu
             onInsert={(block) => {
-              if (!host.current?.insertBlock(block)) void infoDialog(t('blocks.button'), t('blocks.noClass'))
+              void host.current?.insertBlockWithPrompt(block)
             }}
           />
         )}
@@ -109,6 +110,9 @@ export function EditorPane({ fs, session, state, mount, host, language, language
                     : `✓ ${t('assist.noProblems')}${languageState.python ? '' : ` (${t('assist.partial')})`}`}
           </button>
         )}
+        <button type="button" class="status-history" aria-expanded={historyOpen} onClick={onOpenHistory}>
+          {t('history.title')}
+        </button>
         <span>{state.dirty.size > 0 ? t('status.saving') : t('status.saved')}</span>
       </div>
     </div>

@@ -1,9 +1,9 @@
 # Korrekturen zum Git-Audit
 
 Die drei reproduzierten Befunde des ursprünglichen Audits sind behoben.
-Die historischen Probe-Dateien und Logs bleiben als Nachweis des damaligen
-Fehlverhaltens erhalten; für den korrigierten Stand gelten die Regressionstests
-unter `src/git/`, `src/workspace/locked.test.ts` und `test/git.py`.
+Die historischen Probe-Dateien bleiben als Nachweis des damaligen
+Fehlverhaltens erhalten. Logs werden nur lokal aufbewahrt und von Git ignoriert.
+Für den korrigierten Stand gelten die Regressionstests unter `src/git/`, `src/workspace/locked.test.ts` und `test/git.py`.
 
 ## Browser-Buffer
 
@@ -58,8 +58,8 @@ lokale Dateiübernahme wird sicher abgeschlossen.
   Pull-Abbruch ohne Dateirücksetzung, Klon-Abbruch und Speicherbereinigung,
   automatischer Timeout und bereits abgebrochenes Signal.
 
-Logs: [Tests](fixes-tests.log), [Build](fixes-build.log),
-[Chromium](fixes-browser.log).
+Lokale, nicht versionierte Logs: `fixes-tests.log`, `fixes-build.log`,
+`fixes-browser.log`.
 
 Es wurde kein echtes Token verwendet und kein externes Repository verändert.
 Firefox und reale Git-Hosting-/CORS-Proxy-Kombinationen wurden in dieser

@@ -2,6 +2,7 @@ import { autocompletion, insertBracket, type Completion, type CompletionContext,
 import { forceLinting, lintGutter, linter, type Action, type Diagnostic } from '@codemirror/lint'
 import { syntaxTree } from '@codemirror/language'
 import { hoverTooltip } from '@codemirror/view'
+import { renderHoverDoc } from './hoverDoc'
 import { signatureHelp } from './signatureHelp'
 import type { EditorView } from '@codemirror/view'
 import type { Text } from '@codemirror/state'
@@ -100,12 +101,7 @@ export function assistExtensions(getAssist: () => Assist | null, getPath: () => 
         end: word.to,
         above: true,
         create() {
-          const dom = document.createElement('div')
-          dom.className = 'cm-hover-doc'
-          const pre = document.createElement('pre')
-          pre.textContent = info.doc
-          dom.append(pre)
-          return { dom }
+          return { dom: renderHoverDoc(info) }
         },
       }
     }),

@@ -54,7 +54,7 @@ with sync_playwright() as p:
     check("main.py imports and uses the new name", eventually(lambda: "from classes.Held import Held" in page.inner_text(".cm-content") and "Held(" in page.inner_text(".cm-content") and "Figur" not in page.inner_text(".cm-content"), 5000), page.inner_text(".cm-content"))
     check("the console reports the change", "Stellen" in console(page))
 
-    page.get_by_role("tab", name="Verlauf").click()
+    page.locator(".status-history").click()
     check("a version was kept before renaming", eventually(lambda: "Vor dem Umbenennen" in page.inner_text(".history"), 5000), page.inner_text(".history"))
 
     check("python boots", wait_ready(page))

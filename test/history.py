@@ -14,7 +14,9 @@ AXE = os.path.join(ROOT, "node_modules", "axe-core", "axe.min.js")
 
 
 def history_tab(page):
-    page.locator(".sidebar-tabs [role=tab]", has_text="Verlauf").click()
+    if not page.locator(".status-history").is_visible():
+        page.locator(".pane-tabs [role=tab]").nth(1).click()
+    page.locator(".status-history").click()
 
 
 def rows(page):
@@ -46,6 +48,8 @@ with sync_playwright() as p:
     page.goto(URL)
     page.wait_for_selector(".cm-content")
 
+    check("history is absent from the sidebar tabs", page.get_by_role("tab", name="Verlauf").count() == 0)
+    check("history is accessible from the status line", page.locator(".status .status-history").is_visible())
     # ---- the start of a session is remembered
     history_tab(page)
     check("a snapshot 'when opened' exists", eventually(lambda: any("Beim Öffnen" in r for r in rows(page)), 10000), str(rows(page)))
@@ -127,7 +131,8 @@ with sync_playwright() as p:
     page.wait_for_timeout(700)
     page.locator(".sidebar-tabs [role=tab]", has_text="Dateien").click()
     page.locator(".tree .row", has_text="Spielfeld.py").hover()
-    page.get_by_label("Löschen classes/Spielfeld.py").click()
+    page.locator(".tree .row", has_text="Spielfeld.py").locator(".file-actions").click()
+    page.get_by_role("menuitem", name="Löschen", exact=True).click()
     ok(page, "Löschen")
     history_tab(page)
     check("'before delete' snapshot", eventually(lambda: any("Vor dem Löschen" in r for r in rows(page)), 5000), str(rows(page)))

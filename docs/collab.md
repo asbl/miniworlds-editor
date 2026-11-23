@@ -1,14 +1,14 @@
-# Gemeinsam arbeiten (Mehrspieler-Modus)
+# Multiplayer
 
 Mehrere Personen bearbeiten **dasselbe Projekt live**: jede sieht den Code, die Cursor und die Dateien der anderen. Jede Person startet das Programm auf dem **eigenen** Gerät (die Welt wird nicht geteilt).
 
 ## Bedienung
 
-- Menüpunkt **👥 Gemeinsam** in der oberen Leiste → *Gemeinsam starten* → Einladungslink (und QR-Code) weitergeben.
-- Wer den Link öffnet, wird nach einem Namen gefragt und bekommt ein **neues Projekt** „Gemeinsam arbeiten abcd-efgh“ auf dem eigenen Gerät; die anderen Projekte bleiben unberührt.
+- Menüpunkt **👥 Multiplayer** in der oberen Leiste → *Multiplayer starten* → Einladungslink weitergeben; der QR-Code lässt sich über *QR-Code anzeigen* aufklappen.
+- Wer den Link öffnet, wird nach einem Namen gefragt. Beim ersten Beitritt entsteht das Projekt „Multiplayer abcd-efgh“ auf dem eigenen Gerät. Bei späteren Beitritten wird die vorhandene Kopie samt Verlauf wiederverwendet, auch wenn sie noch den früheren Namen „Gemeinsam arbeiten abcd-efgh“ oder „Work together abcd-efgh“ trägt. Andere Projekte bleiben unberührt.
 - Der Raum merkt sich das Projekt: nach einem Neuladen verbindet es sich selbst wieder.
-- *Gemeinsames Arbeiten beenden* trennt nur die Verbindung; das Projekt bleibt als Kopie auf dem Gerät.
-- Der Verlauf („Versionen“) bleibt pro Gerät.
+- *Multiplayer verlassen* trennt nur die Verbindung; das Projekt bleibt als Kopie auf dem Gerät.
+- Der Verlauf bleibt pro Gerät.
 
 ### Nur-Lesen-Link (Lehrkräfte)
 
@@ -16,11 +16,11 @@ Im Dialog steht neben dem Einladungslink ein zweiter, **Nur-Lesen-Link** (`#watc
 
 ### Folgen
 
-Im Dialog gibt es neben jeder Person **Folgen**. Der Editor zeigt dann die Datei und Zeile, in der diese Person gerade arbeitet, bis man selbst tippt oder in der Leiste „Beenden“ wählt (oder die Person geht).
+Im Dialog gibt es neben jeder Person **Ansicht folgen**. Der Editor zeigt dann die Datei und Zeile, in der diese Person gerade arbeitet, bis man selbst tippt oder in der Leiste „Beenden“ wählt (oder die Person geht).
 
 ### Zu zweit programmieren (optional)
 
-*Ich fahre* im Dialog macht eine Person zur **Fahrerin**: nur sie tippt, die anderen sehen zu (ihr Editor ist gesperrt, ein Hinweis in der Leiste bietet „Ich fahre“ zum Übernehmen an). *Alle dürfen tippen* hebt das auf; verlässt die Fahrerin den Raum, endet es von selbst. Das ist eine Absprache in der Oberfläche (jede Person kann übernehmen), kein Zugriffsschutz; den gibt es nur beim Nur-Lesen-Link.
+*Bearbeitung übernehmen* im Dialog gibt einer Person die alleinige Bearbeitung: Nur sie tippt, die anderen schauen zu. Ihr Editor ist gesperrt; mit „Bearbeitung übernehmen“ in der Hinweisleiste können sie die Bearbeitung übernehmen. *Alle dürfen bearbeiten* gibt die Bearbeitung für alle frei. Verlässt die Person mit alleiniger Bearbeitung den Raum, endet die Einschränkung von selbst. Das ist eine Absprache in der Oberfläche (jede Person kann übernehmen), kein Zugriffsschutz; den gibt es nur beim Nur-Lesen-Link.
 
 ### Wiederverbinden und gelöschte Dateien
 
@@ -36,7 +36,7 @@ Wer den Link kennt, kann **mitlesen und mitschreiben** (Nur-Lesen-Link: nur mitl
 
 ## Technik
 
-Yjs (CRDT) im Browser (wird erst beim ersten „Gemeinsam“ nachgeladen, ein eigener Baustein von etwa 100 KB); Text­dateien als `Y.Text`, Bilder und Sonstiges als Bytes (`src/collab/`). Der Editor-Dateizugriff läuft durch `Collab.join()`: Änderungen der anderen werden in das normale Projekt-Dateisystem geschrieben, das Automatische Speichern bleibt wie es ist. Als Verbindung dient ein kleiner **WebSocket-Relay** (`deploy/collab/relay.mjs`, nur die Bibliothek `ws`), der einen Raum einen Tag nach dem Weggang der letzten Person vergisst. Nichts wird auf Platte geschrieben.
+Yjs (CRDT) im Browser (wird erst beim ersten Öffnen von „Multiplayer“ nachgeladen, ein eigener Baustein von etwa 100 KB); Text­dateien als `Y.Text`, Bilder und Sonstiges als Bytes (`src/collab/`). Der Editor-Dateizugriff läuft durch `Collab.join()`: Änderungen der anderen werden in das normale Projekt-Dateisystem geschrieben, das Automatische Speichern bleibt wie es ist. Als Verbindung dient ein kleiner **WebSocket-Relay** (`deploy/collab/relay.mjs`, nur die Bibliothek `ws`), der einen Raum einen Tag nach dem Weggang der letzten Person vergisst. Nichts wird auf Platte geschrieben.
 
 ## Verschlüsselung (Ende zu Ende)
 
@@ -53,11 +53,11 @@ Was der Relay trotzdem sieht: Raumnamen, wie viele Verbindungen, Größe und Zei
 
 ## Kurzcode
 
-Im Dialog erzeugt „Kurzcode erzeugen“ einen Code wie `kobi-latu-42`, den man im Klassenraum ansagen kann; wer ihn im Dialog („Einem Raum beitreten“) eintippt, kommt in den Raum. Technisch legt der Browser die (verschlüsselte) Einladung unter einer Nummer ab, die aus dem Code berechnet wird; der Code selbst und der Schlüssel erreichen den Relay nie. Der Relay vergisst ihn nach **4 Stunden** und zählt Versuche (30 pro Minute und Adresse). Nummer und Schlüssel kommen aus einer langsamen Ableitung (PBKDF2, 300 000 Runden), damit auch der Relay-Betreiber nicht schnell alle Codes durchgehen kann. Ein Kurzcode hat trotzdem nur rund 31 Bit und ist schwächer als der Link: ein gezielter Angreifer mit dem gespeicherten Eintrag und viel Rechenzeit käme irgendwann durch (der Eintrag existiert aber nur 4 Stunden). Er eignet sich für den Unterricht, nicht für Geheimnisse; der Link bleibt der sichere Weg.
+Im Dialog erzeugt „Kurzcode erzeugen“ einen Code wie `kobi-latu-42`, den man im Klassenraum ansagen kann; wer ihn im Dialog („Multiplayer-Raum beitreten“) eintippt, kommt in den Raum. Technisch legt der Browser die (verschlüsselte) Einladung unter einer Nummer ab, die aus dem Code berechnet wird; der Code selbst und der Schlüssel erreichen den Relay nie. Der Relay vergisst ihn nach **4 Stunden** und zählt Versuche (30 pro Minute und Adresse). Nummer und Schlüssel kommen aus einer langsamen Ableitung (PBKDF2, 300 000 Runden), damit auch der Relay-Betreiber nicht schnell alle Codes durchgehen kann. Ein Kurzcode hat trotzdem nur rund 31 Bit und ist schwächer als der Link: ein gezielter Angreifer mit dem gespeicherten Eintrag und viel Rechenzeit käme irgendwann durch (der Eintrag existiert aber nur 4 Stunden). Er eignet sich für den Unterricht, nicht für Geheimnisse; der Link bleibt der sichere Weg.
 
 ## Gemeinsame Ausgabe
 
-Was das Programm einer Person ausgibt (Text, Fehler, Eingaben), sehen die anderen im Konsolenfeld: ein Reiter pro Person („Meine“ | Anna ●). Der Reiter wechselt von selbst auf die Person, der man folgt oder die fährt. Es wird nichts ausgeführt, nur gelesen; die Fehlerverweise springen in den (gemeinsamen) Code. Begrenzt auf 100 000 Zeichen pro Lauf, in Paketen alle 250 ms, damit ein endloses `print` den Raum nicht überschwemmt. Die Welt (die Zeichenfläche) wird nicht übertragen; jede Person startet sie auf dem eigenen Gerät. Wer nur zusieht, sendet nichts.
+Was das Programm einer Person ausgibt (Text, Fehler, Eingaben), sehen die anderen im Konsolenfeld: ein Reiter pro Person („Meine Ausgabe“ | Anna ●). Der Reiter wechselt von selbst auf die Person, deren Ansicht man folgt oder die gerade allein bearbeitet. Es wird nichts ausgeführt, nur gelesen; die Fehlerverweise springen in den (gemeinsamen) Code. Begrenzt auf 100 000 Zeichen pro Lauf, in Paketen alle 250 ms, damit ein endloses `print` den Raum nicht überschwemmt. Die Welt (die Zeichenfläche) wird nicht übertragen; jede Person startet sie auf dem eigenen Gerät. Wer nur zusieht, sendet nichts.
 
 ## Verlauf
 
@@ -94,8 +94,8 @@ Die Herkunftsprüfung hält fremde Webseiten und Forks zuverlässig fern, ist ab
 
 ## Einbetten (Moodle)
 
-Im eingebetteten Editor (`?embed=1`) ist „Gemeinsam arbeiten“ **aus**: dort gehören die Dateien der einbettenden Seite (Abgabe!). Der Relay selbst wäre auch aus einem Moodle-iframe erreichbar, weil die Verbindung zur Editor-Domain geht und nicht zum Moodle.
+Im eingebetteten Editor (`?embed=1`) ist „Multiplayer“ **aus**: dort gehören die Dateien der einbettenden Seite (Abgabe!). Der Relay selbst wäre auch aus einem Moodle-iframe erreichbar, weil die Verbindung zur Editor-Domain geht und nicht zum Moodle.
 
 ## Tests
 
-`npx vitest run src/collab` (echter Relay: Sync, Abbruch, Verschlüsselung, Verdichten des Protokolls, Kurzcodes, Programmausgabe, Grenzen, Nur-Lesen, Rollen, Folgen, gelöschte Dateien, große Dateien, Health) und `python test/collab.py [chromium|firefox]` (vier Browser: gleichzeitiges Tippen, Cursor, Dateien, Nur-Lesen, Folgen, Fahrer, Bild verkleinern, Neuladen, Kurzcode; braucht `npm run build`). Safari/WebKit ist hier nicht startbar und nur auf echten Geräten prüfbar (Plan S6).
+`npx vitest run src/collab` (echter Relay: Sync, Abbruch, Verschlüsselung, Verdichten des Protokolls, Kurzcodes, Programmausgabe, Grenzen, Nur-Lesen, Schreibrechte, Folgen, gelöschte Dateien, große Dateien, Health) und `python test/collab.py [chromium|firefox]` (vier Browser: gleichzeitiges Tippen, Cursor, Dateien, Nur-Lesen, Folgen, alleinige Bearbeitung, Bild verkleinern, Neuladen, Kurzcode; braucht `npm run build`). Safari/WebKit ist hier nicht startbar und nur auf echten Geräten prüfbar (Plan S6).

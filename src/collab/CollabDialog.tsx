@@ -36,14 +36,14 @@ function CopyRow({ link, label, button, big }: { link: string; label: string; bu
   return (
     <div class="share-row">
       <input ref={field} class={big ? 'share-link share-code' : 'share-link'} readOnly value={link} aria-label={label} onFocus={(e) => e.currentTarget.select()} />
-      <button type="button" class="primary" onClick={() => void copy()}>
+      <button type="button" onClick={() => void copy()}>
         {copied ? t('collab.copied') : button}
       </button>
     </div>
   )
 }
 
-/** "Work together": start a session, then the invitation links, the people in the room (follow, who drives) and how to leave. */
+/** Start or join a room, invite people and manage the active session. */
 export function CollabDialog({ collab, onStart, onStop, onJoin, onCode, onRename, initialName, onClose }: Props) {
   useLang()
   const ref = useRef<HTMLDialogElement>(null)
@@ -72,34 +72,27 @@ export function CollabDialog({ collab, onStart, onStop, onJoin, onCode, onRename
   }
 
   const statusKey = info ? (info.status === 'connected' && !info.synced ? 'connecting' : info.status) : 'connecting'
-  const driverName = info?.people.find((p) => p.id === info.driver)?.name
 
   return (
     <dialog ref={ref} class="dialog wide-dialog collab-dialog" onCancel={(e) => (e.preventDefault(), onClose())} aria-labelledby="collab-title">
       <div class="dialog-body">
-        <h2 id="collab-title">{t('collab.title')}</h2>
+        <div class="collab-heading">
+          <h2 id="collab-title">{t('collab.title')}</h2>
+          {info && <span class={`collab-status ${statusKey}`} role="status">{t(`collab.status.${statusKey}` as 'collab.status.connected')}</span>}
+        </div>
         {!collab && (
           <form
+            id="collab-start"
             onSubmit={(e) => {
               e.preventDefault()
               void run(() => onStart(name))
             }}
           >
-            <p>{t('collab.intro')}</p>
+            <p class="muted small">{t('collab.intro')}</p>
             <label class="collab-name">
               {t('collab.name')}
               <input value={name} maxLength={MAX_NAME} onInput={(e) => setName(e.currentTarget.value)} />
             </label>
-            <p class="muted small">{t('collab.access')}</p>
-            <details><summary>{t('collab.privacyTitle')}</summary><p class="muted small">{t('collab.privacy')}</p></details>
-            <div class="dialog-buttons">
-              <button type="button" onClick={onClose}>
-                {t('dialog.cancel')}
-              </button>
-              <button type="submit" class="primary" disabled={busy}>
-                {t('collab.start')}
-              </button>
-            </div>
           </form>
         )}
         {!collab && (
@@ -110,9 +103,9 @@ export function CollabDialog({ collab, onStart, onStop, onJoin, onCode, onRename
               void run(async () => setProblem(await onJoin(joining)))
             }}
           >
-            <h3 class="muted small">{t('collab.join.title')}</h3>
+            <label class="collab-field-label" for="collab-join-code">{t('collab.join.field')}</label>
             <div class="share-row">
-              <input value={joining} placeholder="kobi-latu-42" aria-label={t('collab.join.field')} onInput={(e) => (setJoining(e.currentTarget.value), setProblem(null))} />
+              <input id="collab-join-code" value={joining} placeholder="kobi-latu-42" aria-label={t('collab.join.field')} onInput={(e) => (setJoining(e.currentTarget.value), setProblem(null))} />
               <button type="submit" disabled={busy || joining.trim() === ''}>
                 {t('collab.join.button')}
               </button>
@@ -120,23 +113,32 @@ export function CollabDialog({ collab, onStart, onStop, onJoin, onCode, onRename
             {problem && <p class="collab-problem" role="alert">{problem}</p>}
           </form>
         )}
+        {!collab && (
+          <div class="dialog-buttons">
+            <button type="button" onClick={onClose}>{t('dialog.cancel')}</button>
+            <button type="submit" form="collab-start" class="primary" disabled={busy}>{t('collab.start')}</button>
+          </div>
+        )}
         {collab && info && (
           <>
-            <p class={`collab-status ${info.status}`} role="status">
-              {t(`collab.status.${statusKey}` as 'collab.status.connected')}
-            </p>
             {info.readOnly && <p class="collab-readonly">{t('collab.readOnly')}</p>}
             {link && (
               <>
                 <CopyRow link={link} label={t('collab.link')} button={t('collab.copy')} />
-                {qr && <div class="share-qr" role="img" aria-label={t('collab.qr')} dangerouslySetInnerHTML={{ __html: qrSvg(qr) }} />}
+                <p class="muted small collab-access">{t('collab.access')}</p>
+                {qr && (
+                  <details class="collab-qr">
+                    <summary>{t('collab.qr.show')}</summary>
+                    <div class="share-qr" role="img" aria-label={t('collab.qr')} dangerouslySetInnerHTML={{ __html: qrSvg(qr) }} />
+                  </details>
+                )}
               </>
             )}
             {link && (
               <div class="collab-code">
                 {code ? (
                   <>
-                    <p class="muted small collab-readlabel">{t('collab.code.label')} · {t('collab.code.hint', { hours: CODE_HOURS })}</p>
+                    <p class="muted small collab-readlabel">{t('collab.code.hint', { hours: CODE_HOURS })}</p>
                     <CopyRow link={code} big label={t('collab.code.label')} button={t('collab.code.copy')} />
                   </>
                 ) : (
@@ -159,12 +161,11 @@ export function CollabDialog({ collab, onStart, onStop, onJoin, onCode, onRename
             )}
             {readLink && (
               <details class="collab-read-access">
-                <summary>{t('collab.readOnlyBadge')}</summary>
-                <p class="muted small collab-readlabel">{t('collab.readLink')}</p>
+                <summary>{t('collab.readLink.title')}</summary>
                 <CopyRow link={readLink} label={t('collab.readLink')} button={t('collab.readLink.copy')} />
               </details>
             )}
-            <h3 class="muted small">{t('collab.people')}</h3>
+            <h3 class="collab-section-title">{t('collab.people')} · {info.people.length}</h3>
             <ul class="collab-people">
               {info.people.map((p) => (
                 <li key={p.id}>
@@ -175,8 +176,8 @@ export function CollabDialog({ collab, onStart, onStop, onJoin, onCode, onRename
                     <span>{p.name}</span>
                   )}
                   {p.self && <span class="muted small"> ({t('collab.you')})</span>}
-                  {p.readOnly && <span class="collab-badge">👁 {t('collab.readOnlyBadge')}</span>}
-                  {p.id === info.driver && <span class="collab-badge driver">🚗 {t('collab.pair.driver')}</span>}
+                  {p.readOnly && <span class="collab-badge">{t('collab.readOnlyBadge')}</span>}
+                  {p.id === info.driver && <span class="collab-badge driver">{t('collab.pair.driver')}</span>}
                   {!p.self && (
                     <button type="button" class="collab-follow" aria-pressed={info.following === p.id} title={t('collab.follow.hint')} onClick={() => collab.follow(info.following === p.id ? null : p.id)}>
                       {info.following === p.id ? t('collab.unfollow') : t('collab.follow')}
@@ -191,16 +192,14 @@ export function CollabDialog({ collab, onStart, onStop, onJoin, onCode, onRename
                 <p class="muted small">{t('collab.pair.hint')}</p>
                 <div class="collab-pair">
                   <button type="button" disabled={info.driver === collab.id} onClick={() => collab.takeWheel()}>
-                    🚗 {t('collab.pair.take')}
+                    {t('collab.pair.take')}
                   </button>
                   <button type="button" disabled={info.driver === null} onClick={() => collab.releaseWheel()}>
                     {t('collab.pair.release')}
                   </button>
-                  {driverName && info.driver !== collab.id && <span class="muted small">{t('collab.pair.locked', { name: driverName })}</span>}
                 </div>
               </details>
             )}
-            <p class="muted small">{t('collab.access')}</p>
             <details><summary>{t('collab.privacyTitle')}</summary><p class="muted small">{t('collab.privacy')}</p></details>
             <div class="dialog-buttons">
               <button type="button" class="danger" disabled={busy} onClick={() => void run(onStop)}>

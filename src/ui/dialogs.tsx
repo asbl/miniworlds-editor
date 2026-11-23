@@ -93,10 +93,10 @@ function DialogView({ pending, close }: { pending: Pending; close: () => void })
   }
 
   return (
-    <dialog ref={ref} class="dialog" onCancel={(e) => (e.preventDefault(), finish(null))}>
+    <dialog ref={ref} class="dialog" aria-labelledby={`dialog-title-${pending.id}`} aria-describedby={spec.message ? `dialog-message-${pending.id}` : undefined} onCancel={(e) => (e.preventDefault(), finish(null))}>
       <form onSubmit={(e) => void submit(e)}>
-        <h2>{spec.title}</h2>
-        {spec.message && <p class="dialog-message">{spec.message}</p>}
+        <h2 id={`dialog-title-${pending.id}`}>{spec.title}</h2>
+        {spec.message && <p class="dialog-message" id={`dialog-message-${pending.id}`}>{spec.message}</p>}
         {spec.body}
         {(spec.fields ?? []).map((field) => (
           <div class="field" key={field.key}>
@@ -114,8 +114,8 @@ function DialogView({ pending, close }: { pending: Pending; close: () => void })
             )}
             {field.kind === 'select' && (
               <label>
-                <span>{field.label}</span>
-                <select value={values[field.key] as string} onChange={(e) => set(field.key, e.currentTarget.value)}>
+                <span id={`dialog-${pending.id}-${field.key}-label`}>{field.label}</span>
+                <select aria-labelledby={`dialog-${pending.id}-${field.key}-label`} value={values[field.key] as string} onChange={(e) => set(field.key, e.currentTarget.value)}>
                   {field.options.map((o) => (
                     <option value={o.value} key={o.value}>
                       {o.label}

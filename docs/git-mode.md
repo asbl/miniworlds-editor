@@ -6,7 +6,7 @@ Projekte oder eingebettete Editoren. Deaktivieren blendet die Werkzeuge wieder a
 vorhandene Commits bleiben erhalten.
 
 Während einer gemeinsamen Sitzung sind die Git-Werkzeuge ausgeblendet. Nach
-**Gemeinsames Arbeiten beenden** stehen sie für die gespeicherte Projektkopie
+**Multiplayer verlassen** stehen sie für die gespeicherte Projektkopie
 wieder zur Verfügung.
 
 ## Repository laden

@@ -1,9 +1,9 @@
 # Server side of the editor: a static nginx container behind the shared Traefik (same pattern as the other sites).
+# Host-specific image/runtime settings belong in the ignored docker-compose.override.yml.
 # Put this file, nginx.conf and html/ (the contents of dist/) into one folder, then: docker compose up -d
 services:
   editor:
-    image: "local/container-security:os-09cb4ce6f0fa92041971"
-    runtime: "php-security-compat"
+    image: "nginx:stable-alpine"
     container_name: editor
     restart: unless-stopped
     networks:
@@ -23,7 +23,6 @@ services:
   # nginx passes /collab/ on to it. The origin list keeps other sites (and forks) from using it.
   collab:
     build: ./collab
-    runtime: "php-security-compat"   # this server runs every container with it (plain runc does not start here)
     container_name: editor-collab
     restart: unless-stopped
     networks:

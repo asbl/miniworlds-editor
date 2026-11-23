@@ -3,3 +3,28 @@ dist/
 *.tsbuildinfo
 .cache/
 __pycache__/
+
+# Operator-specific legal notice and deployment configuration
+deploy/config.local.json
+
+# Local environment and credentials (keep sanitized templates versioned)
+.env
+.env.*
+!.env.example
+!.env.*.example
+!.env.template
+!.env.*.template
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_ecdsa
+id_ed25519
+
+# Generated diagnostic output
+*.log
+.pytest_cache/
+
+# Host-specific container image and runtime
+deploy/docker-compose.override.yml

@@ -23,7 +23,7 @@ interface Props {
   onSave: () => void
 }
 
-/** The sidebar tab "History": snapshots newest first, grouped by day. */
+/** The history view: snapshots newest first, grouped by day. */
 export function HistoryPanel({ snapshots, available, onOpen, onSave }: Props) {
   const lang = useLang()
   if (!available) return <p class="muted small history-note">{t('history.unavailable')}</p>

@@ -11,7 +11,17 @@ interface Shown {
 const setSignature = StateEffect.define<Shown | null>()
 const DELAY_MS = 150
 
-/** A call's parameters as small text: `move(distance=1)` with the one being typed in bold. */
+const MAX_PARAMS = 7
+
+/** Which params to show: all when there are few, otherwise a window around the one being typed (from the start when none is). */
+export function visibleParams(params: readonly string[], index: number | null, max = MAX_PARAMS): { start: number; end: number } {
+  if (params.length <= max) return { start: 0, end: params.length }
+  const current = index === null ? 0 : Math.min(Math.max(index, 0), params.length - 1)
+  const start = Math.min(Math.max(current - (max >> 1), 0), params.length - max)
+  return { start, end: start + max }
+}
+
+/** A call's parameters as small text: `move(distance=1)` with the one being typed in bold, plus its doc line. */
 export function renderSignature(info: Signature): HTMLElement {
   const dom = document.createElement('div')
   dom.className = 'cm-signature'
@@ -20,14 +30,25 @@ export function renderSignature(info: Signature): HTMLElement {
   dom.append(name)
   // *args and **kwargs take every further argument
   const current = info.index === null ? -1 : Math.min(info.index, info.params.length - 1)
-  info.params.forEach((param, i) => {
+  const { start, end } = visibleParams(info.params, info.index)
+  const parts: { text: string; active: boolean }[] = []
+  if (start > 0) parts.push({ text: '…', active: false })
+  info.params.slice(start, end).forEach((param, i) => parts.push({ text: param, active: start + i === current }))
+  if (end < info.params.length) parts.push({ text: '…', active: false })
+  parts.forEach((part, i) => {
     if (i > 0) dom.append(', ')
     const span = document.createElement('span')
-    span.textContent = param
-    if (i === current) span.className = 'cm-signature-active'
+    span.textContent = part.text
+    if (part.active) span.className = 'cm-signature-active'
     dom.append(span)
   })
   dom.append(')')
+  if (info.doc) {
+    const doc = document.createElement('div')
+    doc.className = 'cm-signature-doc'
+    doc.textContent = info.doc
+    dom.append(doc)
+  }
   return dom
 }
 

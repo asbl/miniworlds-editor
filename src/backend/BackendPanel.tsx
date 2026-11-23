@@ -6,6 +6,8 @@ import type { Task } from './client'
 import './backend.css'
 
 interface Props {
+  dialog: 'claim' | 'password' | null
+  onDialogChange: (dialog: 'claim' | 'password' | null) => void
   manager: BackendProjects
   connection: BackendConnection | null
   flush: () => Promise<void>
@@ -13,10 +15,9 @@ interface Props {
   onLogout: () => Promise<void>
 }
 
-export function BackendPanel({ manager, connection, flush, onOpen, onLogout }: Props) {
+export function BackendPanel({ dialog, onDialogChange: setDialog, manager, connection, flush, onOpen, onLogout }: Props) {
   const lang = useLang()
   const tr = (de: string, en: string) => lang === 'de' ? de : en
-  const [dialog, setDialog] = useState<'claim' | 'password' | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [answerEdits, setAnswerEdits] = useState<Record<string, boolean>>({})
@@ -24,7 +25,7 @@ export function BackendPanel({ manager, connection, flush, onOpen, onLogout }: P
   const ref = useRef<HTMLDialogElement>(null)
   useEffect(() => connection?.subscribe(() => render(n => n + 1)), [connection])
   useEffect(() => setAnswerEdits({}), [connection])
-  useEffect(() => { if (dialog && !ref.current?.open) ref.current?.showModal() }, [dialog])
+  useEffect(() => { setError(''); if (dialog && !ref.current?.open) ref.current?.showModal() }, [dialog])
   const pending = manager.pendingCodes()
   const labels = {
     saved: tr('Auf dem Server gespeichert', 'Saved on the server'), pending: tr('Änderungen noch lokal', 'Changes still local'),
@@ -45,9 +46,7 @@ export function BackendPanel({ manager, connection, flush, onOpen, onLogout }: P
     await connection.answer(task.assignment_id, id, checked)
   }
   return <section class="backend-panel" aria-label={tr('Projektzugang', 'Project access')}>
-    <div class="notice">
-      <button type="button" onClick={() => open('claim')}>{tr('Projekt mit Code öffnen', 'Open project with code')}</button>
-      {connection && <>
+    {connection && <div class="notice">
         <span role="status">{connection.project.title} · {labels[connection.status]}</span>
         <button disabled={busy} type="button" onClick={() => void perform(async () => { await flush(); await connection.retry() })}>{tr('Jetzt speichern', 'Save now')}</button>
         <button type="button" onClick={() => open('password')}>{connection.project.password_protected ? tr('Passwort ändern', 'Change password') : tr('Mit Passwort schützen', 'Protect with password')}</button>
@@ -56,8 +55,7 @@ export function BackendPanel({ manager, connection, flush, onOpen, onLogout }: P
           if (connection.dirty && !await confirmDialog(tr('Abmelden?', 'Sign out?'), tr('Es gibt ungespeicherte Änderungen. Lade vorher eine Sicherung herunter. Lokalen Entwurf trotzdem entfernen und abmelden?', 'There are unsaved changes. Download a backup first. Remove the local draft and sign out anyway?'))) return
           await manager.logout(connection); await onLogout()
         })}>{tr('Abmelden', 'Sign out')}</button>
-      </>}
-    </div>
+    </div>}
     {connection?.error && <p role="alert">{connection.error}</p>}
     {connection?.status === 'conflict' && <p>{tr('Lade über „Sicherung“ zuerst deinen Entwurf herunter. Zum Vergleichen kannst du den Serverstand als ZIP laden. Zum Übernehmen des Serverstands melde dich nach der Sicherung ab und erneut an.', 'Download your draft using “Backup” first. Download the server ZIP to compare. To use the server version, sign out after backing up and sign in again.')} <button type="button" onClick={() => void perform(async () => {
       const response = await connection.client.request('/api/play/download')

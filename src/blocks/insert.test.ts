@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import blocks from './blocks.json'
-import { GROUPS, importChange, methodAnchor, statementAnchor, type Block } from './insert'
+import { GROUPS, hasSelf, importChange, methodAnchor, registeredBlock, registrationSite, statementAnchor, type Block } from './insert'
 
 const apply = (doc: string, a: { from: number; to: number; insert: string }, text: string) => doc.slice(0, a.from) + a.insert + text + doc.slice(a.to)
 
@@ -43,6 +43,56 @@ describe('methodAnchor', () => {
   it('does not take a class that ended above a top-level statement', () => {
     const d = 'class A:\n    pass\n\nx = 1\n'
     expect(methodAnchor(d, d.indexOf('x = 1'))).toBeNull()
+  })
+})
+
+describe('self scope at the insertion point', () => {
+  const allowed = (doc: string, cursor = doc.length) => hasSelf(doc, statementAnchor(doc, cursor))
+  it('refuses self at module level, in a class body and in ordinary functions', () => {
+    expect(allowed('from classes.A import A\n')).toBe(false)
+    expect(allowed('class A:\n    value = 3')).toBe(false)
+    expect(allowed('def f():\n    pass')).toBe(false)
+    expect(allowed('class A:\n    def f():\n        pass')).toBe(false)
+    expect(allowed('class A:\n    def act(self):\n        pass\nx = 1')).toBe(false)
+  })
+  it('accepts method bodies, headers and nested conditionals', () => {
+    expect(allowed('class A:\n    def act(self):')).toBe(true)
+    expect(allowed('class A:\n    def act(self):\n        pass\n')).toBe(true)
+    expect(allowed('class A:\n    def act(self):\n        if True:\n            pass')).toBe(true)
+  })
+  it('accepts registered handlers and closures, but not a nested class body', () => {
+    expect(allowed('@schiff.register\ndef act(self):\n    pass')).toBe(true)
+    expect(allowed('def act(self):\n    def nested():\n        pass')).toBe(true)
+    expect(allowed('def act(self):\n    class Nested:\n        pass')).toBe(false)
+  })
+  it('does not mistake strings or comments for a self parameter', () => {
+    expect(allowed('def f(other="self"):\n    pass')).toBe(false)
+    expect(allowed('# def act(self):\nx = 1')).toBe(false)
+  })
+})
+
+describe('instance registration', () => {
+  const doc = 'from classes.Raumschiff import Raumschiff\nwelt = mw.World(400, 500)\nschiff = Raumschiff((200, 440))\nwelt.run()\nlate = Raumschiff()\n'
+  const block: Block = { id: 'act', group: 'flow', kind: 'method', code: 'def act(self):\n    ${1:pass}' }
+  it('offers named top-level instances, before run, without a Python worker', () => {
+    expect(registrationSite(doc).targets).toEqual([{ name: 'welt', className: 'mw.World' }, { name: 'schiff', className: 'Raumschiff' }])
+    expect(registrationSite('def f():\n    local = Actor()\n# fake = Actor()\nvalue = "fake = Actor()"\nn = random.randint(1, 6)\n').targets).toEqual([])
+  })
+  it('removes overwritten instance variables', () => {
+    expect(registrationSite('schiff = Actor()\nschiff = None\n').targets).toEqual([])
+  })
+  it('registers the selected object before run, after its assignment', () => {
+    const built = registeredBlock(doc, block, 'schiff')!
+    const result = apply(doc, built.anchor, built.code)
+    expect(result).toContain('schiff = Raumschiff((200, 440))\n\n@schiff.register\ndef act(self):\n    ${1:pass}\n\nwelt.run()')
+    expect(registeredBlock(doc, block, 'missing')).toBeNull()
+    expect(registeredBlock(doc, { ...block, kind: 'statement' }, 'schiff')).toBeNull()
+  })
+  it('works at EOF, with and without a final newline', () => {
+    for (const source of ['welt = World()', 'welt = World()\n']) {
+      const built = registeredBlock(source, block, 'welt')!
+      expect(apply(source, built.anchor, built.code)).toBe('welt = World()\n\n@welt.register\ndef act(self):\n    ${1:pass}\n\n')
+    }
   })
 })
 

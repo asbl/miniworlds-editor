@@ -10,6 +10,8 @@ export interface Signature {
   name: string
   params: string[]
   index: number | null
+  /** First docstring line, shown under the signature when there is one. */
+  doc?: string
 }
 export interface Hover {
   name: string

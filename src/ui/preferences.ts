@@ -6,9 +6,11 @@ export interface Preferences {
   sidebar: 'classes' | 'files'
   /** Advanced tools are hidden unless explicitly enabled. */
   git?: boolean
+  appearance: 'system' | 'light' | 'dark'
+  codeTheme: 'default' | 'solarized-light' | 'solarized-dark' | 'dracula'
 }
 
-export const DEFAULT_PREFERENCES: Preferences = { sidebar: 'classes' }
+export const DEFAULT_PREFERENCES: Preferences = { sidebar: 'classes', appearance: 'system', codeTheme: 'default' }
 
 const KEY = 'miniworlds-editor.prefs'
 const listeners = new Set<() => void>()
@@ -16,7 +18,12 @@ const listeners = new Set<() => void>()
 export function parsePreferences(text: string | null): Preferences {
   try {
     const raw = text ? (JSON.parse(text) as Partial<Preferences> | null) : null
-    return { sidebar: raw?.sidebar === 'files' || raw?.sidebar === 'classes' ? raw.sidebar : DEFAULT_PREFERENCES.sidebar, ...(raw?.git === true ? { git: true } : {}) }
+    return {
+      sidebar: raw?.sidebar === 'files' || raw?.sidebar === 'classes' ? raw.sidebar : DEFAULT_PREFERENCES.sidebar,
+      appearance: raw?.appearance === 'light' || raw?.appearance === 'dark' ? raw.appearance : 'system',
+      codeTheme: raw?.codeTheme === 'solarized-light' || raw?.codeTheme === 'solarized-dark' || raw?.codeTheme === 'dracula' ? raw.codeTheme : 'default',
+      ...(raw?.git === true ? { git: true } : {}),
+    }
   } catch {
     return DEFAULT_PREFERENCES
   }
