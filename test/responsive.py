@@ -32,7 +32,11 @@ with sync_playwright() as p:
     # closing a tab: Delete on the focused tab, the x for mouse and touch (it is not a second control inside the tab)
     page.locator(".tree .row-main", has_text="project.toml").click()
     check("second file opens in a tab", eventually(lambda: page.locator(".tab").count() == 2, 5000))
-    page.locator(".tab-name", has_text="project.toml").focus()
+    tab = page.locator(".tab-name", has_text="project.toml")
+    # The tab is listed before Session.show finishes reading and focuses CodeMirror.
+    # Wait for the completed open before moving focus back to the keyboard-accessible tab.
+    check("second file finishes opening", eventually(lambda: tab.get_attribute("aria-selected") == "true", 5000))
+    tab.focus()
     page.keyboard.press("Delete")
     check("Delete closes the focused tab", eventually(lambda: page.locator(".tab").count() == 1, 5000))
     page.locator(".tree .row-main", has_text="project.toml").click()
