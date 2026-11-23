@@ -192,8 +192,10 @@ with sync_playwright() as p:
     check("switched back", eventually(lambda: "Mein Projekt" in page.inner_text(".topbar") and "classes" in sidebar_files(page)))
 
     # --- language switch
-    page.locator(".menu-button", has_text="Deutsch").click()
-    page.get_by_role("menuitemradio", name="English").click()
+    page.get_by_role("button", name="Einstellungen", exact=True).click()
+    preferences = page.locator("dialog[open]")
+    preferences.get_by_label("Sprache", exact=True).select_option("en")
+    preferences.locator("button.primary").click()
     check("english UI", "Files" in page.inner_text(".sidebar-tabs") and "Project" in page.inner_text(".topbar"))
     page.reload()
     page.wait_for_selector(".cm-content")

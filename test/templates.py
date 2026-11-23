@@ -112,8 +112,10 @@ with sync_playwright() as p:
     check("world reloads with the image and stays healthy", eventually(lambda: "Schritt 0" in page.inner_text(".mw-info") and "Traceback" not in page.inner_text(".console-lines"), 40000), page.inner_text(".console-lines")[-300:])
 
     # --- english UI creates the english task texts
-    page.locator(".menu-button", has_text="Deutsch").click()
-    page.get_by_role("menuitemradio", name="English").click()
+    page.get_by_role("button", name="Einstellungen", exact=True).click()
+    preferences = page.locator("dialog[open]")
+    preferences.get_by_label("Sprache", exact=True).select_option("en")
+    preferences.locator("button.primary").click()
     page.locator(".menu-button", has_text="Project").first.click()
     page.get_by_role("menuitem", name="New project").click()
     d = page.locator("dialog[open]")
