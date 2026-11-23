@@ -398,6 +398,10 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
       if (joinCode) await joinRoom(joinCode).catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
       if (legacyFailed) await infoDialog(t('dialog.error'), t('share.legacyFailed'))
       else if (launch) await openLaunch(launch).catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
+      if (backend && new URLSearchParams(location.search).get('project-code') === '1') {
+        closeOverlay(); setBackendDialog('claim')
+        const url = new URL(location.href); url.searchParams.delete('project-code'); history.replaceState(null, '', url.pathname + url.search + url.hash)
+      }
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store])

@@ -25,3 +25,9 @@ Der [optionale Git-Modus](docs/git-mode.md) bietet Klonen, lokale Commits, Pull 
 Push. Aktivierung unter **⚙ → Git-Modus aktivieren (erweitert)**; ohne Aktivierung
 bleiben die Git-Werkzeuge ausgeblendet. Für GitHub ist ein vertrauenswürdiger
 Git-CORS-Proxy erforderlich (Hosting-Hinweise in der Dokumentation).
+
+
+Das optionale Unterrichtsbackend liegt separat in
+[miniworlds-editor-backend](https://github.com/asbl/miniworlds-editor-backend).
+Der Editor lässt sich ohne dieses Repository klonen, bauen und verwenden.
+[Backend-Anbindung und Kompatibilitätsprüfung](docs/backend.md).

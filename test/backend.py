@@ -1,6 +1,6 @@
 """Real cross-origin classroom workflow. Requires npm run build, Python with backend dependencies + Playwright.
 
-BACKEND_ROOT may point to a miniworlds/backend checkout; default: the sibling miniworlds repository.
+BACKEND_ROOT may point to a miniworlds-editor-backend checkout; default: the sibling backend repository.
 All data and servers are temporary. No production accounts or projects are accessed.
 """
 import base64
@@ -20,7 +20,7 @@ from support import FILES_FIRST, Server, check, copy_dist, eventually, failures,
 sys.executable = os.environ.get('PYTHON_FOR_TESTS', sys.executable)
 
 EDITOR = Path(__file__).resolve().parents[1]
-BACKEND = Path(os.environ.get('BACKEND_ROOT', EDITOR.parent / 'miniworlds' / 'backend'))
+BACKEND = Path(os.environ.get('BACKEND_ROOT', EDITOR.parent / 'miniworlds-editor-backend'))
 API = 'http://127.0.0.1:8199'
 URL = 'http://localhost:4189/'
 
@@ -30,7 +30,7 @@ with tempfile.TemporaryDirectory(prefix='miniworlds-editor-backend-') as tempora
     env = {**os.environ, 'SECRET_KEY': 'isolated-browser-test', 'DATABASE_URL': f'sqlite:///{root}/app.db',
            'MEDIA_ROOT': str(root / 'media'), 'MINIWORLDS_GIT_ROOT': str(root / 'git'),
            'ADMIN_EMAIL': 'admin@example.test', 'ADMIN_PASSWORD': 'test-password', 'COOKIE_SECURE': '0',
-           'FRONTEND_ORIGINS': URL.rstrip('/'), 'PYTHONPATH': os.pathsep.join([str(BACKEND), str(root), os.environ.get('PYTHONPATH', '')])}
+           'FRONTEND_ORIGINS': URL.rstrip('/'), 'EDITOR_URL':URL.rstrip('/'), 'PYTHONPATH': os.pathsep.join([str(BACKEND), str(root), os.environ.get('PYTHONPATH', '')])}
     log = (root / 'backend.log').open('w+')
     proc = subprocess.Popen([sys.executable, '-m', 'uvicorn', 'fixture:app', '--host', '127.0.0.1', '--port', '8199'], env=env, stdout=log, stderr=log)
     server = None
@@ -43,6 +43,8 @@ with tempfile.TemporaryDirectory(prefix='miniworlds-editor-backend-') as tempora
                 time.sleep(0.1)
             else:
                 log.seek(0); raise RuntimeError(log.read())
+            check('backend declares a compatible protocol', api.get('/api/compatibility').json()['api'] == {'min':1,'max':1})
+            check('incompatible clients receive an update instruction', api.get('/api/player/config', headers={'X-Miniworlds-API':'999'}).status_code == 426)
             def request(path, body, method='POST', headers=None):
                 response = api.request(method, path, json=body, headers=headers)
                 response.raise_for_status()
@@ -69,7 +71,7 @@ with tempfile.TemporaryDirectory(prefix='miniworlds-editor-backend-') as tempora
                 page.goto(URL); page.wait_for_selector('.cm-content')
                 check('standalone deployment hides backend features', page.locator('.backend-panel').count() == 0)
                 context.close()
-                (dist / 'config.json').write_text(json.dumps({'backendUrl': API, 'lowMemory': True}))
+                (dist / 'config.json').write_text(json.dumps({'backendUrl': API, 'lowMemory': True, 'embedOrigins':[API]}))
                 context = browser.new_context(locale='de-DE', viewport={'width': 1440, 'height': 1000})
                 context.add_init_script(FILES_FIRST)
                 page = context.new_page()
@@ -87,6 +89,20 @@ with tempfile.TemporaryDirectory(prefix='miniworlds-editor-backend-') as tempora
                 open_code(source['code'])
                 check('code opens the project across domains', eventually(lambda: 'backend loaded' in page.locator('.cm-content').inner_text()))
                 check('additional Python files are loaded', page.locator('.tree').get_by_text('helper.py', exact=True).count() == 1)
+                context.add_cookies([{'name':'session','value':api.cookies.get('session'),'url':API}])
+                preview = context.new_page()
+                preview.goto(API + f'/player?teacher={source["id"]}')
+                preview.frame_locator('#editor-preview').locator('.cm-content').wait_for()
+                check('teacher preview uses the full editor with original files', eventually(lambda: 'backend loaded' in preview.frame_locator('#editor-preview').locator('.cm-content').inner_text()))
+                check('teacher preview is read only', preview.frame_locator('#editor-preview').locator('.cm-content').get_attribute('contenteditable') == 'false')
+                check('preview receives no teacher credentials', preview.frame_locator('#editor-preview').locator('body').evaluate("() => !Object.keys(sessionStorage).some(k => k.startsWith('miniworlds-backend:'))"))
+                preview.evaluate("sessionStorage.setItem('miniworlds-draft:42', JSON.stringify({source:'LEGACY_UNSAVED', db:null})); sessionStorage.setItem('stoken','DO_NOT_EXPORT')")
+                preview.goto(API + '/recover')
+                with preview.expect_download() as legacy_download:
+                    preview.get_by_role('button', name='Python-Entwurf herunterladen').click()
+                check('old tab-local drafts remain recoverable', Path(legacy_download.value.path()).read_text() == 'LEGACY_UNSAVED')
+                preview.close()
+
                 set_main(page, 'print("edited in editor")\n')
                 check('automatic save reaches the backend', eventually(lambda: 'edited in editor' in saved_source(), 15000))
                 check('save status is truthful', eventually(lambda: 'Auf dem Server gespeichert' in page.locator('.backend-panel').inner_text()))
@@ -95,6 +111,22 @@ with tempfile.TemporaryDirectory(prefix='miniworlds-editor-backend-') as tempora
                 check('only boolean task answers are saved', eventually(lambda: api.get('/api/play/project', headers=auth).json()['tasks'][0]['answers'].get(str(item)) == {'checked': True}))
                 page.get_by_role('button', name='Projekt abgeben', exact=True).click()
                 check('submission includes the saved project', eventually(lambda: api.get('/api/play/project', headers=auth).json()['tasks'][0]['status'] == 'submitted'))
+                submission = api.get(f'/api/teacher/tasks/{task}/submissions', headers=teacher).json()['submissions'][0]
+                preview = context.new_page()
+                preview.goto(API + f'/player?submission={submission["submission_id"]}&version={submission["version"]}')
+                preview.frame_locator('#editor-preview').locator('.cm-content').wait_for()
+                check('frozen submission opens in the full read-only editor', eventually(lambda: 'edited in editor' in preview.frame_locator('#editor-preview').locator('.cm-content').inner_text()) and preview.frame_locator('#editor-preview').locator('.cm-content').get_attribute('contenteditable') == 'false')
+                check('frozen task answers remain visible', '☑' in preview.locator('#preview-task').inner_text())
+                preview.close()
+                share = request('/api/play/share-request', {'declaration_accepted':True}, headers=auth)
+                request(f'/api/teacher/share-requests/{share["id"]}/approve', {'slug':'browser-public-preview'}, headers=teacher)
+                public_context = browser.new_context()
+                preview = public_context.new_page()
+                preview.goto(API + '/player?public=browser-public-preview')
+                preview.frame_locator('#editor-preview').locator('.cm-content').wait_for()
+                check('public snapshot opens without credentials using the full editor', eventually(lambda: 'edited in editor' in preview.frame_locator('#editor-preview').locator('.cm-content').inner_text()))
+                public_context.close()
+
                 page.get_by_role('button', name='Mit Passwort schützen', exact=True).click()
                 dialog = page.locator('.backend-dialog'); dialog.locator('[name=password]').fill('lange sichere passphrase'); dialog.locator('[name=repeat]').fill('lange sichere passphrase')
                 dialog.get_by_role('button', name='Weiter', exact=True).click()
@@ -135,6 +167,14 @@ with tempfile.TemporaryDirectory(prefix='miniworlds-editor-backend-') as tempora
                 child_auth = {'Authorization': 'Bearer '+child['token']}
                 child_project = api.get('/api/play/project', headers=child_auth).json()
                 check('template tasks have no copied answers or submissions', child_project['tasks'][0]['answers'] == {} and child_project['tasks'][0]['status'] == 'open')
+                other_page.get_by_role('button', name='Neues Serverprojekt', exact=True).click()
+                dialog = other_page.locator('dialog')
+                dialog.locator('input[type=text]').fill('Zweites Serverprojekt')
+                dialog.locator('button.primary').click()
+                check('pupils can create another server project', eventually(lambda: len(api.get('/api/play/projects', headers=child_auth).json()['projects']) == 2))
+                other_page.get_by_label('Serverprojekt', exact=True).select_option(str(child['project_id']))
+                check('pupils can switch back to their original project', eventually(lambda: 'other tab' in other_page.locator('.cm-content').inner_text()))
+
                 request(f"/api/teacher/projects/{child['project_id']}", {'read_only': True}, 'PATCH', teacher)
                 other_page.reload()
                 check('readonly projects lock the editor', eventually(lambda: other_page.locator('.cm-content').get_attribute('contenteditable') == 'false' and 'Schreibgeschützt' in other_page.locator('.backend-panel').inner_text()))

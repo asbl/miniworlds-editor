@@ -80,6 +80,16 @@ describe('optional backend', () => {
     expect(await fs.read('main.py')).toBe('local = 3')
     expect(conn.dirty).toBe(true)
   })
+  it('retains the local draft when the deployed backend requires a different API version', async () => {
+    const send = vi.fn<typeof fetch>().mockResolvedValue(json({ detail: 'Editor und Backend aktualisieren' }, 426))
+    const { conn, fs } = await connection(send)
+    await conn.workspace.fs.write('main.py', 'my unsaved work')
+    await conn.sync()
+    expect(conn.dirty).toBe(true)
+    expect(conn.revision).toBe(1)
+    expect(conn.error).toContain('aktualisieren')
+    expect(await fs.read('main.py')).toBe('my unsaved work')
+  })
   it('blocks changed files for read-only projects but permits reads and identical metadata writes', async () => {
     const { conn } = await connection(vi.fn(), { ...project(), read_only: true })
     expect(await conn.workspace.fs.read('main.py')).toBe('print(1)')

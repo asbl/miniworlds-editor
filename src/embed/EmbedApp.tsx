@@ -19,6 +19,7 @@ import { EmbedBridge, type BridgeWindow } from './bridge'
 import { collectFiles, replaceFiles } from './files'
 import { observeFs } from './observedFs'
 import type { Incoming } from './protocol'
+import { previewFs } from './previewFs'
 
 const PROJECT = 'embed'
 const CHANGE_DELAY_MS = 150 // only coalesces a burst of writes; the message carries paths, not content
@@ -60,9 +61,11 @@ export function EmbedApp({ config, runner: injected, catalog: injectedCatalog, l
 
     void (async () => {
       const raw = await store.open(PROJECT)
+      let readOnly = false
       const observed: Workspace = {
+        get readOnly() { return readOnly },
         kind: raw.kind,
-        fs: observeFs(raw.fs, (paths) => {
+        fs: observeFs(previewFs(raw.fs, () => readOnly), (paths) => {
           paths.forEach((p) => changedPaths.add(p))
           if (changeTimer) return
           changeTimer = setTimeout(() => {
@@ -92,7 +95,8 @@ export function EmbedApp({ config, runner: injected, catalog: injectedCatalog, l
         if (message.lang) setLang(message.lang, false)
         if (message.mode) rememberMode(PROJECT, message.mode)
         await replaceFiles(raw.fs, message.files) // not the observed fs: loading is not an edit by the user
-        setWorkspace(observed)
+        readOnly = message.readOnly === true
+        setWorkspace({ ...observed, readOnly })
         setRevision((r) => r + 1)
         bridge?.send({ type: 'loaded', id: message.id })
       }

@@ -72,5 +72,36 @@ Possible future options, deliberately not enabled automatically:
 
 `npm test` covers configuration, request credentials, local drafts, conflicts, binary files, task drafts, readonly and logout.
 `npm run build` validates the production bundle. For the full workflow, install the backend dependencies and Playwright,
-then run `python test/backend.py` with the sibling `miniworlds/backend` checkout or `BACKEND_ROOT` set explicitly.
+then run `python test/backend.py` with the sibling [miniworlds-editor-backend](https://github.com/asbl/miniworlds-editor-backend) checkout or `BACKEND_ROOT` set explicitly.
 It starts isolated backend/static servers, tests real cross-origin requests and never touches production data.
+
+
+## Repository and compatibility boundary
+
+The backend lives in its own repository, `asbl/miniworlds-editor-backend`. Cloning this editor
+never clones or installs it. The Python miniworlds engine remains a separately released package.
+All pupil editing and execution use this editor; the backend contains only administration,
+storage, APIs and a bridge for snapshot previews. The bridge embeds `?embed=1` and sends only
+files, with `readOnly: true`, after the editor declares the preview capability. Add the backend
+origin to `embedOrigins` and to the frontend CSP `frame-ancestors`. Teacher cookies stay on the
+backend and no credentials appear in redirect URLs or preview messages.
+
+`public/compatibility.json` declares API ranges, capabilities and required backend features.
+The built `/compatibility.json` also identifies the editor commit. Every API request carries
+`X-Miniworlds-API: 1`. An incompatible server returns HTTP 426 with an update instruction;
+local drafts are retained. Backend data formats and `/api/play/*` routes remain unchanged.
+
+Run `npm run check:backend` against production, or:
+
+```sh
+python scripts/check_compatibility.py --frontend public/compatibility.json \
+  --backend ../miniworlds-editor-backend/app/compatibility.json
+```
+
+Both repositories run a real integration test on changes and daily against the current partner
+`main`. Manual workflow dispatch accepts an exact partner commit/tag for release verification.
+A change to either repository therefore reveals compatibility regressions without write tokens
+for cross-repository triggers. Compatible changes do not require deploying the partner.
+For a breaking change, retain an overlap of supported API versions or coordinate both releases.
+The deployment script checks the configured live backend before uploading. Static deployments
+with no `backendUrl` skip the check and remain usable offline and without a backend checkout.

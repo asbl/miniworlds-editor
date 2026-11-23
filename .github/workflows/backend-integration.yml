@@ -1,9 +1,17 @@
-name: Classroom backend integration
+name: Classroom backend compatibility
 on:
   push:
   pull_request:
+  schedule:
+    - cron: "7 5 * * *"
   workflow_dispatch:
-
+    inputs:
+      backend_ref:
+        description: Backend branch, tag or commit to verify
+        default: main
+        required: false
+permissions:
+  contents: read
 jobs:
   classroom:
     runs-on: ubuntu-latest
@@ -11,20 +19,22 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4
         with:
-          repository: asbl/miniworlds
+          repository: asbl/miniworlds-editor-backend
+          ref: ${{ inputs.backend_ref || 'main' }}
           path: classroom-backend
-          sparse-checkout: backend
       - uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version: '24'
           cache: npm
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      - name: Check API contract and report required updates
+        run: python scripts/check_compatibility.py --frontend public/compatibility.json --backend classroom-backend/app/compatibility.json
       - run: npm ci
-      - run: pip install -r classroom-backend/backend/requirements.txt playwright
+      - run: pip install -r classroom-backend/requirements.txt playwright
       - run: playwright install --with-deps chromium
       - run: npm run build
       - run: python test/backend.py
         env:
-          BACKEND_ROOT: ${{ github.workspace }}/classroom-backend/backend
+          BACKEND_ROOT: ${{ github.workspace }}/classroom-backend

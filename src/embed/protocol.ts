@@ -22,11 +22,11 @@ export const APP = 'miniworlds-editor'
 export type FileContent = string | { base64: string }
 
 export type Incoming =
-  | { type: 'load'; id?: string; files: Record<string, FileContent>; lang?: 'de' | 'en'; mode?: 'program' | 'miniworlds' }
+  | { type: 'load'; id?: string; files: Record<string, FileContent>; lang?: 'de' | 'en'; mode?: 'program' | 'miniworlds'; readOnly?: boolean }
   | { type: 'get-files'; id?: string }
 
 export type Outgoing =
-  | { type: 'ready' }
+  | { type: 'ready'; apiVersion?: number; capabilities?: string[] }
   | { type: 'loaded'; id?: string }
   | { type: 'files'; id?: string; files: Record<string, FileContent> }
   | { type: 'change'; paths: string[] }
@@ -72,7 +72,7 @@ export function parseIncoming(data: unknown): Incoming | null {
   }
   const lang = m.lang === 'de' || m.lang === 'en' ? m.lang : undefined
   const mode = m.mode === 'program' || m.mode === 'miniworlds' ? m.mode : undefined
-  return { type: 'load', id: id(m.id), files, lang, mode }
+  return { type: 'load', id: id(m.id), files, lang, mode, ...(typeof m.readOnly === 'boolean' ? { readOnly: m.readOnly } : {}) }
 }
 
 export function decodeContent(content: FileContent): string | Uint8Array {

@@ -65,7 +65,7 @@ describe('EmbedBridge', () => {
     const got: Incoming[] = []
     const bridge = new EmbedBridge(win, null, (m) => void got.push(m))
     bridge.start()
-    expect(win.sent).toEqual([{ message: { app: APP, type: 'ready' }, origin: '*' }])
+    expect(win.sent).toEqual([{ message: { app: APP, type: 'ready', apiVersion: 1, capabilities: ['read-only-preview'] }, origin: '*' }])
     win.deliver(msg({ type: 'get-files', id: '1' }))
     await tick()
     expect(got).toEqual([{ type: 'get-files', id: '1' }])

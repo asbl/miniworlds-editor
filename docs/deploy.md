@@ -99,3 +99,13 @@ Sprache (Deutsch/Englisch), Darstellungsmodus (System/Hell/Dunkel) und CodeMirro
 (Standard/Solarized Light/Solarized Dark/Dracula) stehen im Einstellungsdialog oben rechts.
 Die Wahl wird lokal im Browser gespeichert und mit OK sofort angewendet.
 Das Standard-Theme folgt dem Darstellungsmodus; die anderen Editor-Paletten sind unabhängig davon.
+
+
+The optional backend is maintained in its own `miniworlds-editor-backend` repository.
+Before uploading a backend-enabled configuration, `scripts/deploy.sh` checks the live API
+against `public/compatibility.json`; standalone configurations do not contact a backend.
+Set `DEPLOY_NGINX_CONTAINER=editor` on the existing Docker host to upload, validate and reload
+the matching nginx CSP as part of the same deployment. The previous nginx file is retained;
+a failed validation restores it. Keep host-specific images/runtimes in the existing override.
+The production `embedOrigins` and CSP allow the backend origin to show read-only snapshot
+previews through this editor, without sharing teacher cookies.

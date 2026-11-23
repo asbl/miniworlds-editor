@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { useLang } from '../i18n'
-import { confirmDialog, infoDialog } from '../ui/dialogs'
+import { confirmDialog, infoDialog, openDialog } from '../ui/dialogs'
 import { BackendProjects, type BackendConnection } from './projects'
 import type { Task } from './client'
 import './backend.css'
@@ -18,6 +18,13 @@ interface Props {
 export function BackendPanel({ dialog, onDialogChange: setDialog, manager, connection, flush, onOpen, onLogout }: Props) {
   const lang = useLang()
   const tr = (de: string, en: string) => lang === 'de' ? de : en
+  const [remoteProjects, setRemoteProjects] = useState<{id:number;title:string;read_only:boolean}[]>([])
+  useEffect(() => {
+    let disposed = false
+    setRemoteProjects([])
+    if (connection) void connection.client.json<{projects:typeof remoteProjects}>('/api/play/projects').then(data => { if (!disposed) setRemoteProjects(data.projects) }).catch(() => {})
+    return () => { disposed = true }
+  }, [connection])
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [answerEdits, setAnswerEdits] = useState<Record<string, boolean>>({})
@@ -55,6 +62,23 @@ export function BackendPanel({ dialog, onDialogChange: setDialog, manager, conne
           if (connection.dirty && !await confirmDialog(tr('Abmelden?', 'Sign out?'), tr('Es gibt ungespeicherte Änderungen. Lade vorher eine Sicherung herunter. Lokalen Entwurf trotzdem entfernen und abmelden?', 'There are unsaved changes. Download a backup first. Remove the local draft and sign out anyway?'))) return
           await manager.logout(connection); await onLogout()
         })}>{tr('Abmelden', 'Sign out')}</button>
+    </div>}
+    {connection && <div class="backend-projects">
+      <label>{tr('Projekt', 'Project')} <select aria-label={tr('Serverprojekt', 'Server project')} value={connection.project.project_id} disabled={busy} onChange={event => {
+        const id = Number(event.currentTarget.value)
+        void perform(async () => {
+          await flush(); await connection.sync()
+          if (connection.dirty) throw new Error(tr('Bitte zuerst speichern oder den Entwurf sichern.', 'Save or back up your draft first.'))
+          await onOpen((await manager.openProject(connection, id)).name)
+        })
+      }}>{remoteProjects.map(p => <option key={p.id} value={p.id}>{p.title}{p.read_only ? ' 🔒' : ''}</option>)}</select></label>
+      <button type="button" disabled={busy || connection.project.read_only} onClick={() => void perform(async () => {
+        const values = await openDialog({title:tr('Neues Serverprojekt', 'New server project'),fields:[{kind:'text',key:'title',label:tr('Projekttitel','Project title'),initial:tr('Mein Projekt','My project')}], validate:v => String(v.title).trim() ? null : tr('Bitte einen Titel eingeben.','Enter a title.')})
+        if (!values) return
+        await flush(); await connection.sync()
+        if (connection.dirty) throw new Error(tr('Bitte zuerst speichern oder den Entwurf sichern.', 'Save or back up your draft first.'))
+        await onOpen((await manager.createProject(connection, String(values.title).trim())).name)
+      })}>{tr('Neues Serverprojekt', 'New server project')}</button>
     </div>}
     {connection?.error && <p role="alert">{connection.error}</p>}
     {connection?.status === 'conflict' && <p>{tr('Lade über „Sicherung“ zuerst deinen Entwurf herunter. Zum Vergleichen kannst du den Serverstand als ZIP laden. Zum Übernehmen des Serverstands melde dich nach der Sicherung ab und erneut an.', 'Download your draft using “Backup” first. Download the server ZIP to compare. To use the server version, sign out after backing up and sign in again.')} <button type="button" onClick={() => void perform(async () => {
@@ -112,6 +136,7 @@ export function BackendPanel({ dialog, onDialogChange: setDialog, manager, conne
         <h2 id="backend-dialog-title">{dialog === 'claim' ? tr('Projekt mit Code öffnen', 'Open project with code') : tr('Projekt mit Passwort schützen', 'Protect project with password')}</h2>
         {dialog === 'claim' ? <>
           <label>{tr('Projekt- oder Vorlagencode', 'Project or template code')}<input name="code" required maxLength={128} autoComplete="off" autoCapitalize="characters" spellcheck={false} /></label>
+          <p><a href={`${manager.base}/recover`}>{tr('Entwürfe aus der bisherigen Oberfläche sichern', 'Recover drafts from the previous interface')}</a></p>
           <label>{tr('Passwort (falls eingerichtet)', 'Password (if set)')}<input name="password" type="password" maxLength={256} autoComplete="current-password" /></label>
         </> : <>
           {connection?.project.password_protected && <label>{tr('Aktuelles Passwort', 'Current password')}<input name="current" type="password" required maxLength={256} autoComplete="current-password" /></label>}

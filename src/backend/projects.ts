@@ -29,7 +29,18 @@ export class BackendProjects {
   async claim(code: string, password: string): Promise<{ name: string; personalCode: string | null }> {
     const client = new BackendClient(this.base)
     const result = await client.json<{ token: string; project_id: number; personal_code: string | null }>('/api/claim', 'POST', { code, password })
-    client.token = result.token
+    return this.bindToken(result)
+  }
+  async openProject(connection: BackendConnection, id: number) {
+    const result = await connection.client.json<{token:string;project_id:number}>(`/api/play/projects/${id}/open`, 'POST', {})
+    return this.bindToken(result)
+  }
+  async createProject(connection: BackendConnection, title: string) {
+    const result = await connection.client.json<{token:string;project_id:number}>('/api/play/projects', 'POST', {title})
+    return this.bindToken(result)
+  }
+  private async bindToken(result: {token:string;project_id:number;personal_code?:string|null}) {
+    const client = new BackendClient(this.base, result.token)
     // Store the token before fetching: a consumed template code cannot be redeemed again after a network interruption.
     let name: string | undefined
     for (const key of Object.keys(this.meta).filter(k => k.startsWith(prefix(this.base)))) {
@@ -50,7 +61,7 @@ export class BackendProjects {
     this.secrets.setItem(this.key(name), result.token)
     if (result.personal_code) this.secrets.setItem(`${this.key(name)}:new-code`, result.personal_code)
     await this.attach(name, client)
-    return { name, personalCode: result.personal_code }
+    return { name, personalCode: result.personal_code ?? null }
   }
   /** Resume the token saved before an interrupted first download. */
   async resume(name: string) {

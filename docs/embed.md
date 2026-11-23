@@ -79,3 +79,11 @@ Derselbe Link öffnet das schon angelegte Projekt wieder, statt eine Kopie zu ma
 
 Lauf starten/stoppen von außen, Laufergebnis und Konsole als Nachricht, schreibgeschützte Dateien, Aufgabenvorlagen aus der Seite (außer per `load`). Sie lassen sich in
 `src/embed/` ergänzen; Protokoll und Prüfung liegen in `protocol.ts`.
+
+
+For authenticated snapshot previews, the backend loads this same editor with `?embed=1`.
+A `load` message may set `readOnly: true`; edits and all filesystem mutation paths are then
+blocked while running and export remain available. A subsequent editable load may set it to
+`false`. `ready` includes `apiVersion: 1` and `capabilities: ["read-only-preview"]`, allowing the
+host to refuse older editors before sending protected files. Only allowlisted parent origins
+may load a snapshot; no backend credentials belong in the message.

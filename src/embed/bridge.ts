@@ -39,7 +39,7 @@ export class EmbedBridge {
   start(): void {
     if (!this.embedded) return
     this.win.addEventListener('message', this.listener)
-    this.send({ type: 'ready' })
+    this.send({ type: 'ready', apiVersion: 1, capabilities: ['read-only-preview'] })
   }
 
   stop(): void {

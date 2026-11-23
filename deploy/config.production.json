@@ -1,6 +1,7 @@
 {
   "embedOrigins": [
-    "https://www.opencoding.de"
+    "https://www.opencoding.de",
+    "https://backend.editor.opencoding.de"
   ],
   "collabUrl": "/collab",
   "backendUrl": "https://backend.editor.opencoding.de",

@@ -1,3 +1,5 @@
+import compatibility from '../../public/compatibility.json'
+
 export interface Task {
   assignment_id: number
   title: string
@@ -29,7 +31,7 @@ export class BackendClient {
   constructor(readonly base: string, public token: string | null = null, private fetcher: typeof fetch = (...a) => fetch(...a)) {}
   async request(path: string, method = 'GET', body?: unknown): Promise<Response> {
     if (!path.startsWith('/api/')) throw new Error('Invalid API path')
-    const headers: Record<string, string> = {}
+    const headers: Record<string, string> = { 'X-Miniworlds-API': String(compatibility.api.max) }
     if (body !== undefined) headers['Content-Type'] = 'application/json'
     if (this.token && path.startsWith('/api/play/')) headers.Authorization = `Bearer ${this.token}`
     const response = await this.fetcher(`${this.base}${path}`, {
