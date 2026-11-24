@@ -365,6 +365,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
           trace={trace}
           remote={collab ? { ...remoteConsoles, onSeen: (id) => collab.markRunSeen(id), onClear: (id) => collab.clearRun(id) } : undefined}
           onReport={() => void copyReport()}
+          onTryExperiment={miniworldsSupported && view === 'program' ? () => void switchView('miniworlds') : undefined}
           onJump={(loc) => {
             setPane('editor') // a link in the console: show the line it points to
             void program.jumpTo(loc)

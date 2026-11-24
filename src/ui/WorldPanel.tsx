@@ -46,7 +46,7 @@ export interface RemoteConsoles {
   onClear: (id: number) => void
 }
 
-export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace, remote, name = '' }: { runner: Runner; onJump: (location: TraceLocation) => void; onReport?: () => void; miniworlds?: MiniworldsProps; tasks?: TasksProps; trace?: TraceView; remote?: RemoteConsoles; name?: string }) {
+export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace, remote, name = '', onTryExperiment }: { onTryExperiment?: () => void; runner: Runner; onJump: (location: TraceLocation) => void; onReport?: () => void; miniworlds?: MiniworldsProps; tasks?: TasksProps; trace?: TraceView; remote?: RemoteConsoles; name?: string }) {
   useLang()
   const state = useRunnerState(runner)
   const slot = useRef<HTMLDivElement>(null)
@@ -275,6 +275,13 @@ export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace,
         )}
       </div>
       {miniworlds && <MiniworldsControls {...miniworlds} />}
+      {!miniworlds && onTryExperiment && (
+        <div class="experiment-hint" role="note">
+          <strong>🧪 {t('experiment.title')}</strong>
+          <span>{t('experiment.text')}</span>
+          <button type="button" class="primary" onClick={onTryExperiment}>{t('experiment.start')}</button>
+        </div>
+      )}
       {mw?.selected && <Inspector actor={mw.selected} inspection={mw.inspection} onClose={() => void controller?.select(null)} />}
       {trace && <TracePanel trace={trace} running={state.phase === 'running'} onJump={onJump} />}
       {tasks && tasks.items.length > 0 && (

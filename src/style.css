@@ -711,3 +711,8 @@ input[type=text], input[type=search], select {
   --tok-keyword: #ff79c6; --tok-string: #f1fa8c; --tok-number: #bd93f9;
   --tok-comment: #a5afd1; --tok-function: #50fa7b; --tok-class: #8be9fd; --tok-meta: #ffb86c;
 }
+.mode-label { color: var(--muted); font-size: 0.9em; }
+.mode-switch { border-color: var(--accent); }
+.experiment-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 8px; padding: 8px 10px; border: 1px dashed var(--accent); border-radius: 6px; background: var(--notice-bg); color: var(--notice-fg); }
+.experiment-hint span { flex: 1 1 14em; font-size: 0.92em; }
+.experiment-hint .primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }

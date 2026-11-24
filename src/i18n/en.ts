@@ -177,7 +177,10 @@ export const en: Record<keyof typeof de, string> = {
   'mode.miniworlds': 'Experiment',
   'mode.programHint': 'Run the program directly.',
   'mode.miniworldsHint': 'Start paused, explore step by step.',
-  'mode.label': 'View',
+  'mode.label': 'Mode',
+  'experiment.title': 'Experiment',
+  'experiment.text': 'The world starts paused: place actors with a click, try things step by step, change values live – without restarting the program each time.',
+  'experiment.start': 'Start experimenting',
   'mode.needsFull': 'Experiment mode needs miniworlds 4.4.0.15 or newer.',
 
   'miniworlds.act': 'Step',
