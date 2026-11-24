@@ -181,6 +181,7 @@ export const de = {
   'experiment.title': 'Experimentieren',
   'experiment.text': 'Die Welt startet pausiert: Figuren per Klick setzen, Schritt für Schritt ausprobieren, Werte live ändern – ohne das Programm jedes Mal neu zu starten.',
   'experiment.start': 'Experimentieren starten',
+  'experiment.close': 'Ausblenden',
   'mode.needsFull': 'Experimentieren braucht miniworlds ab Version 4.4.0.15.',
 
   'miniworlds.act': 'Schritt',

@@ -1,3 +1,4 @@
+import { closeExperimentHint, isExperimentHintClosed } from './experimentHint'
 import { useEffect, useRef, useState } from 'preact/hooks'
 import { t, useLang } from '../i18n'
 import type { MiniworldsController, MiniworldsState } from '../miniworlds/controller'
@@ -57,6 +58,7 @@ export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace,
   const [fullscreen, setFullscreen] = useState(false)
   const [tick, redraw] = useState(0)
   const [guides, setGuides] = useState<Guides>(loadGuides)
+  const [hintClosed, setHintClosed] = useState(isExperimentHintClosed)
   const [mouse, setMouse] = useState<WorldPoint | null>(null)
   const docked = !popup && !fullscreen
   // whose output the console shows: null is this person's own
@@ -275,11 +277,12 @@ export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace,
         )}
       </div>
       {miniworlds && <MiniworldsControls {...miniworlds} />}
-      {!miniworlds && onTryExperiment && (
+      {!miniworlds && onTryExperiment && !hintClosed && state.phase !== 'running' && state.phase !== 'stopping' && (
         <div class="experiment-hint" role="note">
-          <strong>🧪 {t('experiment.title')}</strong>
+          <strong>{t('experiment.title')}</strong>
           <span>{t('experiment.text')}</span>
           <button type="button" class="primary" onClick={onTryExperiment}>{t('experiment.start')}</button>
+          <button type="button" onClick={() => { closeExperimentHint(); setHintClosed(true) }}>{t('experiment.close')}</button>
         </div>
       )}
       {mw?.selected && <Inspector actor={mw.selected} inspection={mw.inspection} onClose={() => void controller?.select(null)} />}

@@ -379,6 +379,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
       if (legacy) {
         try { await show(await importLegacyLink(store, legacy)); return } catch { legacyFailed = true }
       }
+      await backend?.sweep().catch(() => [])
       const list = await store.list()
       const wanted = lastProject()
       if (wanted && list.includes(wanted)) await show(wanted)
@@ -584,7 +585,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
           <span aria-hidden="true">⚙</span> {t('prefs.button')}
         </button>
       </header>
-      {backend && <BackendPanel dialog={backendDialog} onDialogChange={setBackendDialog} manager={backend} connection={backendConnection} flush={() => flush.current?.() ?? Promise.resolve()} onOpen={show} onLogout={async () => {
+      {backend && <BackendPanel idleMinutes={config.autoSignOutMinutes} dialog={backendDialog} onDialogChange={setBackendDialog} manager={backend} connection={backendConnection} flush={() => flush.current?.() ?? Promise.resolve()} onOpen={show} onLogout={async () => {
         flush.current = null
         setBackendConnection(null)
         const rest = await store.list()

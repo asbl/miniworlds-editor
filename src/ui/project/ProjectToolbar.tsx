@@ -93,7 +93,7 @@ export function ProjectToolbar(p: Props) {
         <span class="mode-label" aria-hidden="true">{t('mode.label')}:</span>
         <div class="segmented mode-switch" role="group" aria-label={t('mode.label')}>
           <button type="button" aria-pressed={p.view === 'program'} title={t('mode.programHint')} onClick={() => p.onView('program')}>
-            <span aria-hidden="true">▶ </span>{t('mode.program')}
+            <span aria-hidden="true">▸ </span>{t('mode.program')}
           </button>
           <button
             type="button"
@@ -102,7 +102,7 @@ export function ProjectToolbar(p: Props) {
             title={t(p.miniworldsSupported ? 'mode.miniworldsHint' : 'mode.needsFull')}
             onClick={() => p.onView('miniworlds')}
           >
-            <span aria-hidden="true">🧪 </span>{t('mode.miniworlds')}
+            <span aria-hidden="true">✦ </span>{t('mode.miniworlds')}
           </button>
         </div>
         {p.view === 'miniworlds' && (

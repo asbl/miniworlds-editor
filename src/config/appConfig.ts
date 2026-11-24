@@ -29,9 +29,11 @@ export interface AppConfig {
   collabUrl: string | null
   /** Optional classroom storage. null keeps the static editor entirely independent. */
   backendUrl: string | null
+  /** Minutes without input after which a server project is saved and signed out (0 = never). */
+  autoSignOutMinutes: number
 }
 
-export const DEFAULT_CONFIG: AppConfig = { pyodideBase: PYODIDE_BASE, imprint: 'Example Operator\nExample Street 1\n12345 Example City\ncontact@example.org', links: [], embedOrigins: [], lowMemory: 'auto', collabUrl: null, backendUrl: null }
+export const DEFAULT_CONFIG: AppConfig = { pyodideBase: PYODIDE_BASE, imprint: 'Example Operator\nExample Street 1\n12345 Example City\ncontact@example.org', links: [], embedOrigins: [], lowMemory: 'auto', collabUrl: null, backendUrl: null, autoSignOutMinutes: 30 }
 
 const isHttpUrl = (value: string): boolean => /^https?:\/\//i.test(value)
 
@@ -80,6 +82,7 @@ export function parseAppConfig(raw: unknown, page: string): AppConfig {
       }
     } catch { /* invalid addresses disable remote storage */ }
   }
+  if (typeof r.autoSignOutMinutes === 'number' && Number.isFinite(r.autoSignOutMinutes)) config.autoSignOutMinutes = Math.min(1440, Math.max(0, r.autoSignOutMinutes))
   if (typeof r.collabUrl === 'string' && r.collabUrl.trim()) config.collabUrl = collabAddress(r.collabUrl.trim(), page)
   if ('embedOrigins' in r) {
     // present but unusable (a string, numbers …) stays "nobody": a typo must not open the door

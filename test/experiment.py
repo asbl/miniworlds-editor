@@ -57,7 +57,6 @@ with sync_playwright() as p:
     check("program mode is the default", switch.get_by_role("button", name="Programm").get_attribute("aria-pressed") == "true")
     check("hint card is shown in program mode", hint(page).is_visible())
     check("hint explains the mode", "pausiert" in hint(page).inner_text(), hint(page).inner_text())
-    check("hint is not inside the controls of the experiment view", page.locator(".mw-class-buttons").count() == 0)
 
     hint(page).get_by_role("button", name="Experimentieren starten").click()
     check("hint button switches to the experiment mode", eventually(lambda: switch.get_by_role("button", name="Experimentieren", exact=True).get_attribute("aria-pressed") == "true"))
@@ -72,16 +71,52 @@ with sync_playwright() as p:
     page.locator(".mode-switch").get_by_role("button", name="Programm").click()
     check("switching back shows the hint card again", eventually(lambda: hint(page).is_visible()))
 
+    # --- the card is hidden while a program runs
+    page.locator(".tree .row-main", has_text="main.py").click()
+    page.click(".cm-content")
+    page.keyboard.press("Control+A")
+    page.keyboard.insert_text("import time\nwhile True:\n    time.sleep(0.1)\n")
+    page.locator(".toolbar .run").click()
+    check("hint card is hidden while the program runs", eventually(lambda: hint(page).count() == 0, 60000))
+    page.locator(".toolbar .run").click()  # stop
+    check("hint card returns when the program is stopped", eventually(lambda: hint(page).count() == 1, 30000))
+
     # --- keyboard: the hint button is reachable and works
     hint(page).get_by_role("button", name="Experimentieren starten").focus()
     page.keyboard.press("Enter")
     check("hint button works with the keyboard", eventually(lambda: hint(page).count() == 0))
+    # --- closing the card is remembered
+    page.locator(".mode-switch").get_by_role("button", name="Programm").click()
+    check("card is back in program mode", eventually(lambda: hint(page).is_visible()))
+    hint(page).get_by_role("button", name="Ausblenden").click()
+    check("card can be hidden", eventually(lambda: hint(page).count() == 0))
+    page.reload()
+    page.wait_for_selector(".cm-content")
+    check("hidden card stays hidden after a reload", page.locator(".mode-switch").is_visible() and hint(page).count() == 0)
+    check("the mode switch remains the way in", page.locator(".mode-switch").get_by_role("button", name="Experimentieren", exact=True).is_enabled())
+    page.context.close()
+
+    # --- an engine too old for the experiment mode: no offer, button disabled and explained
+    page = open_page(browser, "de-DE", errors=errors)
+    page.get_by_role("button", name="Projekt:").click()
+    page.get_by_role("menuitem", name="Python …").click()
+    options = page.locator("dialog[open] .python-version select option")
+    old = eventually(lambda: options.filter(has_text="eingeschränkt").count() > 0, 60000)
+    check("catalog offers a restricted (old) version", old)
+    if old:
+        page.locator("dialog[open] .python-version select").select_option(label=options.filter(has_text="eingeschränkt").first.inner_text())
+        page.locator("dialog[open]").get_by_role("button", name="Schließen").click()
+        page.wait_for_selector("dialog[open]", state="detached")
+        button = page.locator(".mode-switch").get_by_role("button", name="Experimentieren", exact=True)
+        check("experiment button is disabled for an old version", eventually(lambda: button.is_disabled()))
+        check("disabled button explains why", "4.4.0.15" in (button.get_attribute("title") or ""))
+        check("no hint card for an old version", hint(page).count() == 0)
     page.context.close()
 
     # --- narrow screen (phone): the hint lives in the world tab and nothing overflows
     page = open_page(browser, "de-DE", width=390, height=800, errors=errors)
     check("mode switch is visible on a phone", page.locator(".mode-switch").is_visible())
-    page.locator(".pane-tabs [role=tab]").last.click()
+    page.locator(".pane-tabs").get_by_role("tab", name="Welt").click()
     check("hint card is shown in the world tab", eventually(lambda: hint(page).is_visible()))
     check("no horizontal page scroll", page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"))
     hint(page).get_by_role("button", name="Experimentieren starten").click()

@@ -43,6 +43,18 @@ The server project uses the normal filesystem interface. Local duplication/expor
 collaboration controls are hidden while editing a server project, to avoid connecting unrelated synchronization systems.
 Readonly server projects can be run and exported. File mutations are rejected by both the editor adapter and backend.
 
+## Several devices, shared computers, importing
+
+- **Importing:** a still empty server project offers to copy an existing local project into it (also later via “Copy a local
+  project here”, with a warning if the server project already has content). The local project stays unchanged; the normal save uploads it.
+- **Device switch:** when the editor regains focus or the network, it compares the server revision. Nothing unsaved here → the newer
+  version is loaded silently. Unsaved changes here *and* a newer server version → a dialog: take the other device's version (the
+  draft is kept as its own local project “… (Entwurf …)”) or keep this one (it replaces the server version; the history keeps the old one).
+- **Automatic sign-out:** after `autoSignOutMinutes` (config.json, default 30, `0` = off) without input the project is saved and the
+  device signed out. Unsaved work or a not yet noted personal code keep the session open (checked again every 5 minutes).
+- **Stale copies:** in a new browser session (no token any more) server copies without unsaved changes are removed on start;
+  copies with a draft stay and ask for the code again. A copy another tab used within two minutes is never removed.
+
 ## Codes and passwords
 
 Teachers choose between normal project codes and single-use template codes. Each template code creates one new workspace

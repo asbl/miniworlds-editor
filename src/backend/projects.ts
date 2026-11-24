@@ -102,6 +102,60 @@ export class BackendProjects {
     this.connections.delete(name)
     return this.open(name, workspace)
   }
+  private records(): string[] {
+    return Object.keys(this.meta).filter(k => k.startsWith(prefix(this.base)) && !k.endsWith(':seen')).map(k => k.slice(prefix(this.base).length))
+  }
+  /** Names of local projects that are copies of server projects. */
+  serverNames(): string[] { return this.records() }
+  /** Mark the project as in use; a second tab of the same browser must not sweep it away. */
+  touch(name: string) { try { this.meta.setItem(`${this.key(name)}:seen`, String(Date.now())) } catch { /* storage full or blocked */ } }
+  /**
+   * A new browser session has no token. A server copy without unsaved work is then just a stale copy (shared computers!):
+   * remove it. Copies with a draft stay, so nothing is ever lost. Copies a different tab touched recently stay too.
+   */
+  async sweep(now = Date.now()): Promise<string[]> {
+    const removed: string[] = []
+    for (const name of this.records()) {
+      try {
+        const data = JSON.parse(this.meta.getItem(this.key(name))!) as RecordData
+        const seen = Number(this.meta.getItem(`${this.key(name)}:seen`) ?? 0)
+        if (this.secrets.getItem(this.key(name)) || hasDraft(data) || this.connections.has(name) || now - seen < 120_000) continue
+        this.meta.removeItem(this.key(name)); this.meta.removeItem(`${this.key(name)}:seen`)
+        await this.store.remove(name)
+        removed.push(name)
+      } catch { /* damaged record: leave it alone */ }
+    }
+    return removed
+  }
+  /** Local projects (not server copies) that could be moved into a server project. */
+  async importCandidates(current: string): Promise<string[]> {
+    const server = new Set(this.records())
+    return (await this.store.list()).filter(n => n !== current && !server.has(n))
+  }
+  /** Replace the contents of a server project with those of a local project; the normal save then uploads them. */
+  async importLocal(connection: BackendConnection, localName: string) {
+    const source = await this.store.open(localName)
+    const files = (await source.fs.list()).filter(e => e.kind === 'file')
+    const target = connection.workspace.fs
+    const keep = new Set(files.map(f => f.path))
+    for (const entry of await target.list()) if (entry.kind === 'file' && !keep.has(entry.path)) await target.remove(entry.path)
+    for (const file of files) await target.write(file.path, await source.fs.readBytes(file.path))
+    await connection.sync()
+  }
+  /** A server version is newer than the unsaved draft: keep the draft as a separate local project, then take the server version. */
+  async takeServer(connection: BackendConnection): Promise<string> {
+    const stamp = new Date(), two = (n: number) => String(n).padStart(2, '0')
+    const base = `${connection.project.title.slice(0, 35)} (Entwurf ${two(stamp.getDate())}.${two(stamp.getMonth() + 1)}. ${two(stamp.getHours())}.${two(stamp.getMinutes())})`
+    let copy = base
+    for (let n = 2; await this.store.exists(copy); n++) copy = `${base} ${n}`
+    const target = await this.store.open(copy)
+    for (const entry of await connection.local.fs.list()) {
+      if (entry.kind === 'file') await target.fs.write(entry.path, await connection.local.fs.readBytes(entry.path))
+    }
+    await connection.discardDraft()
+    await this.attach(connection.name, connection.client)
+    return copy
+  }
   pendingCodes(): { name: string; code: string }[] {
     return Object.keys(this.secrets).filter(k => k.startsWith(prefix(this.base)) && k.endsWith(':new-code'))
       .map(k => ({ name: k.slice(prefix(this.base).length, -':new-code'.length), code: this.secrets.getItem(k)! }))
@@ -114,6 +168,8 @@ export class BackendProjects {
     this.secrets.removeItem(`${this.key(connection.name)}:project-id`)
     this.acknowledgeCode(connection.name)
     this.meta.removeItem(this.key(connection.name))
+    this.meta.removeItem(`${this.key(connection.name)}:seen`)
+    this.secrets.removeItem(`${this.key(connection.name)}:offered`)
     this.connections.delete(connection.name)
     await this.store.remove(connection.name)
   }
@@ -218,6 +274,30 @@ export class BackendConnection {
     })
   }
   async retry() { this.blocked = false; await this.sync() }
+  /** Is the server ahead of us (another device saved)? "newer" = nothing unsaved here, so the server version can simply be loaded. */
+  async checkRemote(): Promise<'same' | 'newer' | 'conflict'> {
+    if (this.disposed || !this.client.token || this.status === 'saving') return 'same'
+    try {
+      const remote = await this.client.json<RemoteProject>('/api/play/project')
+      return await withLock(this.lockKey, async () => {
+        this.load()
+        if (this.disposed || remote.revision === this.data.revision) return 'same'
+        if (!this.data.dirty) return hasDraft(this.data) ? 'same' : 'newer'
+        this.blocked = true
+        this.emit('conflict', 'Auf einem anderen Gerät wurde inzwischen gespeichert.')
+        return 'conflict'
+      })
+    } catch { return 'same' } // offline or signed out: the normal save reports that
+  }
+  /** Keep this draft: adopt the server's revision, so the next save replaces it (the server keeps its history). */
+  async keepLocal() {
+    const remote = await this.client.json<RemoteProject>('/api/play/project')
+    await withLock(this.lockKey, async () => { this.load(); this.data.revision = remote.revision; this.persist() })
+    await this.retry()
+  }
+  async discardDraft() {
+    await withLock(this.lockKey, async () => { this.load(); this.data.dirty = false; delete this.data.answerDrafts; this.persist() })
+  }
   async answer(assignment: number, item: number, checked: boolean) {
     await withLock(this.lockKey, async () => {
       this.load()

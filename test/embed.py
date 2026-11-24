@@ -55,6 +55,7 @@ with sync_playwright() as p:
     check("files are shown", eventually(lambda: frame.locator(".tree .row-main", has_text="main.py").count() > 0 and frame.locator(".tree", has_text="Hallo.py").count() > 0, 20000))
     check("project name chrome is hidden (no project menu)", frame.locator(".topbar", has_text="Project").count() == 0 and frame.locator(".topbar", has_text="Projekt").count() == 0)
     check("language from the page", "English" in frame.locator(".topbar").inner_text())
+    check("no experiment hint card in an embedded editor", frame.locator(".world-panel").count() > 0 and frame.locator(".experiment-hint").count() == 0)
 
     frame.locator(".tree .row-main", has_text="main.py").click()
     check("editor shows the loaded code", eventually(lambda: "aus moodle" in frame.locator(".cm-content").inner_text(), 10000))

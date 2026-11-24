@@ -6,6 +6,7 @@ import type { Task } from './client'
 import './backend.css'
 
 interface Props {
+  idleMinutes: number
   dialog: 'claim' | 'password' | null
   onDialogChange: (dialog: 'claim' | 'password' | null) => void
   manager: BackendProjects
@@ -15,7 +16,7 @@ interface Props {
   onLogout: () => Promise<void>
 }
 
-export function BackendPanel({ dialog, onDialogChange: setDialog, manager, connection, flush, onOpen, onLogout }: Props) {
+export function BackendPanel({ idleMinutes, dialog, onDialogChange: setDialog, manager, connection, flush, onOpen, onLogout }: Props) {
   const lang = useLang()
   const tr = (de: string, en: string) => lang === 'de' ? de : en
   const [remoteProjects, setRemoteProjects] = useState<{id:number;title:string;read_only:boolean}[]>([])
@@ -34,6 +35,101 @@ export function BackendPanel({ dialog, onDialogChange: setDialog, manager, conne
   useEffect(() => setAnswerEdits({}), [connection])
   useEffect(() => { setError(''); if (dialog && !ref.current?.open) ref.current?.showModal() }, [dialog])
   const pending = manager.pendingCodes()
+  const [note, setNote] = useState('')
+  const latest = useRef({ connection, flush, onOpen, onLogout, idleMinutes })
+  latest.current = { connection, flush, onOpen, onLogout, idleMinutes }
+  const lastActive = useRef(Date.now())
+  const checking = useRef(false)
+
+  // Offer to move an existing local project into a still empty server project (right after the code was entered).
+  useEffect(() => {
+    if (!connection || connection.project.read_only) return
+    const offered = `${manager.key(connection.name)}:offered`
+    if (sessionStorage.getItem(offered)) return
+    sessionStorage.setItem(offered, '1')
+    void (async () => {
+      const files = (await connection.local.fs.list()).filter(e => e.kind === 'file')
+      const blank = files.length === 0 || files.length === 1 && files[0]!.path === 'main.py' && !(await connection.local.fs.read('main.py')).trim()
+      const candidates = await manager.importCandidates(connection.name)
+      if (!blank || candidates.length === 0) return
+      await importDialog(connection, candidates)
+    })()
+  }, [connection])
+  async function importDialog(target: BackendConnection, candidates: string[]) {
+    const own = (await target.local.fs.list()).filter(e => e.kind === 'file')
+    const empty = own.length === 0 || own.length === 1 && own[0]!.path === 'main.py' && !(await target.local.fs.read('main.py')).trim()
+    const values = await openDialog({ title: tr('Vorhandenes Projekt übernehmen?', 'Use an existing project?'), danger: !empty,
+      message: !empty ? tr('ACHTUNG: Der Inhalt dieses Serverprojekts wird durch das gewählte lokale Projekt ersetzt (der Server behält den Versionsverlauf).', 'WARNING: the contents of this server project are replaced by the chosen local project (the server keeps its history).') : tr('Dieses Serverprojekt ist noch leer. Du kannst ein Projekt von diesem Gerät hineinkopieren; es wird dann automatisch gespeichert. Das lokale Projekt bleibt unverändert.', 'This server project is still empty. You can copy a project from this device into it; it is then saved automatically. The local project stays unchanged.'),
+      fields: [{ kind: 'select', key: 'from', label: tr('Projekt', 'Project'), initial: candidates[0]!, options: candidates.map(c => ({ value: c, label: c })) }] })
+    if (!values) return
+    await flush(); await manager.importLocal(target, String(values.from)); await onOpen(target.name)
+  }
+
+  // Another device saved in the meantime: load its version (nothing unsaved here) or let the student decide (a draft here).
+  async function reconcile(source: BackendConnection) {
+    if (checking.current) return
+    checking.current = true
+    try {
+      const state = source.status === 'conflict' ? 'conflict' : await source.checkRemote()
+      if (state === 'newer') {
+        await latest.current.flush()
+        await latest.current.onOpen(source.name)
+        setNote(tr('Eine neuere Version von einem anderen Gerät wurde geladen.', 'A newer version from another device was loaded.'))
+      } else if (state === 'conflict') {
+        const values = await openDialog({ title: tr('Auf einem anderen Gerät wurde weitergearbeitet', 'Work continued on another device'),
+          message: tr('Dieses Projekt wurde dort gespeichert, während hier ungespeicherte Änderungen lagen. Nichts geht verloren: Der Server behält alle früheren Stände, und die Alternative bleibt als eigenes Projekt hier.', 'This project was saved there while this device had unsaved changes. Nothing is lost: the server keeps all earlier versions, and the other version stays here as its own project.'),
+          fields: [{ kind: 'radio', key: 'choice', label: tr('Welcher Stand soll gelten?', 'Which version should count?'), initial: 'server', options: [
+            { value: 'server', label: tr('Stand vom anderen Gerät übernehmen', 'Use the version from the other device'), hint: tr('Meine Änderungen hier werden als eigenes Projekt aufgehoben.', 'My changes here are kept as a separate project.') },
+            { value: 'mine', label: tr('Meinen Stand hier behalten', 'Keep my version here'), hint: tr('Er ersetzt den Serverstand; der alte bleibt im Versionsverlauf.', 'It replaces the server version; the old one stays in the history.') }] }] })
+        if (!values) return
+        await latest.current.flush()
+        if (values.choice === 'server') {
+          const copy = await manager.takeServer(source)
+          await latest.current.onOpen(source.name)
+          setNote(tr(`Stand vom anderen Gerät geladen. Deine Änderungen hier: Projekt „${copy}“.`, `Loaded the other device's version. Your changes here: project “${copy}”.`))
+        } else await source.keepLocal()
+      }
+    } catch (e) { setError(e instanceof Error ? e.message : String(e)) } finally { checking.current = false }
+  }
+  useEffect(() => { if (connection?.status === 'conflict') void reconcile(connection) }, [connection?.status, connection])
+  useEffect(() => {
+    if (!connection) return
+    let last = 0
+    const check = () => {
+      if (document.visibilityState !== 'visible' || Date.now() - last < 10_000) return
+      last = Date.now(); void reconcile(connection)
+    }
+    document.addEventListener('visibilitychange', check); window.addEventListener('focus', check); window.addEventListener('online', check)
+    check()
+    return () => { document.removeEventListener('visibilitychange', check); window.removeEventListener('focus', check); window.removeEventListener('online', check) }
+  }, [connection])
+
+  // Automatic sign-out after a while without input: save first; unsaved work or an unnoted personal code keep the session.
+  useEffect(() => {
+    if (!connection) return
+    lastActive.current = Date.now()
+    const active = () => { lastActive.current = Date.now() }
+    const events = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const
+    events.forEach(e => window.addEventListener(e, active, { passive: true, capture: true }))
+    let running = false
+    const tick = async () => {
+      manager.touch(connection.name)
+      const { idleMinutes: minutes } = latest.current
+      if (!minutes || running || Date.now() - lastActive.current < minutes * 60_000) return
+      running = true
+      try {
+        await latest.current.flush(); await connection.sync()
+        if (connection.dirty || manager.pendingCodes().some(p => p.name === connection.name)) { lastActive.current = Date.now() - (minutes - 5) * 60_000; return } // look again in 5 minutes
+        await manager.logout(connection); await latest.current.onLogout()
+        void infoDialog(tr('Automatisch abgemeldet', 'Signed out automatically'), tr('Nach längerer Pause wurde dein Projekt gespeichert und dieses Gerät abgemeldet. Gib deinen Code erneut ein, um weiterzuarbeiten.', 'After a longer break your project was saved and this device was signed out. Enter your code again to continue.'))
+      } catch { /* retried on the next tick */ } finally { running = false }
+    }
+    const timer = setInterval(() => { void tick() }, 20_000)
+    const visible = () => { if (document.visibilityState === 'visible') void tick() }
+    document.addEventListener('visibilitychange', visible)
+    void tick()
+    return () => { clearInterval(timer); document.removeEventListener('visibilitychange', visible); events.forEach(e => window.removeEventListener(e, active, { capture: true })) }
+  }, [connection])
   const labels = {
     saved: tr('Auf dem Server gespeichert', 'Saved on the server'), pending: tr('Änderungen noch lokal', 'Changes still local'),
     saving: tr('Wird gespeichert…', 'Saving…'), offline: tr('Speichern fehlgeschlagen · Entwurf bleibt lokal', 'Save failed · draft kept locally'),
@@ -80,7 +176,13 @@ export function BackendPanel({ dialog, onDialogChange: setDialog, manager, conne
         await onOpen((await manager.createProject(connection, String(values.title).trim())).name)
       })}>{tr('Neues Serverprojekt', 'New server project')}</button>
     </div>}
-    {connection?.error && <p role="alert">{connection.error}</p>}
+    {note && <p role="status">{note} <button type="button" onClick={() => setNote('')}>OK</button></p>}
+    {connection && !connection.project.read_only && <button type="button" disabled={busy} onClick={() => void perform(async () => {
+      const candidates = await manager.importCandidates(connection.name)
+      if (candidates.length === 0) throw new Error(tr('Auf diesem Gerät gibt es kein lokales Projekt zum Übernehmen.', 'There is no local project on this device to copy.'))
+      await importDialog(connection, candidates)
+    })}>{tr('Lokales Projekt übernehmen', 'Copy a local project here')}</button>}
+    {connection?.error && connection.status !== 'conflict' && <p role="alert">{connection.error}</p>}
     {connection?.status === 'conflict' && <p>{tr('Lade über „Sicherung“ zuerst deinen Entwurf herunter. Zum Vergleichen kannst du den Serverstand als ZIP laden. Zum Übernehmen des Serverstands melde dich nach der Sicherung ab und erneut an.', 'Download your draft using “Backup” first. Download the server ZIP to compare. To use the server version, sign out after backing up and sign in again.')} <button type="button" onClick={() => void perform(async () => {
       const response = await connection.client.request('/api/play/download')
       const url = URL.createObjectURL(await response.blob()); const a = document.createElement('a'); a.href = url; a.download = 'server-projekt.zip'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000)
