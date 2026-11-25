@@ -14,6 +14,7 @@ export const welcomeEn: Record<keyof typeof welcomeDe, string> = {
   'import.files.button': 'Choose Python files …',
   'project.importHelp': 'Import …',
   'share.legacyFailed': 'The project link is incomplete, invalid or too large. Please copy the whole link again, or pass the project on as a ZIP.',
+  'backup.full': 'The storage of this browser is almost full. Download your project as a ZIP file so that nothing is lost.',
   'backup.button': 'Download ZIP',
   'backup.title': 'Download the project as a ZIP file',
   'backup.hint': 'Your project is saved only on this device. Download a ZIP file as a backup.',

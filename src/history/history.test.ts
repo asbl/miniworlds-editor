@@ -144,3 +144,38 @@ describe('compare', () => {
     expect(compare({ constructor: 'x' }, {})).toEqual({ constructor: 'missing' })
   })
 })
+
+describe('markWorked', () => {
+  it('marks the snapshot of that state and finds it again', async () => {
+    const history = new History(new MemoryFs())
+    const before = await history.record({ 'main.py': 'a' }, 'run')
+    expect(await history.lastWorked()).toBeNull()
+    const marked = await history.markWorked({ 'main.py': 'a' })
+    expect(marked?.id).toBe(before?.id)
+    await history.record({ 'main.py': 'b' }, 'run')
+    expect((await history.lastWorked())?.id).toBe(before?.id)
+  })
+
+  it('makes a snapshot when there is none for that state', async () => {
+    const history = new History(new MemoryFs())
+    const marked = await history.markWorked({ 'main.py': 'x' })
+    expect(marked?.worked).toBe(true)
+    expect(await history.read(marked?.id as string)).toEqual({ 'main.py': 'x' })
+  })
+
+  it('does not make a snapshot when told not to, and still marks an existing one', async () => {
+    const history = new History(new MemoryFs())
+    expect(await history.markWorked({ 'main.py': 'x' }, false)).toBeNull()
+    expect(await history.list()).toHaveLength(0)
+    const made = await history.record({ 'main.py': 'x' }, 'run')
+    expect((await history.markWorked({ 'main.py': 'x' }, false))?.id).toBe(made?.id)
+  })
+
+  it('keeps the newest state that worked when old snapshots are pruned', async () => {
+    let now = 1000
+    const history = new History(new MemoryFs(), { maxSnapshots: 3, now: () => now++ })
+    await history.markWorked({ 'main.py': 'good' })
+    for (const n of ['a', 'b', 'c', 'd', 'e']) await history.record({ 'main.py': n }, 'timer')
+    expect((await history.lastWorked())?.files['main.py']).toBe(hashText('good'))
+  })
+})

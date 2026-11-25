@@ -277,6 +277,12 @@ scopeSelf.onmessage = async ({ data }: MessageEvent<ToWorker>) => {
     case 'rpc':
       post({ type: 'rpc-result', id: data.id, reply: JSON.parse(runner.rpc(data.name, JSON.stringify(data.args)) as string) })
       break
+    case 'snapshot': {
+      const canvas = scope.__canvas as OffscreenCanvas | undefined
+      const png = await canvas?.convertToBlob({ type: 'image/png' }).then((blob) => blob.arrayBuffer()).catch(() => null)
+      post({ type: 'snapshot-result', id: data.id, png: png ?? null }, png ? [png] : [])
+      break
+    }
     case 'input':
       if (runner) runner.post_input(JSON.stringify(data.event))
       break

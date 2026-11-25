@@ -79,5 +79,18 @@ export function useHistoryActions(fs: Fs, session: Session | null, historyApi: R
     }
   }
 
-  return { viewing, close: () => setViewing(null), openSnapshot, saveVersion, labelVersion, removeVersion, restoreOne, restoreEverything }
+  /** "Back to the last version that ran": asks first; the state before is remembered by `restoreAll`, so this can be undone in the history. */
+  async function restoreWorked(snapshot: Snapshot) {
+    if (!historyApi.history || !session) return
+    if (!(await confirmDialog(t('history.restoreWorked'), t('history.restoreWorkedConfirm') + (shared ? ` ${t('history.restoreAllShared')}` : ''), false))) return
+    try {
+      await restoreAll({ fs, session, history: historyApi.history }, snapshot.id)
+      await refresh()
+      await historyApi.reload()
+    } catch (error) {
+      await reportError(error)
+    }
+  }
+
+  return { restoreWorked, viewing, close: () => setViewing(null), openSnapshot, saveVersion, labelVersion, removeVersion, restoreOne, restoreEverything }
 }

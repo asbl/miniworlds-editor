@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseBackupRecord, REMIND_AFTER_MS, shouldRemind } from './backup'
+import { parseBackupRecord, REMIND_AFTER_MS, shouldRemind, storageLow } from './backup'
 
 describe('backup reminder', () => {
   it('reads the stored time, and nothing from rubbish', () => {
@@ -16,5 +16,18 @@ describe('backup reminder', () => {
   })
   it('a time in the future (clock was changed) does not silence the reminder forever', () => {
     expect(shouldRemind(2_000_000_000_000, 1_800_000_000_000)).toBe(true)
+  })
+})
+
+describe('storageLow', () => {
+  it('warns when more than 80 % is used or under 30 MB is left', () => {
+    expect(storageLow({ usage: 900, quota: 1000 })).toBe(true)
+    expect(storageLow({ usage: 100 * 1024 * 1024, quota: 120 * 1024 * 1024 })).toBe(true)
+    expect(storageLow({ usage: 10 * 1024 * 1024, quota: 10 * 1024 * 1024 * 1024 })).toBe(false)
+  })
+
+  it('stays quiet when the browser does not say', () => {
+    expect(storageLow({})).toBe(false)
+    expect(storageLow({ usage: 5, quota: 0 })).toBe(false)
   })
 })

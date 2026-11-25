@@ -9,6 +9,8 @@ export interface Snapshot {
   reason: SnapshotReason
   /** Name given by the user (manual snapshots, or renamed later). */
   label?: string
+  /** The program ran to its end (or was stopped) without an error in this state: "it worked a minute ago". */
+  worked?: boolean
   /** path -> content hash */
   files: Record<string, string>
   /** Total size of the texts in characters (shown, and used for the size limit). */
@@ -120,6 +122,36 @@ export class History {
     })
   }
 
+  /** Marks the state `texts` as one that ran without an error (the snapshot of this very state; made if there is none and `create` allows it: a world that reloads while typing must not fill the history). */
+  markWorked(texts: Record<string, string>, create = true): Promise<Snapshot | null> {
+    return this.exclusive(async () => {
+      const index = await this.load()
+      const files = Object.fromEntries(Object.entries(texts).map(([path, text]) => [path, hashText(text)]))
+      let snapshot = [...index].sort((a, b) => b.time - a.time).find((s) => sameFiles(s.files, files))
+      if (!snapshot) {
+        if (!create) return null
+        for (const [path, text] of Object.entries(texts)) {
+          const file = objectPath(files[path] as string)
+          if (!(await this.fs.exists(file))) await this.fs.write(file, text)
+        }
+        const time = Math.max(this.now(), Math.max(0, ...index.map((s) => s.time)) + 1)
+        snapshot = { id: `${time.toString(36)}-${Math.random().toString(36).slice(2, 6)}`, time, reason: 'run', files, size: Object.values(texts).reduce((n, x) => n + x.length, 0) }
+        index.push(snapshot)
+        await this.prune()
+      }
+      if (!snapshot.worked) {
+        snapshot.worked = true
+        await this.save()
+      }
+      return snapshot
+    })
+  }
+
+  /** The newest state that ran without an error, or null. */
+  lastWorked(): Promise<Snapshot | null> {
+    return this.exclusive(async () => [...(await this.load())].filter((s) => s.worked).sort((a, b) => b.time - a.time)[0] ?? null)
+  }
+
   /** The texts of a snapshot (path -> text). A missing object (storage cleaned from outside) is left out. */
   read(id: string): Promise<Record<string, string>> {
     return this.exclusive(async () => {
@@ -161,7 +193,9 @@ export class History {
   /** Drops old automatic snapshots beyond the limits, then the texts nobody refers to any more. */
   private async prune(): Promise<void> {
     const index = this.index as Snapshot[]
-    const oldestAutomatic = () => index.filter((s) => !s.label && s.reason !== 'manual').sort((a, b) => a.time - b.time)[0]
+    // the newest state that worked is the way back after a mistake: it stays
+    const keep = index.filter((s) => s.worked).sort((a, b) => b.time - a.time)[0]
+    const oldestAutomatic = () => index.filter((s) => !s.label && s.reason !== 'manual' && s !== keep).sort((a, b) => a.time - b.time)[0]
     const chars = () => {
       // distinct texts only: the same text in many snapshots is stored once
       const seen = new Map<string, number>()

@@ -12,6 +12,7 @@ import type { Catalog } from '../packages/catalog'
 import { useNarrow } from './useNarrow'
 import { loadPreferences } from './preferences'
 import { HistoryDialog } from '../history/HistoryDialog'
+import type { Snapshot } from '../history/history'
 import { useHistory } from '../history/useHistory'
 import { engineTier } from '../packages/versions'
 import type { Runner } from '../runtime/runner'
@@ -39,6 +40,7 @@ import { usePanelWidths } from './project/usePanelWidths'
 import { useSessionState } from './project/useSessionState'
 import { useStaleClasses } from './project/useStaleClasses'
 import { useTrace } from '../trace/useTrace'
+import { suggestIdeas } from '../tasks/suggest'
 import { LiveSync } from '../live/liveSync'
 import { ApiPanel } from '../api/ApiPanel'
 import { engineBaseOf, snippetFor, type ApiMember } from '../api/apiIndex'
@@ -139,7 +141,23 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   const effectiveVersion = settings.miniworlds ?? versions?.latest ?? null
   const miniworldsSupported = effectiveVersion === null || engineTier(effectiveVersion) === 'full'
   const view = mode === 'miniworlds' && miniworldsSupported ? 'miniworlds' : 'program'
-  const program = useProgram({ runner, catalog, fs, session, host, settings, settingsLoaded, mode: view, refresh })
+  const restoreWorkedRef = useRef<(snapshot: Snapshot) => void>(() => {})
+  const program = useProgram({
+    runner,
+    catalog,
+    fs,
+    session,
+    host,
+    settings,
+    settingsLoaded,
+    mode: view,
+    refresh,
+    onWorked: (texts) => void historyApi.markWorked(texts),
+    restorePoint: async () => {
+      const snapshot = await historyApi.workedBefore()
+      return snapshot ? () => restoreWorkedRef.current(snapshot) : null
+    },
+  })
   const metaApi = useMiniworldsMeta(fs, refresh)
   metaFlush.current = metaApi.flush
   const gf = useMiniworlds(runner, metaApi)
@@ -162,9 +180,22 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
   const apiIndex = useApiIndex(runner, installedVersion, modelSupported)
   const cursorClass = classModel.model && cursor ? classAtLine(classModel.model, cursor.path, cursor.line) : null
   const apiStart = apiIndex ? engineBaseOf(classModel.model, apiIndex, cursorClass) : null
-  const trace = useTrace(runner, (row) => host.current?.flash(row.path, row.line))
+  const stepping = useRef(false)
+  // an event method glows when it is called; `act` runs every step, so it glows only while the world is paused and the pupil steps through it
+  const trace = useTrace(runner, (row, frame) => {
+    if (!frame) host.current?.flash(row.path, row.line)
+    else if (stepping.current) host.current?.flash(row.path, row.line, 1500)
+  })
   const classView = useClassPanelView()
+  stepping.current = gf.state.active && gf.state.paused
   const taskChecks = useTaskChecks({ meta: metaApi.meta, setMeta: metaApi.setMeta, controller: gf.controller, facts: gf.state.facts, lines: gf.runnerState.lines, model: classModel.model, files: classModel.files })
+  // A program without tasks (imported, own, or new) gets a few ideas to build on, each ticking itself when done.
+  const ideasWanted = !embedded && !workspace.readOnly && !collab && metaApi.loaded && metaApi.meta.tasks.length === 0 && !metaApi.meta.suggested
+  useEffect(() => {
+    if (!ideasWanted || !classModel.model || Object.keys(classModel.files).length === 0) return
+    const ideas = suggestIdeas(classModel.model, classModel.files, lang)
+    if (ideas.length > 0) metaApi.setMeta({ ...metaApi.meta, tasks: ideas.map((i) => i.text), checks: ideas.map((i) => i.check), tasksDone: {}, suggested: true })
+  }, [ideasWanted, classModel.model, classModel.files]) // eslint-disable-line react-hooks/exhaustive-deps
   const languageState = useLanguage({
     language,
     runner,
@@ -179,6 +210,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
 
   const files = useFileOps({ fs, session, entries, kind, refresh, metaApi, historyApi })
   const history = useHistoryActions(fs, session, historyApi, refresh, !!collab && !collab.readOnly)
+  restoreWorkedRef.current = (snapshot) => void history.restoreWorked(snapshot)
   const renameClassDialog = useRenameClass({ fs, session, kind, runner, classModel, metaApi, historyApi, refresh, onRenamed: classView.setPicked })
   const copyReport = useReport({ fs, session, runner, lang, settings, entries })
 
@@ -375,6 +407,8 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
             done: metaApi.meta.tasksDone,
             onToggle: taskChecks.toggle,
             hasCheck: taskChecks.hasCheck,
+            tips: taskChecks.tips,
+            ideas: metaApi.meta.suggested === true,
           }}
           miniworlds={
             view === 'miniworlds'

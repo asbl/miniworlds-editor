@@ -14,6 +14,8 @@ export interface MiniworldsMeta {
   tasksDone: Record<string, boolean>
   /** One automatic check per task (null: tick it by hand). Same length as `tasks`. */
   checks?: (Check | null)[]
+  /** The tasks are the editor's own ideas for this program (not a template's or a teacher's tasks). */
+  suggested?: boolean
   /** Where each project image came from (library, drawn, uploaded); sharing needs it. */
   images?: Provenance
 }
@@ -43,6 +45,7 @@ export function parseMeta(text: string): MiniworldsMeta {
     tasks: Array.isArray(r.tasks) ? r.tasks.filter((t): t is string => typeof t === 'string') : [],
     tasksDone: done,
     ...(Array.isArray(r.checks) ? { checks: r.checks.map((c) => parseCheck(c)) } : {}),
+    ...(r.suggested === true ? { suggested: true } : {}),
     ...(typeof r.images === 'object' && r.images !== null ? { images: parseProvenance(r.images) } : {}),
   }
 }

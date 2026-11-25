@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { errorNote, explainError, parseFinalError } from './explain'
+import { errorNote, explainError, parseFinalError, typoFix } from './explain'
 
 const tb = (last: string) => `Traceback (most recent call last):\n  File "/project/classes/Krabbe.py", line 12, in act\n    self.mov(2)\n${last}`
 
@@ -80,5 +80,22 @@ describe('errorNote', () => {
   })
   it('is null when no exception can be read', () => {
     expect(errorNote('just some output', 'en')).toBeNull()
+  })
+})
+
+describe('typoFix', () => {
+  it('reads the misspelt attribute and the suggestion', () => {
+    const trace = "Traceback (most recent call last):\n  File \"/project/main.py\", line 3, in <module>\nAttributeError: 'Figur' object has no attribute 'mov'. Did you mean: 'move'?"
+    expect(typoFix(trace)).toEqual({ wrong: 'mov', right: 'move' })
+    expect(errorNote(trace, 'de')?.fix).toEqual({ wrong: 'mov', right: 'move' })
+  })
+
+  it('reads a misspelt name', () => {
+    expect(typoFix("NameError: name 'welt' is not defined. Did you mean: 'Welt'?")).toEqual({ wrong: 'welt', right: 'Welt' })
+  })
+
+  it('offers nothing without a suggestion', () => {
+    expect(typoFix("AttributeError: 'Figur' object has no attribute 'xyz'")).toBeNull()
+    expect(typoFix("ZeroDivisionError: division by zero")).toBeNull()
   })
 })

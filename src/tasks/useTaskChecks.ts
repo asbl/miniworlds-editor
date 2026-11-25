@@ -4,6 +4,7 @@ import type { MiniworldsMeta } from '../miniworlds/meta'
 import type { ConsoleLine } from '../runtime/runner'
 import type { ClassModel } from '../uml/model'
 import { evaluate, needsMoves, needsOutput, type Facts } from './checks'
+import { tipsFor } from './tips'
 
 interface Args {
   meta: MiniworldsMeta
@@ -49,5 +50,11 @@ export function useTaskChecks({ meta, setMeta, controller, facts, lines, model, 
     [meta, setMeta],
   )
 
-  return { toggle, hasCheck: (i: number) => !!checks[i] }
+  /** Graded tips for a task that is not done yet (from its check; none for a task without one). */
+  const tips = (i: number): string[] => {
+    const check = checks[i]
+    return check && !meta.tasksDone[i] ? tipsFor(check, { facts, output: needsOutput(check) ? lines.map((l) => l.text).join('\n') : '', model, files }) : []
+  }
+
+  return { toggle, hasCheck: (i: number) => !!checks[i], tips }
 }

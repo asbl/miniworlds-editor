@@ -16,6 +16,7 @@ export const welcomeDe = {
   'project.importHelp': 'Importieren …',
   // ---- backup ----
   'share.legacyFailed': 'Der Projektlink ist unvollständig, ungültig oder zu groß. Bitte den vollständigen Link noch einmal kopieren oder das Projekt als ZIP übertragen.',
+  'backup.full': 'Der Speicher dieses Browsers ist fast voll. Lade dein Projekt als ZIP-Datei herunter, damit nichts verloren geht.',
   'backup.button': 'ZIP herunterladen',
   'backup.title': 'Projekt als ZIP-Datei herunterladen',
   'backup.hint': 'Dein Projekt ist nur auf diesem Gerät gespeichert. Lade eine ZIP-Datei als Sicherung herunter.',

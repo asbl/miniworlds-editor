@@ -3,6 +3,7 @@ import { t } from '../i18n'
 import type { Catalog } from '../packages/catalog'
 import { ENTRY_DEFAULT } from '../project/manifest'
 import { isTextPath } from '../project/search'
+import { isProgramText } from '../history/restore'
 import type { ProjectSettings } from '../project/settings'
 import type { RunResult, Runner, RuntimeConfig } from '../runtime/runner'
 import { errorNote, type ErrorNote } from '../runtime/explain'
@@ -33,10 +34,14 @@ interface Args {
   /** `miniworlds` starts the world paused under the ScenarioHost; `program` runs it like a normal program. */
   mode: 'program' | 'miniworlds'
   refresh: () => Promise<void>
+  /** The program ended without an error: remember this state as one that worked. */
+  onWorked?: (texts: Record<string, string>) => void
+  /** After an error: put the project back to the last state that worked (null when there is none or nothing differs). */
+  restorePoint?: () => Promise<(() => void) | null>
 }
 
 /** Run/stop a project, show where it failed, write back files the program created. */
-export function useProgram({ runner, catalog, fs, session, host, settings, settingsLoaded, mode, refresh }: Args) {
+export function useProgram({ runner, catalog, fs, session, host, settings, settingsLoaded, mode, refresh, onWorked, restorePoint }: Args) {
   const state = useRunnerState(runner)
   const [launching, setLaunching] = useState(false)
   const config = useRef<RuntimeConfig>({ miniworlds: null, packages: [] })
@@ -94,6 +99,8 @@ export function useProgram({ runner, catalog, fs, session, host, settings, setti
       if (!entries.some((e) => e.path === entry)) return void (await infoDialog(t('dialog.error'), t('run.noEntry', { entry })))
       const files: Record<string, Uint8Array> = {}
       for (const e of entries) files[e.path] = await fs.readBytes(e.path)
+      // what is about to run (not what is in the editor when it ends: that may have been edited meanwhile)
+      const sent = Object.fromEntries(Object.entries(files).filter(([path]) => isProgramText(path)).map(([path, bytes]) => [path, new TextDecoder().decode(bytes)]))
       await catalogReady(catalog)
       config.current = runtimeConfig(settings, catalog)
       const running = runner.run(files, entry, config.current, { scenario: mode === 'miniworlds' })
@@ -102,7 +109,11 @@ export function useProgram({ runner, catalog, fs, session, host, settings, setti
       await applyChanges(result)
       if (result.error) {
         const location = errorLocation(result.error)
-        if (location) await jumpTo(location, errorNote(result.error))
+        const note = errorNote(result.error)
+        const restore = await restorePoint?.()
+        if (location) await jumpTo(location, note && restore ? { ...note, restore } : note)
+      } else {
+        onWorked?.(sent)
       }
     } catch (error) {
       if (!(error instanceof Error && error.message === t('run.cancelled'))) {
@@ -111,7 +122,7 @@ export function useProgram({ runner, catalog, fs, session, host, settings, setti
     } finally {
       setLaunching(false)
     }
-  }, [session, launching, fs, catalog, settings, runner, host, mode, applyChanges, jumpTo])
+  }, [session, launching, fs, catalog, settings, runner, host, mode, applyChanges, jumpTo, onWorked, restorePoint])
 
   const stop = useCallback(async () => {
     const changes = await runner.stop()

@@ -42,6 +42,8 @@ export type ToWorker =
   | { type: 'input-reply'; id: string; text: string | null }
   /** Request/reply: scenario commands ("scenario:act") and static analysis ("model", "check"). */
   | { type: 'rpc'; id: number; name: string; args: unknown[] }
+  /** A picture (PNG) of the world as it is now. */
+  | { type: 'snapshot'; id: number }
 
 /** Files the program created, changed or deleted while it ran. */
 export interface FileChanges {
@@ -71,3 +73,5 @@ export type FromWorker =
   /** Scenario mode: the world exists and is paused, commands are accepted. */
   | { type: 'scenario-ready' }
   | { type: 'rpc-result'; id: number; reply: RpcReply }
+  /** The picture asked for with `snapshot` (null: the browser could not make one). */
+  | { type: 'snapshot-result'; id: number; png: ArrayBuffer | null }

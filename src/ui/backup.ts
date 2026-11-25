@@ -38,3 +38,10 @@ export function saveBackupRecord(now: number): void {
     /* the reminder may come again; harmless */
   }
 }
+
+/** The browser's storage is nearly full (more than 80 % used, or under 30 MB left): saving may soon fail. */
+export function storageLow(estimate: { usage?: number; quota?: number }): boolean {
+  const { usage, quota } = estimate
+  if (typeof usage !== 'number' || typeof quota !== 'number' || quota <= 0) return false
+  return usage / quota > 0.8 || quota - usage < 30 * 1024 * 1024
+}

@@ -93,6 +93,7 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
   private runWaiter: Waiter<RunResult> | null = null
   private stopWaiter: Waiter<FileChanges> | null = null
   private rpcWaiters = new Map<number, (reply: RpcReply) => void>()
+  private snapshotWaiters = new Map<number, (png: ArrayBuffer | null) => void>()
   private nextRpc = 1
   private installWaiters = new Map<string, Waiter<{ ok: boolean; error?: string }>>()
   private stopTimer: ReturnType<typeof setTimeout> | null = null
@@ -185,6 +186,8 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
     this.installWaiters.clear()
     for (const resolve of this.rpcWaiters.values()) resolve({ ok: false, error: reason })
     this.rpcWaiters.clear()
+    for (const resolve of this.snapshotWaiters.values()) resolve(null)
+    this.snapshotWaiters.clear()
     this.env.audio?.reset?.() // a new worker sends its sounds again; the old decoded ones would stay in memory
     this.set({ phase: 'idle', bootStep: null, version: null, scenarioReady: false, input: null })
   }
@@ -274,6 +277,11 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
         resolve?.(message.reply)
         break
       }
+      case 'snapshot-result': {
+        this.snapshotWaiters.get(message.id)?.(message.png)
+        this.snapshotWaiters.delete(message.id)
+        break
+      }
       case 'installed': {
         const waiter = this.installWaiters.get(message.requirement)
         this.installWaiters.delete(message.requirement)
@@ -359,6 +367,20 @@ export class Runner<C extends CanvasLike = HTMLCanvasElement> {
     const reply = new Promise<RpcReply>((resolve) => this.rpcWaiters.set(id, resolve))
     worker.postMessage({ type: 'rpc', id, name, args })
     return reply as Promise<RpcReply<T>>
+  }
+
+  /** A PNG of the world as it is now, or null (no program running, or the browser cannot make one). */
+  async snapshot(): Promise<ArrayBuffer | null> {
+    const worker = this.worker
+    if (!worker || this.state.phase !== 'running') return null
+    const id = this.nextRpc++
+    const png = new Promise<ArrayBuffer | null>((resolve) => this.snapshotWaiters.set(id, resolve))
+    worker.postMessage({ type: 'snapshot', id })
+    const timer = setTimeout(() => this.snapshotWaiters.get(id)?.(null), 3000)
+    return png.finally(() => {
+      clearTimeout(timer)
+      this.snapshotWaiters.delete(id)
+    })
   }
 
   /** The page's sound output (mute switch), if the browser has one. */

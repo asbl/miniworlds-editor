@@ -1,5 +1,6 @@
 import type { de } from './de'
 import { studentEn } from './student.en'
+import { tipsEn } from './tips.en'
 import { welcomeEn } from './welcome.en'
 import { collabEn } from './collab.en'
 import { engineEn } from './engine.en'
@@ -300,7 +301,11 @@ export const en: Record<keyof typeof de, string> = {
   'layout.resizeWorld': 'World width',
   'layout.splitterHint': 'Drag or arrow keys: change the width · double click or Home: default width',
   'errorNote.close': 'Close error message',
+  'errorNote.fix': 'Fix: “{wrong}” → “{right}”',
+  'errorNote.restore': 'Back to the last version that ran',
   'errorNote.label': 'Error in this line',
+  'history.restoreWorked': 'Back to the last version that ran',
+  'history.restoreWorkedConfirm': 'Your program is put back to the last version that ran without an error. You can find the current version in the history afterwards.',
   'history.title': 'History',
   'history.save': 'Save version …',
   'history.saveName': 'Name for this version',
@@ -368,6 +373,8 @@ export const en: Record<keyof typeof de, string> = {
   'world.unmute': 'Unmute sound',
   'world.show': 'Show world',
   'world.dock': 'In the editor',
+  'world.snapshot': 'Save a picture of the world (PNG)',
+  'world.snapshotFailed': 'The world could not be saved as a picture.',
   'world.fullscreen': 'Full screen (Esc exits)',
   'world.window': 'In its own window',
   'world.tab': 'In a new tab',
@@ -411,6 +418,7 @@ export const en: Record<keyof typeof de, string> = {
 
   ...studentEn,
   ...welcomeEn,
+  ...tipsEn,
   ...collabEn,
   ...engineEn,
   'miniworlds.actHint': 'Run one step (act).',

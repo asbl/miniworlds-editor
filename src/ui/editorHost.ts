@@ -42,6 +42,17 @@ const PHRASES: Record<Lang, Record<string, string>> = {
   },
 }
 
+/** Where `name` stands as a whole word in a line of code (`.name` first: an attribute), or -1. */
+export function findName(line: string, name: string): number {
+  const re = new RegExp(`(?<![\\w])${name}(?![\\w])`, 'g')
+  let first = -1
+  for (const m of line.matchAll(re)) {
+    if (line[m.index - 1] === '.') return m.index
+    if (first < 0) first = m.index
+  }
+  return first
+}
+
 /** The error message under the failing line, with a button to dismiss it. */
 class ErrorNoteWidget extends WidgetType {
   constructor(private note: ErrorNote) {
@@ -49,7 +60,7 @@ class ErrorNoteWidget extends WidgetType {
   }
 
   eq(other: ErrorNoteWidget): boolean {
-    return other.note.title === this.note.title && other.note.tip === this.note.tip
+    return other.note.title === this.note.title && other.note.tip === this.note.tip && other.note.fix?.right === this.note.fix?.right && !!other.note.restore === !!this.note.restore
   }
 
   toDOM(view: EditorView): HTMLElement {
@@ -57,6 +68,11 @@ class ErrorNoteWidget extends WidgetType {
     box.className = 'cm-error-note'
     box.setAttribute('role', 'note')
     box.setAttribute('aria-label', t('errorNote.label'))
+    // as wide as the visible editor (not as the longest line), and it stays put when the code is scrolled sideways
+    const gutters = view.dom.querySelector<HTMLElement>('.cm-gutters')
+    box.style.width = `${Math.max(200, view.scrollDOM.clientWidth - (gutters?.offsetWidth ?? 0) - 12)}px`
+    box.style.position = 'sticky'
+    box.style.left = '0'
     const title = document.createElement('div')
     title.className = 'cm-error-title'
     title.textContent = this.note.title
@@ -66,6 +82,33 @@ class ErrorNoteWidget extends WidgetType {
       tip.className = 'cm-error-tip'
       tip.textContent = `💡 ${this.note.tip}`
       box.append(tip)
+    }
+    const { fix, restore } = this.note
+    if (fix || restore) {
+      const actions = document.createElement('div')
+      actions.className = 'cm-error-actions'
+      if (fix) {
+        const apply = document.createElement('button')
+        apply.type = 'button'
+        apply.className = 'primary'
+        apply.textContent = t('errorNote.fix', { wrong: fix.wrong, right: fix.right })
+        apply.addEventListener('click', () => {
+          const line = view.state.doc.lineAt(view.posAtDOM(box))
+          const at = findName(line.text, fix.wrong)
+          if (at < 0) return
+          view.dispatch({ changes: { from: line.from + at, to: line.from + at + fix.wrong.length, insert: fix.right }, effects: setErrorLine.of(null) })
+          view.focus()
+        })
+        actions.append(apply)
+      }
+      if (restore) {
+        const back = document.createElement('button')
+        back.type = 'button'
+        back.textContent = t('errorNote.restore')
+        back.addEventListener('click', restore)
+        actions.append(back)
+      }
+      box.append(actions)
     }
     const close = document.createElement('button')
     close.type = 'button'
@@ -357,14 +400,14 @@ export class EditorHost implements Surface {
   private flashTimer: ReturnType<typeof setTimeout> | null = null
 
   /** Let the line of a method glow (only when its file is the one shown); it fades about half a second after the last call. */
-  flash(path: string, line: number): void {
+  flash(path: string, line: number, ms = 500): void {
     if (this.current !== path) return
     this.view.dispatch({ effects: flashLine.of(line) })
     if (this.flashTimer) clearTimeout(this.flashTimer)
     this.flashTimer = setTimeout(() => {
       this.flashTimer = null
       this.view.dispatch({ effects: flashLine.of(null) })
-    }, 500)
+    }, ms)
   }
 
   /** Remove the error mark in every open file (called when the program starts again). */

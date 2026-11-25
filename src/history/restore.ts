@@ -6,11 +6,14 @@ import type { History } from './history'
 /** Files that hold the state of the miniworlds view (start setup, tasks): changing them is no change of the program. */
 const NOT_PROGRAM = new Set(['miniworlds.json', 'greenfoot.json'])
 
+/** Whether a file counts as part of the program (history, "worked" marks). */
+export const isProgramText = (path: string): boolean => isTextPath(path) && !NOT_PROGRAM.has(path)
+
 /** The project's text files as the user sees them (unsaved typing included). */
 export async function readTexts(fs: Fs, session: Pick<Session, 'readText'> | null): Promise<Record<string, string>> {
   const out: Record<string, string> = {}
   for (const entry of await fs.list()) {
-    if (entry.kind !== 'file' || !isTextPath(entry.path) || NOT_PROGRAM.has(entry.path)) continue
+    if (entry.kind !== 'file' || !isProgramText(entry.path)) continue
     out[entry.path] = session ? await session.readText(entry.path) : await fs.read(entry.path)
   }
   return out

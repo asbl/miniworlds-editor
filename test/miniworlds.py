@@ -188,7 +188,8 @@ with sync_playwright() as p:
     check("same number of actors after reset", eventually(lambda: actors(page) == 4, 10000), info(page))
     more(page, "Aufstellung leeren")
     check("clearing the setup reloads the plain world", eventually(lambda: actors(page) == 1, 40000), info(page))
-    check("journal file is gone when empty", eventually(lambda: "miniworlds.json" not in page.locator(".tree").inner_text(), 5000))
+    # miniworlds.json stays (it holds the ideas the editor suggests); the cleared setup is what must be gone
+    check("cleared setup is no longer counted", eventually(lambda: re.search(r"Startaufstellung: \d+ Schritte", more(page)) is None, 5000))
 
     # --- late edits (after the first frame) are not recorded
     page.get_by_role("button", name="Schritt", exact=True).click()

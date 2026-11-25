@@ -15,6 +15,7 @@ const POLL_MS = 300
 export function useMiniworldsMeta(fs: Fs, onFileCreated: () => void) {
   const ref = useRef<MiniworldsMeta>(emptyMeta())
   const [meta, setMetaState] = useState<MiniworldsMeta>(ref.current)
+  const [loaded, setLoaded] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const dirty = useRef(false)
 
@@ -34,6 +35,7 @@ export function useMiniworldsMeta(fs: Fs, onFileCreated: () => void) {
       if (stale) return
       ref.current = m
       setMetaState(m)
+      setLoaded(true)
     })
     // best effort when the page goes away (reload, tab closed) inside the save delay
     const onHide = () => void flush()
@@ -56,7 +58,7 @@ export function useMiniworldsMeta(fs: Fs, onFileCreated: () => void) {
     [flush],
   )
 
-  return { meta, metaRef: ref, setMeta, flush }
+  return { meta, loaded, metaRef: ref, setMeta, flush }
 }
 
 /** Dialog that asks for constructor or method arguments (texts, parsed by the engine with literal_eval only). */

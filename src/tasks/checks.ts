@@ -19,6 +19,8 @@ export type Check =
   | { type: 'method'; cls: string; name: string } // …with a method of this name
   | { type: 'image'; cls: string } // …whose source sets a picture
   | { type: 'changed'; path: string; hash: string } // the file differs from the template's version (hash of that)
+  | { type: 'handler'; prefix: string; tip?: string } // some class has a method whose name starts with this (on_key_pressed, on_detecting, ...)
+  | { type: 'source'; contains: string; tip?: string } // some Python file contains this text
   | { type: 'all'; of: Check[] }
 
 /** What the world did since it was started (see `FactTracker`). */
@@ -79,6 +81,10 @@ export function evaluate(check: Check, env: CheckEnv): boolean {
       const text = env.files[check.path]
       return typeof text === 'string' && hashText(text) !== check.hash
     }
+    case 'handler':
+      return env.model?.classes.some((c) => c.methods.some((m) => m.name.startsWith(check.prefix))) ?? false
+    case 'source':
+      return Object.entries(env.files).some(([path, text]) => path.endsWith('.py') && text.includes(check.contains))
     case 'all':
       return check.of.length > 0 && check.of.every((c) => evaluate(c, env))
   }
@@ -112,6 +118,10 @@ export function parseCheck(raw: unknown, depth = 0): Check | null {
       return str(r.cls) && str(r.name) ? { type: 'method', cls: r.cls, name: r.name } : null
     case 'changed':
       return str(r.path) && str(r.hash) ? { type: 'changed', path: r.path, hash: r.hash } : null
+    case 'handler':
+      return str(r.prefix) ? { type: 'handler', prefix: r.prefix, ...(str(r.tip) ? { tip: r.tip } : {}) } : null
+    case 'source':
+      return str(r.contains) ? { type: 'source', contains: r.contains, ...(str(r.tip) ? { tip: r.tip } : {}) } : null
     case 'all': {
       if (!Array.isArray(r.of)) return null
       const of = r.of.map((c) => parseCheck(c, depth + 1))

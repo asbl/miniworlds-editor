@@ -1,4 +1,5 @@
 import { studentDe } from './student.de'
+import { tipsDe } from './tips.de'
 import { welcomeDe } from './welcome.de'
 import { collabDe } from './collab.de'
 import { engineDe } from './engine.de'
@@ -300,7 +301,11 @@ export const de = {
   'layout.resizeWorld': 'Breite der Welt',
   'layout.splitterHint': 'Ziehen oder Pfeiltasten: Breite ändern · Doppelklick oder Pos1: Standardbreite',
   'errorNote.close': 'Fehlermeldung schließen',
+  'errorNote.fix': 'Korrigieren: „{wrong}“ → „{right}“',
+  'errorNote.restore': 'Zurück zum letzten Stand, der lief',
   'errorNote.label': 'Fehler in dieser Zeile',
+  'history.restoreWorked': 'Zurück zum letzten Stand, der lief',
+  'history.restoreWorkedConfirm': 'Dein Programm wird auf den letzten Stand zurückgesetzt, bei dem es ohne Fehler lief. Den jetzigen Stand findest du danach im Verlauf wieder.',
   'history.title': 'Verlauf',
   'history.save': 'Stand merken …',
   'history.saveName': 'Name für diesen Stand',
@@ -368,6 +373,8 @@ export const de = {
   'world.unmute': 'Ton einschalten',
   'world.show': 'Welt anzeigen',
   'world.dock': 'Im Editor',
+  'world.snapshot': 'Bild der Welt speichern (PNG)',
+  'world.snapshotFailed': 'Von der Welt konnte kein Bild gemacht werden.',
   'world.fullscreen': 'Vollbild (Esc beendet)',
   'world.window': 'In eigenem Fenster',
   'world.tab': 'In neuem Tab',
@@ -411,6 +418,7 @@ export const de = {
 
   ...studentDe,
   ...welcomeDe,
+  ...tipsDe,
   ...collabDe,
   ...engineDe,
   'miniworlds.actHint': 'Einen Schritt ausführen (act).',

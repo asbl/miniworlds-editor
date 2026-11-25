@@ -23,7 +23,7 @@ import { Menu } from './Menu'
 import { GitDialog } from './GitDialog'
 import type { GitOperationOptions } from '../git/network'
 import type { Connection, Credentials } from '../git/repository'
-import { FIRST_REMINDER_MS, loadBackupRecord, saveBackupRecord, shouldRemind } from './backup'
+import { FIRST_REMINDER_MS, loadBackupRecord, saveBackupRecord, shouldRemind, storageLow } from './backup'
 import { hasSeenWelcome, markWelcomeSeen } from './welcome/firstRun'
 import { ImportGuide, Welcome, type ImportActions } from './welcome/Welcome'
 import { ProjectView } from './ProjectView'
@@ -111,7 +111,8 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
   /** The project made for a first visit; replaced when the visitor picks a template or imports a program. */
   const firstProject = useRef<string | null>(null)
   /** The reminder that the project lives only on this device. */
-  const [backupNote, setBackupNote] = useState<'hint' | null>(null)
+  const storageWarned = useRef(false)
+  const [backupNote, setBackupNote] = useState<'hint' | 'full' | null>(null)
   useEffect(() => registerServiceWorker((handle) => setUpdate(handle)), [])
 
   // the menu entry exists only where a relay is set up and answers
@@ -135,6 +136,25 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     if (!name || backendConnection || workspace?.kind === 'memory' || !shouldRemind(loadBackupRecord(), Date.now())) return
     const timer = setTimeout(() => setBackupNote((now) => now ?? 'hint'), FIRST_REMINDER_MS)
     return () => clearTimeout(timer)
+  }, [name, workspace, backendConnection])
+
+  // nearly full browser storage: saving would fail soon, so say it before work is lost (and offer the same backup)
+  useEffect(() => {
+    if (!name || backendConnection || workspace?.kind === 'memory' || !navigator.storage?.estimate) return
+    let stopped = false
+    const check = () =>
+      void navigator.storage.estimate().then((estimate) => {
+        if (stopped || storageWarned.current || !storageLow(estimate)) return
+        storageWarned.current = true // once per visit: "later" must mean later
+        setBackupNote('full')
+      }, () => {})
+    const first = setTimeout(check, 20_000)
+    const timer = setInterval(check, 5 * 60_000)
+    return () => {
+      stopped = true
+      clearTimeout(first)
+      clearInterval(timer)
+    }
   }, [name, workspace, backendConnection])
 
   async function backup() {
@@ -598,7 +618,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
       }} />}
       {backupNote && (
         <div class="notice" role="status">
-          <span>{t('backup.hint')}</span>
+          <span>{t(backupNote === 'full' ? 'backup.full' : 'backup.hint')}</span>
           <button type="button" class="primary" onClick={guarded(backup)}>
             {t('backup.hint.now')}
           </button>

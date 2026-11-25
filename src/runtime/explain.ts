@@ -120,11 +120,25 @@ export function parseFinalError(trace: string): { kind: string; message: string 
 export interface ErrorNote {
   title: string
   tip: string | null
+  /** A typo Python itself spotted ("Did you mean: 'move'?"): the editor offers to put the right name in. */
+  fix?: { wrong: string; right: string }
+  /** Puts the program back to the last state that ran; set when there is one (see `useProgram`). */
+  restore?: () => void
+}
+
+/** The misspelt name and Python's suggestion for it, from a NameError or AttributeError traceback. */
+export function typoFix(trace: string): { wrong: string; right: string } | null {
+  const error = parseFinalError(trace)
+  if (!error || (error.kind !== 'NameError' && error.kind !== 'AttributeError')) return null
+  const right = /\.? Did you mean: '(\w+)'\?$/.exec(error.message)?.[1]
+  const wrong = /^name '(\w+)' is not defined/.exec(error.message)?.[1] ?? /^'?\w+'? object has no attribute '(\w+)'/.exec(error.message)?.[1] ?? /^(?:module|type object) '\w+' has no attribute '(\w+)'/.exec(error.message)?.[1]
+  return right && wrong && right !== wrong ? { wrong, right } : null
 }
 
 /** `NameError: …` plus the tip for a pupil, from a whole traceback; null when no exception can be read from it. */
 export function errorNote(trace: string, lang?: Lang): ErrorNote | null {
   const error = parseFinalError(trace)
   if (!error) return null
-  return { title: error.message ? `${error.kind}: ${error.message}` : error.kind, tip: explainError(trace, lang) }
+  const fix = typoFix(trace)
+  return { title: error.message ? `${error.kind}: ${error.message}` : error.kind, tip: explainError(trace, lang), ...(fix ? { fix } : {}) }
 }

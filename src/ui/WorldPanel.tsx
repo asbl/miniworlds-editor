@@ -36,6 +36,10 @@ export interface TasksProps {
   onToggle: (index: number) => void
   /** The task is ticked automatically when the work is done. */
   hasCheck?: (index: number) => boolean
+  /** Graded tips for a task that is not done yet: the first says where to look, the next what to type. */
+  tips?: (index: number) => string[]
+  /** The tasks are the editor's own ideas for this program. */
+  ideas?: boolean
 }
 
 /** The output of the other people's programs (working together): shown in the console, one source at a time. */
@@ -45,6 +49,32 @@ export interface RemoteConsoles {
   preferred: number | null
   onSeen: (id: number) => void
   onClear: (id: number) => void
+}
+
+/** "Tip" under an open task: one tip at a time, the next on request; nothing when there is none. */
+function TaskTip({ tips, n }: { tips: string[]; n: number }) {
+  const [shown, setShown] = useState(0)
+  if (tips.length === 0) return null
+  const visible = Math.min(shown, tips.length)
+  return (
+    <div class="task-tip">
+      {tips.slice(0, visible).map((tip, k) => (
+        <p key={k} class="task-tip-text small" role="note" aria-label={t('tasks.tipLabel', { n })}>
+          <span aria-hidden="true">💡 </span>
+          {tip}
+        </p>
+      ))}
+      {visible < tips.length ? (
+        <button type="button" class="link-button small" aria-label={`${visible === 0 ? t('tasks.tip') : t('tasks.tipMore')} (${n})`} onClick={() => setShown(visible + 1)}>
+          {visible === 0 ? t('tasks.tip') : t('tasks.tipMore')}
+        </button>
+      ) : (
+        <button type="button" class="link-button small" aria-label={`${t('tasks.tipHide')} (${n})`} onClick={() => setShown(0)}>
+          {t('tasks.tipHide')}
+        </button>
+      )}
+    </div>
+  )
 }
 
 export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace, remote, name = '', onTryExperiment }: { onTryExperiment?: () => void; runner: Runner; onJump: (location: TraceLocation) => void; onReport?: () => void; miniworlds?: MiniworldsProps; tasks?: TasksProps; trace?: TraceView; remote?: RemoteConsoles; name?: string }) {
@@ -203,12 +233,21 @@ export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace,
   const canvas = runner.canvas
   const scale = canvas.width > 0 ? canvas.getBoundingClientRect().width / canvas.width : 1
   const mw = miniworlds?.state
+  async function saveSnapshot() {
+    const png = await runner.snapshot()
+    if (!png) return void infoDialog(t('dialog.error'), t('world.snapshotFailed'))
+    const url = URL.createObjectURL(new Blob([png], { type: 'image/png' }))
+    const link = Object.assign(document.createElement('a'), { href: url, download: `${name || 'welt'}.png` })
+    link.click()
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  }
   const placeItems = [
     { label: t('world.dock'), checked: docked, onSelect: () => void show('docked') },
     { label: t('world.fullscreen'), checked: fullscreen, onSelect: () => void show('fullscreen') },
     { label: t('world.window'), checked: popup?.kind === 'window', onSelect: () => void show('window') },
     { label: t('world.tab'), checked: popup?.kind === 'tab', onSelect: () => void show('tab') },
     { label: t('guides.coords'), divider: true, toggle: true, checked: guides.coords, onSelect: () => setGuides({ ...guides, coords: !guides.coords }) },
+    ...(state.phase === 'running' ? [{ label: t('world.snapshot'), divider: true, onSelect: () => void saveSnapshot() }] : []),
     ...(controller
       ? [
           { label: t('guides.direction'), toggle: true, checked: guides.direction, onSelect: () => setGuides({ ...guides, direction: !guides.direction }) },
@@ -288,8 +327,8 @@ export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace,
       {mw?.selected && <Inspector actor={mw.selected} inspection={mw.inspection} onClose={() => void controller?.select(null)} />}
       {trace && <TracePanel trace={trace} running={state.phase === 'running'} onJump={onJump} />}
       {tasks && tasks.items.length > 0 && (
-        <details class="tasks" open>
-          <summary>{t('tasks.title', { done: tasks.items.filter((_, i) => tasks.done[i]).length, total: tasks.items.length })}</summary>
+        <details class="tasks" open={tasks.ideas ? undefined : true}>
+          <summary>{t(tasks.ideas ? 'tasks.ideas' : 'tasks.title', { done: tasks.items.filter((_, i) => tasks.done[i]).length, total: tasks.items.length })}</summary>
           <ol>
             {tasks.items.map((text, i) => (
               <li key={i}>
@@ -303,6 +342,7 @@ export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace,
                     </span>
                   )}
                 </label>
+                <TaskTip tips={tasks.tips?.(i) ?? []} n={i + 1} />
               </li>
             ))}
           </ol>

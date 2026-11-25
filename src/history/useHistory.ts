@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'preact/hooks'
 import type { Session } from '../ui/session'
 import type { Fs, Workspace } from '../workspace'
-import { History, type Snapshot, type SnapshotReason } from './history'
+import { compare, History, type Snapshot, type SnapshotReason } from './history'
 import { readTexts } from './restore'
 
 /** An automatic snapshot while working: not more often than this, and only if something changed (working together: more often, since somebody else's mistake lands here at once). */
@@ -58,5 +58,33 @@ export function useHistory(workspace: Workspace, fs: Fs, session: Session | null
     }
   }, [session, record, timerMs])
 
-  return { history, snapshots, record, reload }
+  /** The program just ran without an error: remember the state that ran as one that worked. Never throws. */
+  const lastMarked = useRef(0)
+  const markWorked = useCallback(async (texts: Record<string, string>) => {
+    if (!history) return
+    try {
+      // a new snapshot at most once a minute; a state that has one already is only marked
+      const made = await history.markWorked(texts, Date.now() - lastMarked.current > 60_000)
+      if (made) lastMarked.current = Date.now()
+      await reload()
+    } catch (error) {
+      console.warn('History: marking failed', error)
+    }
+  }, [history, reload])
+
+  /** The newest state that worked, if it differs from what is in the editor now. */
+  const workedBefore = useCallback(async (): Promise<Snapshot | null> => {
+    if (!history || !session) return null
+    try {
+      const snapshot = await history.lastWorked()
+      if (!snapshot) return null
+      const now = await readTexts(fs, session)
+      const old = await history.read(snapshot.id)
+      return Object.entries(compare(old, now)).some(([, status]) => status !== 'same') ? snapshot : null
+    } catch {
+      return null
+    }
+  }, [history, session, fs])
+
+  return { history, snapshots, record, reload, markWorked, workedBefore }
 }

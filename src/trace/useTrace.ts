@@ -17,9 +17,10 @@ export interface TraceView {
 
 /**
  * Collects the runner's trace batches. Redraws at most five times a second; while something is glowing, one more redraw
- * follows when the glow is over. `onFire` gets every event method (not `act`) the moment it is called, for the editor.
+ * follows when the glow is over. `onFire` gets every method the engine calls the moment it is called, for the editor;
+ * `frame` tells an `act` (which runs every step) from an event method.
  */
-export function useTrace(runner: Runner, onFire: (row: TraceRow) => void): TraceView {
+export function useTrace(runner: Runner, onFire: (row: TraceRow, frame: boolean) => void): TraceView {
   const store = useMemo(() => new TraceStore(), [])
   const [version, setVersion] = useState(0)
   const fire = useRef(onFire)
@@ -36,7 +37,7 @@ export function useTrace(runner: Runner, onFire: (row: TraceRow) => void): Trace
     }
     const off = runner.subscribeTrace((batch) => {
       const now = performance.now()
-      for (const row of store.add(batch, now)) if (!isFrameMethod(row.method)) fire.current(row)
+      for (const row of store.add(batch, now)) fire.current(row, isFrameMethod(row.method))
       if (!pending) {
         pending = true
         timer = setTimeout(redraw, REDRAW_MS)
