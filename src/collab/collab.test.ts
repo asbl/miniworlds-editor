@@ -438,7 +438,10 @@ describe('files deleted while away', () => {
     expect(await innerB.exists('old.py')).toBe(true)
     expect(known.sort()).toEqual(['main.py', 'old.py'])
     await b1.leave()
+    const logged = () => (relay.rooms.get('room-vvvv') as { log: unknown[] }).log.length
+    const before = logged()
     await fsA.remove('old.py')
+    expect(await until(() => logged() > before)).toBe(true) // the relay has the deletion before Ben comes back
     await innerB.write('mine.py', 'new offline') // made while away: not known to the room
     const b2 = person('room-vvvv', url, 'Ben', { known: new Set(known) })
     await b2.join(innerB)
