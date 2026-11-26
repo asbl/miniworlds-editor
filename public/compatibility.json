@@ -13,7 +13,9 @@
     "capabilities": [
       "project-files",
       "code-passwords",
-      "snapshot-preview"
+      "snapshot-preview",
+      "server-history",
+      "share-requests"
     ]
   },
   "capabilities": [

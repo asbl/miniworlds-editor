@@ -9,10 +9,11 @@ interface Props {
   /** The snapshot's texts and the project's texts now. */
   old: Record<string, string>
   current: Record<string, string>
-  onRestoreFile: (path: string) => void
-  onRestoreAll: () => void
-  onLabel: () => void
-  onRemove: () => void
+  /** Actions that do not apply (e.g. to a version kept on the server) are left out. */
+  onRestoreFile?: (path: string) => void
+  onRestoreAll?: () => void
+  onLabel?: () => void
+  onRemove?: () => void
   onClose: () => void
 }
 
@@ -78,19 +79,19 @@ export function HistoryDialog({ snapshot, old, current, onRestoreFile, onRestore
           </div>
         </div>
         <div class="dialog-buttons history-buttons">
-          <button type="button" onClick={onLabel}>
+          {onLabel && <button type="button" onClick={onLabel}>
             {t('history.rename')}
-          </button>
-          <button type="button" onClick={onRemove}>
+          </button>}
+          {onRemove && <button type="button" onClick={onRemove}>
             {t('history.delete')}
-          </button>
+          </button>}
           <span class="spacer" />
-          <button type="button" disabled={!selected || status[selected] === 'same' || status[selected] === 'new'} onClick={() => selected && onRestoreFile(selected)}>
+          {onRestoreFile && <button type="button" disabled={!selected || status[selected] === 'same' || status[selected] === 'new'} onClick={() => selected && onRestoreFile(selected)}>
             {t('history.restoreFile')}
-          </button>
-          <button type="button" class="primary" disabled={differing === 0} onClick={onRestoreAll}>
+          </button>}
+          {onRestoreAll && <button type="button" class="primary" disabled={differing === 0} onClick={onRestoreAll}>
             {t('history.restoreAll')}
-          </button>
+          </button>}
           <button type="button" onClick={onClose}>
             {t('history.close')}
           </button>

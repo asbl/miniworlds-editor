@@ -3,6 +3,7 @@ import { useLang } from '../i18n'
 import { confirmDialog, infoDialog, openDialog } from '../ui/dialogs'
 import { BackendProjects, type BackendConnection } from './projects'
 import type { Task } from './client'
+import { ServerActions } from './ServerActions'
 import './backend.css'
 
 interface Props {
@@ -153,6 +154,7 @@ export function BackendPanel({ idleMinutes, dialog, onDialogChange: setDialog, m
         <span role="status">{connection.project.title} · {labels[connection.status]}</span>
         <button disabled={busy} type="button" onClick={() => void perform(async () => { await flush(); await connection.retry() })}>{tr('Jetzt speichern', 'Save now')}</button>
         <button type="button" onClick={() => open('password')}>{connection.project.password_protected ? tr('Passwort ändern', 'Change password') : tr('Mit Passwort schützen', 'Protect with password')}</button>
+        <ServerActions base={manager.base} connection={connection} busy={busy} perform={perform} flush={flush} onOpen={onOpen} />
         <button disabled={busy} type="button" onClick={() => void perform(async () => {
           await flush(); await connection.sync()
           if (connection.dirty && !await confirmDialog(tr('Abmelden?', 'Sign out?'), tr('Es gibt ungespeicherte Änderungen. Lade vorher eine Sicherung herunter. Lokalen Entwurf trotzdem entfernen und abmelden?', 'There are unsaved changes. Download a backup first. Remove the local draft and sign out anyway?'))) return

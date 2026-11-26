@@ -3,6 +3,7 @@ import { MemoryFs, MemoryStore } from '../workspace'
 import { BackendClient, decode, encode, type RemoteProject } from './client'
 import { BackendConnection, BackendProjects } from './projects'
 import { parseAppConfig } from '../config/appConfig'
+import { restoreVersion, serverVersion, thin } from './server'
 
 class TestStorage implements Storage {
   private data = new Map<string, string>()
@@ -232,5 +233,26 @@ describe('optional backend', () => {
       expect(conn.dirty).toBe(false)
       expect(await local.fs.read('main.py')).toBe('print("alt")')
     })
+  })
+})
+
+describe('server history', () => {
+  const at = (second: number, message = 'Speichern am heute') => ({ hash: `h${second}`, date: new Date(Date.UTC(2026, 0, 1, 10, 0, second)).toISOString(), message })
+  it('shows one automatic version per minute, the oldest one and all other entries', () => {
+    expect(thin([at(200), at(190), at(170, 'Wiederhergestellt: abc'), at(160), at(100), at(90), at(80)]).map(c => c.hash)).toEqual(['h200', 'h170', 'h100', 'h80'])
+  })
+  it('compares an old version with the files here, binary files included', async () => {
+    const files = { 'main.py': encode(new TextEncoder().encode('old')), 'a.png': encode(new Uint8Array([1])) }
+    const { conn, fs } = await connection(vi.fn<typeof fetch>().mockResolvedValue(json({ save: { source: 'old', db: null, files } })))
+    await fs.write('a.png', new Uint8Array([2]))
+    const { old, current } = await serverVersion(conn, 'abc1234', fs)
+    expect(old['main.py']).toBe('old'); expect(current['main.py']).toBe('print(1)')
+    expect(old['a.png']).not.toBe(current['a.png'])
+  })
+  it('restores on the revision known here', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(json({ ok: true }))
+    const { conn } = await connection(fetcher)
+    await restoreVersion(conn, 'abc1234')
+    expect(fetcher.mock.calls[0]?.[0]).toBe('https://backend.test/api/play/restore/abc1234?base_revision=1')
   })
 })
