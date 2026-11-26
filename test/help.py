@@ -33,7 +33,7 @@ def eventually(fn, timeout=30000, step=150):
 
 with sync_playwright() as p:
     browser = getattr(p, BROWSER).launch()
-    ctx = browser.new_context(viewport={"width": 1280, "height": 800}, accept_downloads=True)
+    ctx = browser.new_context(viewport={"width": 1280, "height": 800}, accept_downloads=True, locale="de-DE")  # the checks read German texts
     page = ctx.new_page()
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
@@ -41,6 +41,10 @@ with sync_playwright() as p:
     page.goto(URL)
     page.wait_for_selector(".cm-content")
     run = page.locator("button.run")
+
+    # --- Python first: a slow or failed start is reported as such, with what the page says about it
+    ready = eventually(lambda: "Bereit" in page.inner_text(".world-status"), 150000)
+    check("world ready", ready, "" if ready else f"{page.inner_text('.world-status')} | {page.inner_text('.console-lines')[-600:]} | {errors}")
 
     # --- a program without tasks gets ideas, collapsed, with tips that come one at a time
     check("ideas appear for the plain program", eventually(lambda: "Ideen zum Ausbauen (0/" in page.locator(".tasks summary").inner_text(), 60000))

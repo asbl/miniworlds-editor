@@ -448,3 +448,11 @@ Ungemergt, uncommittet, nicht deployt. Tests: `test/engine.py` (Chromium, 31 Pr�
 - **Bedienfeld bauen** (`src/project/classToolbar.ts`, `ToolbarDialog`, Menü der Welt-Klasse): Knöpfe, Beschriftungen, Zähler per Ziehen/Klick in ein Abbild des Bedienfelds (rechts/links/unten); Block zwischen `# Bedienfeld {json}` und `# Ende Bedienfeld` in `on_setup`, wieder bearbeitbar; optional `on_message`. `test/py/test_toolbar.py` führt denselben Text auf der Engine aus.
 - **Zwei Fehler der Laufzeit nebenbei behoben:** (1) Die Zeichenfläche folgte der Fenstergröße nie (Welt 600×200 wurde auf 400×300 abgeschnitten, ein Bedienfeld unsichtbar): `pygame.display.set_mode` meldet jetzt die Größe (`canvas-size`), der Worker passt das OffscreenCanvas an. (2) Nach einem abgestürzten Programm blieb ein alter App-/Fensterzustand in der Engine und der nächste Lauf übernahm ihn: `run()` ruft jetzt zuerst `App.reset()`.
 - Grenzen: Live-Patch erreicht keine in `__init__`/`on_setup` schon ausgeführten Zahlen (wirkt beim nächsten Aufruf bzw. Neustart); Alt+Ziehen wird von manchen Fenstermanagern abgefangen (Regler und Tastenkürzel gehen immer); Firefox ungetestet (hier nicht installiert); der alte `test/student.py` stürzt auf dieser Maschine in Chromium nach einem Reload gelegentlich ab (auch ohne diese Änderungen).
+
+### Betrieb (2026-11-26)
+
+- `miniworlds.opencoding.de` leitet auf den Editor um (alte Varianten über `?ide=…`), der alte Greenfoot-Client ist entfernt.
+- Monitoring und tägliche Backups bestehen; neu ist die wöchentliche Wiederherstellungsprobe des Klassen-Backends aus der Offsite-Kopie (`docs/deploy.md`).
+- Weiter offen: Moodle-Einbindung, Tests auf echten Schulgeräten (Safari, Chromebook), ein erster Aufgaben-Durchlauf mit einer Klasse.
+- Bekannt: Firefox meldet in `test/run.py` und `test/assist.py` „uncaught exception: undefined“ aus `pyodide.asm.js` (schon vor diesem Release).
+

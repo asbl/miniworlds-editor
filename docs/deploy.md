@@ -14,19 +14,15 @@ Die Seite läuft in jedem Ordner (alle URLs sind relativ). **HTTPS ist nötig** 
 
 ## Betrieb auf editor.opencoding.de
 
-Der Server betreibt jede Seite als eigenen nginx-Container hinter dem gemeinsamen Traefik (Zertifikat über `alpnresolver`). Für den Editor liegt in `~/projects/editor/` auf dem Server:
-
-```
-docker-compose.yml   aus deploy/ (Host `editor.opencoding.de`, Labels wie bei den anderen Seiten)
-docker-compose.override.yml  optional, lokale Image-/Runtime-Einstellungen
-nginx.conf           aus deploy/ (MIME-Typen für .mjs/.webmanifest, Cache-Header, Content-Security-Policy, gzip)
-html/                Inhalt des Builds, von scripts/deploy.sh hochgeladen
-```
+Der Server betreibt den Editor als nginx-Container hinter dem nginx des Hosts (TLS). Die Container laufen rootless unter einem
+eigenen Benutzer; `html/` gehört diesem Benutzer. Maßgeblich ist die Compose-Datei auf dem Server; `deploy/` enthält die Vorlagen
+(`nginx.conf` unterscheidet sich dort nur im Port).
 
 **Update einspielen** (Tests, Build, Größenprüfung, Selbst-Hosting, Upload; der Container muss nicht neu starten):
 
 ```bash
-DEPLOY_TARGET=<user>@<server>:/home/<user>/projects/editor DEPLOY_SSH_PORT=<port> scripts/deploy.sh
+DEPLOY_TARGET=<user>@<server>:<projektordner>/editor DEPLOY_SSH_PORT=<port> \
+  DEPLOY_RSYNC_PATH="sudo -n -u <container-benutzer> rsync" scripts/deploy.sh   # DEPLOY_RSYNC_PATH nur bei fremdem Eigentümer
 python test/live.py https://editor.opencoding.de/ chromium     # Kontrolle der veröffentlichten Seite
 ```
 
@@ -80,20 +76,23 @@ Liegt neben `index.html` und lässt sich ändern, ohne neu zu bauen (Vorlage: `c
 - Ein Schulnetz, das `cdn.jsdelivr.net` sperrt, braucht `npm run selfhost`. Dann kommt Pyodide samt numpy, pygame-ce, jedi und micropip vom eigenen Server (11 Dateien, ca. 16 MB).
   Die miniworlds-Wheels kommen weiterhin von PyPI (`pypi.org`, `files.pythonhosted.org`); auch dafür gilt der Cache nach dem ersten Laden.
 
-## `miniworlds-ide`-Startseite ablösen (noch nicht umgesetzt)
+## Alte Einstiege (abgelöst am 2026-11-26)
 
-Die Startseite `miniworlds.opencoding.de` besteht aus den H5P-Varianten (Python, Miniworlds, Java; Text und Blocks). Der Editor ersetzt die Miniworlds-Text-Variante.
-Vorgehen, ohne die anderen zu verlieren:
+- `https://miniworlds.opencoding.de/` leitet (302) auf `https://editor.opencoding.de/` um. Die alten H5P-Varianten bleiben mit
+  `?ide=python`, `?ide=miniworlds`, `?ide=java` (und `…Blocks`) erreichbar; dort im Browser gespeicherter Code bleibt erhalten.
+  Die Regel steht in der nginx-Konfiguration dieser Seite auf dem Server (`location = /`). Zurücknehmen: die Regel entfernen, nginx neu laden
+  und den Server-Check für `/` wieder auf Status 200 stellen.
+- Der alte Greenfoot-Client (`miniworlds-moodle-web-player/greenfoot/`) ist aus dem Repo entfernt. Seine Projektdatei `greenfoot.json`
+  liest der Editor weiter (und ersetzt sie beim Speichern durch `miniworlds.json`).
+- Die Einbindung in Moodle per `<iframe src=".../?embed=1">` (`docs/embed.md`) ist noch nicht umgesetzt.
 
-1. Den Editor unter `https://miniworlds.opencoding.de/` veröffentlichen, die bisherige IDE-Seite nach `/ide/` verschieben.
-2. Links zu den übrigen Varianten bei Bedarf auf der bisherigen IDE-Startseite anbieten. Der Editor zeigt keine Links zu weiteren Editoren.
-3. In `config.json` zusätzlich `embedOrigins` setzen, wenn Moodle einbetten soll.
-4. In `miniworlds-ide/app.js` bleibt die Auswahl der Varianten unverändert; nur die Variante „Miniworlds · Text“ verweist auf den neuen Editor.
+## Überwachung und Sicherung
 
-## Alten Greenfoot-Client ablösen (noch nicht umgesetzt)
-
-`miniworlds-moodle-web-player/greenfoot/` wird überflüssig, sobald der Editor in Moodle eingebunden ist: Seite oder H5P-Inhalt mit `<iframe src=".../?embed=1">` (`docs/embed.md`).
-Die Projektdatei `greenfoot.json` des alten Clients liest der Editor weiter (und ersetzt sie beim Speichern durch `miniworlds.json`).
+- Der Server prüft Startseite und Relay des Editors, die Versionsabfrage des Klassen-Backends sowie Umleitung und alte Varianten
+  unter `miniworlds.opencoding.de`; Fehler werden gemeldet.
+- Das Klassen-Backend wird täglich gesichert (mit Wiederherstellungsprüfung durch die Anwendung) und verschlüsselt außer Haus kopiert.
+  Wöchentlich wird zusätzlich die Sicherung samt Schlüssel **aus der Offsite-Kopie** ohne Netz probeweise wiederhergestellt.
+  Stand 2026-11-26: bestanden (die Datenbank enthielt noch keine Projekte).
 
 Sprache (Deutsch/Englisch), Darstellungsmodus (System/Hell/Dunkel) und CodeMirror-Theme
 (Standard/Solarized Light/Solarized Dark/Dracula) stehen im Einstellungsdialog oben rechts.
@@ -104,8 +103,7 @@ Das Standard-Theme folgt dem Darstellungsmodus; die anderen Editor-Paletten sind
 The optional backend is maintained in its own `miniworlds-editor-backend` repository.
 Before uploading a backend-enabled configuration, `scripts/deploy.sh` checks the live API
 against `public/compatibility.json`; standalone configurations do not contact a backend.
-Set `DEPLOY_NGINX_CONTAINER=editor` on the existing Docker host to upload, validate and reload
-the matching nginx CSP as part of the same deployment. The previous nginx file is retained;
-a failed validation restores it. Keep host-specific images/runtimes in the existing override.
+`DEPLOY_NGINX_CONTAINER` (CSP zusammen mit dem Build neu laden) passt nur zum alten Aufbau mit direkt beschreibbarem Projektordner;
+beim rootless Betrieb `nginx.conf` bei Änderungen von Hand übernehmen.
 The production `embedOrigins` and CSP allow the backend origin to show read-only snapshot
 previews through this editor, without sharing teacher cookies.

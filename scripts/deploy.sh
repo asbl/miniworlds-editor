@@ -2,6 +2,7 @@
 # Builds the editor, hosts Pyodide itself and uploads dist to the web server.
 #   DEPLOY_TARGET=user@host:/path/to/editor DEPLOY_SSH_PORT=22 scripts/deploy.sh
 # <path>/html receives the site (docker-compose.yml and nginx.conf from deploy/ belong next to it, see docs/deploy.md).
+# If html/ belongs to another user (rootless containers), set DEPLOY_RSYNC_PATH="sudo -n -u <user> rsync".
 # Nothing server-specific is stored in the repository: target and port come from the environment.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -31,7 +32,7 @@ rm -f "$stage/config.example.json"
 chmod -R u=rwX,go=rX "$stage"   # mktemp makes the folder private (700); the web server in the container must be able to read it
 
 # --delay-updates: files are renamed into place at the end, index.html and sw.js never point at assets that are not there yet
-rsync -az --delete --delay-updates -e "ssh -p $PORT" "$stage/" "$DEPLOY_TARGET/html/"
+rsync -az --delete --delay-updates -e "ssh -p $PORT" ${DEPLOY_RSYNC_PATH:+--rsync-path="$DEPLOY_RSYNC_PATH"} "$stage/" "$DEPLOY_TARGET/html/"
 echo "uploaded to $DEPLOY_TARGET/html/"
 
 

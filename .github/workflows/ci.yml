@@ -37,10 +37,20 @@ jobs:
       - run: npm ci
       - run: pip install playwright && playwright install --with-deps chromium
       - run: npm run build
-      - run: |
+      # every test runs even if an earlier one fails, so that one failure does not hide the next
+      - name: Browser tests against the preview server
+        run: |
           npx vite preview --port 4173 &
           sleep 3
-          for t in blocks smoke run miniworlds templates assist; do python test/$t.py chromium; done
-      - run: |
-          for t in pwa embed selfhost responsive a11y history world input launch sound rename csp git collab help; do python test/$t.py chromium; done
-          python test/memory.py && LOW_MEMORY=1 python test/memory.py
+          failed=""
+          for t in blocks smoke run miniworlds templates assist; do python test/$t.py chromium || failed="$failed $t"; done
+          test -z "$failed" || { echo "FAILED:$failed"; exit 1; }
+      - name: Browser tests with their own servers
+        if: success() || failure()
+        run: |
+          failed=""
+          for t in pwa embed selfhost responsive a11y history world input launch sound rename csp git collab help; do python test/$t.py chromium || failed="$failed $t"; done
+          test -z "$failed" || { echo "FAILED:$failed"; exit 1; }
+      - name: Memory
+        if: success() || failure()
+        run: python test/memory.py && LOW_MEMORY=1 python test/memory.py
