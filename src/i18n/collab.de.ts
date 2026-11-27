@@ -69,6 +69,7 @@ export const collabDe = {
   'collab.join.field': 'Kurzcode oder Einladungslink',
   'collab.join.button': 'Beitreten',
   'collab.join.invalid': 'Das ist weder ein Kurzcode (wie kobi-latu-42) noch ein Einladungslink.',
+  'collab.join.failed': 'Der Kurzcode konnte nicht nachgeschlagen werden. Versuche es gleich noch einmal oder öffne den Einladungslink.',
   'collab.join.notFound': 'Diesen Code gibt es nicht (mehr). Kurzcodes gelten nur {hours} Stunden.',
   'collab.console.sources': "Programmausgabe von",
   'collab.console.mine': "Meine Ausgabe",

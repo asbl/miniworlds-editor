@@ -261,6 +261,16 @@ describe('short codes', () => {
     expect(stored).not.toContain(invite.key)
   })
 
+  it('can be looked up without an Origin (a GET to the own site), but not from a foreign page', async () => {
+    const { url } = await start({ origins: ['https://editor.example.org'] })
+    const lookup = `${url.replace(/^ws/, 'http')}/code/${'0'.repeat(32)}`
+    const status = async (init?: RequestInit) => (await fetch(lookup, init)).status
+    expect(await status()).toBe(404)
+    expect(await status({ headers: { origin: 'https://editor.example.org' } })).toBe(404)
+    expect(await status({ headers: { origin: 'https://elsewhere.example.org' } })).toBe(403)
+    expect(await status({ method: 'PUT', body: 'x'.repeat(32) })).toBe(403)
+  })
+
   it('expire, and a try is limited per address', async () => {
     const { url, relay } = await start({ origins: ['*'], codeTtlMs: 1, codeTriesPerMinute: 5 })
     const base = url.replace(/^ws/, 'http')

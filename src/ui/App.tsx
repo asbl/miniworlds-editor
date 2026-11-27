@@ -319,7 +319,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
       try {
         invite = await resolveCode(config.collabUrl, code)
       } catch (error) {
-        return error instanceof Error && error.message === 'tooMany' ? t('collab.code.tooMany') : reasonText('network')
+        return t(error instanceof Error && error.message === 'tooMany' ? 'collab.code.tooMany' : 'collab.join.failed')
       }
       if (!invite) return t('collab.join.notFound', { hours: CODE_HOURS })
     }
