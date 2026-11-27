@@ -7,6 +7,12 @@ import { simpleDiff } from './diff'
 export const FS_ORIGIN = Symbol('collab-fs')
 
 /**
+ * CodeMirror counts every line break as one character, `Y.Text` counts `\r\n` as two: with a `\r` in the shared text, the
+ * editor binding puts every edit in the wrong place. Shared text therefore only ever has `\n`.
+ */
+const unixLines = (text: string) => text.replace(/\r\n?/g, '\n')
+
+/**
  * The shared project: text files as `Y.Text` (so that two people typing in the same file merge), everything else as bytes.
  * Paths are the project-relative paths of the file system; the shared document knows nothing about folders.
  */
@@ -30,6 +36,26 @@ export class CollabRoom {
     return this.files.get(path)
   }
 
+  /**
+   * Remove every `\r` from shared text that already has some (a room filled by an older version of the editor). Call before an
+   * editor is bound to it. A `\r` of a `\r\n` is only deleted, so that two people doing this at once do no harm.
+   */
+  normalize(path?: string): void {
+    this.doc.transact(() => {
+      for (const key of path === undefined ? [...this.files.keys()] : [path]) {
+        const text = this.files.get(key)
+        const content = text?.toString()
+        if (!text || !content?.includes('\r')) continue
+        // from the end, so that the positions still to come stay valid
+        for (let i = content.length - 1; i >= 0; i--) {
+          if (content[i] !== '\r') continue
+          text.delete(i, 1)
+          if (content[i + 1] !== '\n') text.insert(i, '\n') // a lone one is shown as a line break: keep what people see
+        }
+      }
+    }, FS_ORIGIN)
+  }
+
   paths(): string[] {
     return [...this.files.keys(), ...this.bin.keys()].sort()
   }
@@ -45,11 +71,13 @@ export class CollabRoom {
     this.doc.transact(() => {
       if (typeof content === 'string' && isTextPath(path)) {
         this.bin.delete(path)
+        this.normalize(path)
+        const after = unixLines(content)
         const existing = this.files.get(path)
-        if (!existing) return void this.files.set(path, new Y.Text(content))
+        if (!existing) return void this.files.set(path, new Y.Text(after))
         const before = existing.toString()
-        if (before === content) return
-        const d = simpleDiff(before, content)
+        if (before === after) return
+        const d = simpleDiff(before, after)
         if (d.remove) existing.delete(d.index, d.remove)
         if (d.insert) existing.insert(d.index, d.insert)
         return
@@ -75,7 +103,7 @@ export class CollabRoom {
         if (key !== from && !key.startsWith(from + '/')) continue
         const text = this.files.get(key)?.toString() ?? ''
         this.files.delete(key)
-        this.files.set(to + key.slice(from.length), new Y.Text(text))
+        this.files.set(to + key.slice(from.length), new Y.Text(unixLines(text)))
       }
       for (const key of [...this.bin.keys()]) {
         if (key !== from && !key.startsWith(from + '/')) continue
