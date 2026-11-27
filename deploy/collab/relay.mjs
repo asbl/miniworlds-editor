@@ -104,7 +104,9 @@ export function createRelay(options = {}) {
     if (code) {
       const id = code[1]
       if (req.method === 'OPTIONS') return void res.writeHead(204, cors).end()
-      if (!origin && !config.origins.includes('*')) return void res.writeHead(403).end()
+      // browsers send no Origin with a GET to their own site, so a lookup without one is fine; other sites' pages always send theirs
+      const originMissing = req.method === 'GET' && req.headers.origin === undefined
+      if (!origin && !originMissing && !config.origins.includes('*')) return void res.writeHead(403).end()
       // guessing codes is what this limit is for: every try counts, hit or miss
       const ip = clientIp(req)
       const minute = Math.floor(Date.now() / 60000)

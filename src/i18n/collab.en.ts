@@ -70,6 +70,7 @@ export const collabEn: Record<keyof typeof collabDe, string> = {
   'collab.join.field': 'Short code or invitation link',
   'collab.join.button': 'Join',
   'collab.join.invalid': 'That is neither a short code (like kobi-latu-42) nor an invitation link.',
+  'collab.join.failed': 'The short code could not be looked up. Try again in a moment, or open the invitation link.',
   'collab.join.notFound': 'There is no such code (any more). Short codes are only valid for {hours} hours.',
   'collab.console.sources': "Program output from",
   'collab.console.mine': 'My output',
