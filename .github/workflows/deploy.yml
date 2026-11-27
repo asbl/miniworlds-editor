@@ -1,0 +1,50 @@
+# Manual release of the editor: Actions -> Deploy -> Run workflow (see docs/deploy.md)
+name: Deploy
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: npm ci
+      - name: Test, build and pack
+        env:
+          EDITOR_CONFIG: ${{ secrets.EDITOR_CONFIG }}
+          DEPLOY_CONFIG: ${{ runner.temp }}/config.json
+          DEPLOY_ARCHIVE: ${{ runner.temp }}/site.tar.gz
+        run: |
+          test -n "$EDITOR_CONFIG"
+          printf '%s\n' "$EDITOR_CONFIG" > "$DEPLOY_CONFIG"
+          scripts/deploy.sh
+      - name: Upload and publish
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          SSH_USER: ${{ secrets.DEPLOY_USER }}
+          SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          SSH_PORT: ${{ secrets.DEPLOY_PORT }}
+          ARCHIVE: ${{ runner.temp }}/site.tar.gz
+        run: |
+          install -m 700 -d ~/.ssh
+          (umask 077; printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy)
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          { echo "$GITHUB_SHA"; cat "$ARCHIVE"; } | ssh -i ~/.ssh/deploy -p "$SSH_PORT" -o IdentitiesOnly=yes "$SSH_USER@$SSH_HOST"
+      - name: Check the published revision
+        run: |
+          curl --fail --silent --show-error -H 'Cache-Control: no-cache' https://editor.opencoding.de/compatibility.json |
+            python3 -c 'import json,os,sys; assert json.load(sys.stdin)["revision"] == os.environ["GITHUB_SHA"], "old revision is still served"'
