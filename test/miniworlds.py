@@ -5,6 +5,7 @@ Usage:  python test/miniworlds.py [chromium|firefox]
 """
 import re, sys, time
 from playwright.sync_api import sync_playwright
+from support import world_point as at
 FILES_FIRST = "localStorage.setItem('miniworlds-editor.prefs', JSON.stringify({sidebar: 'files'})); localStorage.setItem('miniworlds-editor.welcomed', '1')"  # the sidebar opens with the class diagram by default
 
 URL = "http://localhost:4173/"
@@ -57,15 +58,6 @@ def frame(page):
 
 def console(page):
     return page.inner_text(".console-lines")
-
-
-def box(page):
-    return page.locator(".world-canvas").bounding_box()
-
-
-def at(page, x, y):
-    b = box(page)
-    return b["x"] + x, b["y"] + y
 
 
 def right_click(page, x, y):

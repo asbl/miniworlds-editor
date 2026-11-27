@@ -68,14 +68,18 @@ with sync_playwright() as p:
     new_project(page, "Krabbenprojekt", "Krabbe frisst")
     check("template project opened", eventually(lambda: "Krabbenprojekt" in page.inner_text(".topbar"), 10000))
     check("class files created", eventually(lambda: all(n in tree(page) for n in ("Krabbe.py", "Wurm.py", "Spielfeld.py")), 10000), tree(page))
-    check("tasks panel shows the tasks", eventually(lambda: "Aufgaben (0/5)" in page.locator(".tasks").inner_text(), 10000), page.locator(".tasks").inner_text() if page.locator(".tasks").count() else "no panel")
+    check("tasks panel shows the tasks", eventually(lambda: "Aufgaben (0/5)" in page.locator(".tasks-toggle").inner_text(), 10000), page.locator(".tasks-toggle").inner_text() if page.locator(".tasks-toggle").count() else "no panel")
+    page.locator(".console-toggle").click()
+    check("console and tasks share one drawer", page.locator(".tasks").is_hidden() and page.locator(".console-lines").is_visible())
+    page.locator(".tasks-toggle").click()
+    check("tasks can be reopened from the same bar", page.locator(".tasks").is_visible() and page.locator(".console-lines").is_hidden())
     page.locator(".tasks input[type=checkbox]").first.check()
-    check("ticking a task updates the counter", eventually(lambda: "Aufgaben (1/5)" in page.locator(".tasks").inner_text(), 5000))
+    check("ticking a task updates the counter", eventually(lambda: "Aufgaben (1/5)" in page.locator(".tasks-toggle").inner_text(), 5000))
     check("task state is stored in miniworlds.json", eventually(lambda: "miniworlds.json" in tree(page), 5000), tree(page))
     page.wait_for_timeout(700)  # the debounced save has run
     page.reload()
     page.wait_for_selector(".cm-content")
-    check("task tick survives a reload", eventually(lambda: "Aufgaben (1/5)" in page.locator(".tasks").inner_text(), 10000))
+    check("task tick survives a reload", eventually(lambda: "Aufgaben (1/5)" in page.locator(".tasks-toggle").inner_text(), 10000))
 
     # --- miniworlds view with the template
     check("python boots", eventually(lambda: "Bereit" in page.inner_text(".world-status"), 120000))
@@ -84,11 +88,13 @@ with sync_playwright() as p:
     check("template world is ready", eventually(lambda: "Schritt 0" in page.inner_text(".mw-info"), 40000), page.inner_text(".mw-info"))
     check("both actor classes can be created", all(n in page.inner_text(".mw-class-buttons") for n in ("+ Krabbe", "+ Wurm")), page.inner_text(".mw-class-buttons"))
 
-    # --- set a class image from the diagram's context menu
+    # --- set a class image using the selected class's quick actions
     page.get_by_role("tab", name="Klassen").click()
     check("diagram shows the template classes", eventually(lambda: page.locator(".uml-box .uml-name", has_text="Krabbe").count() == 1, 20000))
-    page.locator(".uml-box", has=page.locator(".uml-name", has_text="Krabbe")).locator(".uml-actions").click()
-    page.locator(".context-menu").get_by_role("menuitem", name="Aussehen").click()
+    page.locator(".uml-box", has=page.locator(".uml-name", has_text="Krabbe")).locator(".uml-head").click()
+    actions = page.get_by_role("group", name="Krabbe", exact=True)
+    check("selected actor has a visible event action", actions.get_by_role("button", name="Ereignis hinzufügen").is_visible())
+    actions.get_by_role("button", name="Kostüm ändern").click()
     appearance = page.locator(".appearance-dialog")
     check("a single image has no animation controls", appearance.locator(".costume-options").count() == 0)
     if appearance.locator(".costume-change").count():
@@ -124,7 +130,7 @@ with sync_playwright() as p:
     d.get_by_label("Collect coins", exact=False).check()
     d.get_by_role("button", name="Create").click()
     page.wait_for_selector("dialog[open]", state="detached")
-    check("english task texts", eventually(lambda: "Tasks (0/5)" in page.locator(".tasks").inner_text() and "Change the player's speed" in page.locator(".tasks").inner_text(), 10000), page.locator(".tasks").inner_text() if page.locator(".tasks").count() else "no panel")
+    check("english task texts", eventually(lambda: "Tasks (0/5)" in page.locator(".tasks-toggle").inner_text() and "Change the player's speed" in page.locator(".tasks").inner_text(), 10000), page.locator(".tasks-toggle").inner_text() if page.locator(".tasks-toggle").count() else "no panel")
 
     check("no page errors", not [e for e in errors if "Failed to load resource" not in e], errors[:5])
     browser.close()

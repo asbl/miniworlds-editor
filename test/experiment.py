@@ -52,7 +52,7 @@ with sync_playwright() as p:
     page = open_page(browser, "de-DE", errors=errors)
     switch = page.locator(".mode-switch")
     check("mode switch is visible", switch.is_visible())
-    check("mode switch has a visible label", "Modus" in page.locator(".project-bar").inner_text())
+    check("mode switch has a visible label", "Modus" in page.locator(".world-mode").inner_text())
     check("both modes are named", "Programm" in switch.inner_text() and "Experimentieren" in switch.inner_text(), switch.inner_text())
     check("program mode is the default", switch.get_by_role("button", name="Programm").get_attribute("aria-pressed") == "true")
     check("hint card is shown in program mode", hint(page).is_visible())
@@ -61,7 +61,7 @@ with sync_playwright() as p:
     hint(page).get_by_role("button", name="Experimentieren starten").click()
     check("hint button switches to the experiment mode", eventually(lambda: switch.get_by_role("button", name="Experimentieren", exact=True).get_attribute("aria-pressed") == "true"))
     check("hint card disappears in experiment mode", eventually(lambda: hint(page).count() == 0))
-    check("experiment option (auto reload) appears in the toolbar", eventually(lambda: page.locator(".toolbar input[type=checkbox]").count() == 1))
+    check("experiment option (auto reload) appears beside the world", eventually(lambda: page.locator(".world-mode input[type=checkbox]").count() == 1))
 
     page.reload()
     page.wait_for_selector(".cm-content")
@@ -115,8 +115,8 @@ with sync_playwright() as p:
 
     # --- narrow screen (phone): the hint lives in the world tab and nothing overflows
     page = open_page(browser, "de-DE", width=390, height=800, errors=errors)
-    check("mode switch is visible on a phone", page.locator(".mode-switch").is_visible())
     page.locator(".pane-tabs").get_by_role("tab", name="Welt").click()
+    check("mode switch is visible beside the world on a phone", page.locator(".world-panel .mode-switch").is_visible())
     check("hint card is shown in the world tab", eventually(lambda: hint(page).is_visible()))
     check("no horizontal page scroll", page.evaluate("document.documentElement.scrollWidth <= window.innerWidth + 1"))
     hint(page).get_by_role("button", name="Experimentieren starten").click()
@@ -125,7 +125,7 @@ with sync_playwright() as p:
 
     # --- English
     page = open_page(browser, "en-US", errors=errors)
-    check("English labels", "Mode" in page.locator(".project-bar").inner_text() and "Experiment" in page.locator(".mode-switch").inner_text())
+    check("English labels", "Mode" in page.locator(".world-mode").inner_text() and "Experiment" in page.locator(".mode-switch").inner_text())
     check("English hint", hint(page).get_by_role("button", name="Start experimenting").is_visible())
     page.context.close()
 

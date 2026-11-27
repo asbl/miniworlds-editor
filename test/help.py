@@ -47,9 +47,9 @@ with sync_playwright() as p:
     check("world ready", ready, "" if ready else f"{page.inner_text('.world-status')} | {page.inner_text('.console-lines')[-600:]} | {errors}")
 
     # --- a program without tasks gets ideas, collapsed, with tips that come one at a time
-    check("ideas appear for the plain program", eventually(lambda: "Ideen zum Ausbauen (0/" in page.locator(".tasks summary").inner_text(), 60000))
-    check("ideas are collapsed", page.locator(".tasks").get_attribute("open") is None)
-    page.locator(".tasks summary").click()
+    check("ideas appear for the plain program", eventually(lambda: "Ideen zum Ausbauen (0/" in page.locator(".tasks-toggle").inner_text(), 60000))
+    check("ideas are collapsed", page.locator(".tasks").is_hidden())
+    page.locator(".tasks-toggle").click()
     tip = page.locator(".task-tip button").first
     tip.click()
     check("first tip shows", page.locator(".task-tip-text").count() == 1)
@@ -71,6 +71,7 @@ with sync_playwright() as p:
     time.sleep(1)
     run.click()
     check("error card with the fix", eventually(lambda: page.locator(".cm-error-actions .primary").count() == 1, 60000))
+    check("an error switches the drawer from ideas to the console", eventually(lambda: page.locator(".tasks").is_hidden() and page.locator(".console-lines .trace-link").first.is_visible(), 5000))
     check("fix names both words", "mov" in page.locator(".cm-error-actions .primary").inner_text() and "move" in page.locator(".cm-error-actions .primary").inner_text())
     check("way back is offered", page.locator(".cm-error-actions button", has_text="letzten Stand").count() == 1)
     box = page.locator(".cm-error-note").bounding_box()

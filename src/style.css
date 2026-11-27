@@ -190,7 +190,8 @@ input[type=text], input[type=search], select {
 
 .toolbar { display: flex; align-items: center; gap: 8px; padding: 4px 10px; border-bottom: 1px solid var(--border); background: var(--bg); }
 .toolbar > button { padding: 4px 10px; border: 1px solid var(--border); }
-.toolbar .run { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 600; }
+.toolbar .run { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); font-weight: 700; min-width: 8rem; min-height: 34px; }
+.toolbar .run:focus-visible { outline-color: currentColor; outline-offset: -4px; }
 .toolbar .run.stop { background: var(--danger-bg); border-color: var(--danger-bg); color: var(--danger-fg); }
 .toolbar .menu-button { border: 1px solid var(--border); }
 .muted { color: var(--muted); }
@@ -280,6 +281,9 @@ input[type=text], input[type=search], select {
 .uml-panel { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 .uml-tools { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; border-bottom: 1px solid var(--border); }
 .uml-tools button { padding: 2px 8px; border: 1px solid var(--border); }
+.class-quick-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.class-quick-actions strong { flex: 1 0 100%; overflow-wrap: anywhere; font-size: 12px; }
+.class-quick-actions button { padding: 3px 8px; border: 1px solid var(--border); font-size: 12px; }
 .uml-note { margin: 6px 10px 0; }
 .error-text { color: var(--danger); }
 .uml-scroll { overflow: auto; flex: 1; padding: 6px; }
@@ -310,8 +314,7 @@ input[type=text], input[type=search], select {
 .uml-item.static { font-style: italic; }
 .uml-more { padding: 0 6px; color: var(--muted); font-size: 11px; }
 
-.tasks { padding: 4px 10px; border-bottom: 1px solid var(--border); max-height: 30%; overflow: auto; }
-.tasks summary { cursor: pointer; font-size: 12px; color: var(--muted); font-weight: 600; }
+.tasks { padding: 4px 10px; overflow: auto; }
 .tasks ol { margin: 4px 0 2px; padding-left: 20px; font-size: 13px; }
 .tasks li { margin: 2px 0; }
 .tasks label { cursor: pointer; }
@@ -362,6 +365,7 @@ input[type=text], input[type=search], select {
 /* touch: comfortable targets */
 @media (pointer: coarse) {
   button, .menu-button, .tab-name, .tab-close, .tree .row-main { min-height: 40px; }
+  .toolbar .run { min-height: 40px; }
   .menu-items button { min-height: 44px; }
 }
 .shell.embed .brand { font-size: 0.9em; }
@@ -445,10 +449,18 @@ input[type=text], input[type=search], select {
 .swatch { height: 26px; border: 2px solid var(--border); border-radius: 4px; padding: 0; }
 .swatch[aria-pressed=true] { border-color: var(--fg); outline: 2px solid var(--accent); }
 
-/* the world never shrinks under what appears below it (inspector, tasks); the console gives way, the panel scrolls if all else fails */
+/* The world uses the remaining height and keeps a minimum space when its tools or drawer need room. */
 .world-panel { overflow: auto; }
 .world-panel > * { flex: none; }
-.world-panel > .console { flex: 1 1 0; min-height: 90px; }
+.world-panel > .world-stage { flex: 1 0 clamp(120px, 42%, 360px); container-type: size; }
+.world-panel > .world-stage.popped { flex: none; container-type: normal; }
+.world-stage:not(:fullscreen) .world-canvas { display: block; width: min(100cqw, calc(100cqh * var(--ar))); }
+.world-mode { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.world-drawer .console-head { justify-content: flex-start; flex-wrap: wrap; gap: 4px; padding: 4px 8px; }
+.world-drawer .console-toggle, .world-drawer .tasks-toggle { flex: none; padding: 4px 8px; text-align: left; }
+.world-drawer .console-actions { margin-inline-start: auto; }
+.world-drawer button[aria-expanded=true] { color: var(--fg); background: var(--selected); }
+.world-drawer .console-lines, .world-drawer .tasks { max-height: clamp(120px, 32dvh, 280px); background: var(--bg); }
 
 /* share dialog */
 .share-images { margin: 6px 0 10px; }
@@ -682,7 +694,6 @@ input[type=text], input[type=search], select {
 .search-replace summary { cursor: pointer; padding: 4px 0; }
 .search-replace input { width: 100%; margin: 6px 0; }
 .search-replace > button { width: 100%; }
-.world-panel > .console.collapsed { flex: 0 0 auto; min-height: 0; }
 .console-lines[hidden] { display: none; }
 .console-toggle { flex: 1; text-align: left; }
 .console-head .menu { position: relative; }

@@ -10,6 +10,7 @@ import type { SyntaxProblem } from '../useAutoReload'
 import type { MenuItem } from '../Menu'
 import type { useProgram } from '../useProgram'
 import type { Pane } from './layout'
+import type { ViewMode } from '../useMode'
 
 interface Props {
   pythonSettingsOpen?: boolean
@@ -19,11 +20,7 @@ interface Props {
   program: ReturnType<typeof useProgram>
   canRun: boolean
   onRun: () => void
-  view: 'program' | 'miniworlds'
-  onView: (view: 'program' | 'miniworlds') => void
-  miniworldsSupported: boolean
-  autoReload: boolean
-  onAutoReload: (on: boolean) => void
+  view: ViewMode
   settings: ProjectSettings
   versions: Catalog['data']
   catalogStatus: Catalog['status']
@@ -39,7 +36,7 @@ interface Props {
   memoryOnly: boolean
 }
 
-/** Everything above the three columns: run, mode, version, packages, notices, and the pane tabs on narrow screens. */
+/** Everything above the three columns: run, version, packages, notices, and the pane tabs on narrow screens. */
 export function ProjectToolbar(p: Props) {
   const pythonDialog = useRef<HTMLDialogElement>(null)
   const [localPythonOpen, setLocalPythonOpen] = useState(false)
@@ -50,6 +47,7 @@ export function ProjectToolbar(p: Props) {
   }, [pythonOpen])
   const [dismissedUpdate, setDismissedUpdate] = useState<string | null>(null)
   const { program, settings, versions } = p
+  const queued = program.busy && program.state.phase === 'booting'
   const pinned = settings.miniworlds
   const update = pinned ? updateStatus(pinned, versions?.latest ?? null) : null
   const online = useOnline()
@@ -76,41 +74,16 @@ export function ProjectToolbar(p: Props) {
   return (
     <section class="project-bar" aria-label={t('a11y.project', { name: p.projectName })}>
       <div class="toolbar" role="toolbar" aria-label={t('run.toolbar')}>
-        {program.busy && program.state.phase === 'booting' ? (
-          // "Run" was pressed before Python was ready: it starts by itself; stopping now would throw the start-up away
-          <button type="button" class="run queued" disabled title={t('run.queued.title')}>
-            {t('run.queued')}
-          </button>
-        ) : program.busy ? (
-          <button type="button" class="run stop" onClick={() => void program.stop()} disabled={program.state.phase === 'stopping'} title="Ctrl+Enter">
-            ■ {t('run.stop')}
-          </button>
-        ) : (
-          <button type="button" class="run" onClick={p.onRun} disabled={!p.canRun} title="Ctrl+Enter">
-            ▶ {t('run.run')}
-          </button>
-        )}
-        <span class="mode-label" aria-hidden="true">{t('mode.label')}:</span>
-        <div class="segmented mode-switch" role="group" aria-label={t('mode.label')}>
-          <button type="button" aria-pressed={p.view === 'program'} title={t('mode.programHint')} onClick={() => p.onView('program')}>
-            <span aria-hidden="true">▸ </span>{t('mode.program')}
-          </button>
-          <button
-            type="button"
-            aria-pressed={p.view === 'miniworlds'}
-            disabled={!p.miniworldsSupported}
-            title={t(p.miniworldsSupported ? 'mode.miniworldsHint' : 'mode.needsFull')}
-            onClick={() => p.onView('miniworlds')}
-          >
-            <span aria-hidden="true">✦ </span>{t('mode.miniworlds')}
-          </button>
-        </div>
-        {p.view === 'miniworlds' && (
-          <label class="inline small">
-            <input type="checkbox" checked={p.autoReload} onChange={(e) => p.onAutoReload(e.currentTarget.checked)} />
-            <span>{t('miniworlds.autoReload')}</span>
-          </label>
-        )}
+        <button
+          type="button"
+          class={queued ? 'run queued' : program.busy ? 'run stop' : 'run'}
+          disabled={queued || program.state.phase === 'stopping' || (!program.busy && !p.canRun)}
+          title={queued ? t('run.queued.title') : 'Ctrl+Enter'}
+          onClick={() => program.busy ? void program.stop() : p.onRun()}
+        >
+          {!queued && <span aria-hidden="true">{program.busy ? '■' : '▶'} </span>}
+          {t(queued ? 'run.queued' : program.busy ? 'run.stop' : 'run.run')}
+        </button>
         <span class="spacer" />
         {p.pythonSettingsOpen === undefined && <button type="button" onClick={() => setLocalPythonOpen(true)}>{t('python.menu')}</button>}
       </div>

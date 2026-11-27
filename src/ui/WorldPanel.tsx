@@ -1,5 +1,5 @@
 import { closeExperimentHint, isExperimentHintClosed } from './experimentHint'
-import { useEffect, useRef, useState } from 'preact/hooks'
+import { useEffect, useId, useRef, useState } from 'preact/hooks'
 import { t, useLang } from '../i18n'
 import type { MiniworldsController, MiniworldsState } from '../miniworlds/controller'
 import { MiniworldsControls } from '../miniworlds/MiniworldsPanel'
@@ -19,6 +19,7 @@ import { openContextMenu } from './ContextMenu'
 import { infoDialog } from './dialogs'
 import { useRunnerState } from './hooks'
 import { Menu } from './Menu'
+import type { ViewMode } from './useMode'
 import { rememberMuted } from '../runtime/browser'
 import { openWorldWindow, type WorldWindow, type WorldWindowKind } from './worldWindow'
 
@@ -77,7 +78,28 @@ function TaskTip({ tips, n }: { tips: string[]; n: number }) {
   )
 }
 
-export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace, remote, name = '', onTryExperiment }: { onTryExperiment?: () => void; runner: Runner; onJump: (location: TraceLocation) => void; onReport?: () => void; miniworlds?: MiniworldsProps; tasks?: TasksProps; trace?: TraceView; remote?: RemoteConsoles; name?: string }) {
+interface WorldPanelProps {
+  runner: Runner
+  visible: boolean
+  onJump: (location: TraceLocation) => void
+  onReport?: () => void
+  miniworlds?: MiniworldsProps
+  tasks?: TasksProps
+  trace?: TraceView
+  remote?: RemoteConsoles
+  name?: string
+  onTryExperiment?: () => void
+  mode: {
+    view: ViewMode
+    supported: boolean
+    onChange: (view: ViewMode) => void
+    autoReload: boolean
+    onAutoReload: (on: boolean) => void
+  }
+}
+
+/** The docked world, its controls and the output and tasks below it. */
+export function WorldPanel({ runner, visible, onJump, onReport, miniworlds, tasks, trace, remote, name = '', onTryExperiment, mode }: WorldPanelProps) {
   useLang()
   const state = useRunnerState(runner)
   const slot = useRef<HTMLDivElement>(null)
@@ -91,20 +113,40 @@ export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace,
   const [hintClosed, setHintClosed] = useState(isExperimentHintClosed)
   const [mouse, setMouse] = useState<WorldPoint | null>(null)
   const docked = !popup && !fullscreen
-  // whose output the console shows: null is this person's own
+  const tasksId = useId()
+  const hasTasks = !!tasks?.items.length
+  const [drawer, setDrawer] = useState<'tasks' | 'console' | 'closed' | null>(null)
+  const activeDrawer = state.input ? 'console' : drawer ?? (hasTasks && !tasks?.ideas ? 'tasks' : 'closed')
+  const consoleOpen = activeDrawer === 'console'
+  const tasksOpen = hasTasks && activeDrawer === 'tasks'
   const [watching, setWatching] = useState<number | null>(null)
-  const watched = watching === null ? undefined : remote?.runs.find((r) => r.id === watching)
-  const preferred = remote?.runs.find((r) => r.id === remote.preferred)
+  const selectedRun = remote?.runs.find((run) => run.id === watching)
+  const watched = state.input ? undefined : selectedRun
+  const preferred = remote?.runs.find((run) => run.id === remote.preferred)
+  const lastOutput = state.lines.findLast((line) => line.kind !== 'system')
+  const lastError = state.lines.findLast((line) => line.kind === 'stderr')
+
   useEffect(() => {
-    if (state.phase === 'running') setWatching(null) // one's own program: one's own output
+    if (state.phase === 'running') setWatching(null)
   }, [state.phase])
   useEffect(() => {
-    if (preferred && preferred.running) setWatching(preferred.id)
+    if (preferred && preferred.running) {
+      setWatching(preferred.id)
+      setDrawer('console')
+    }
   }, [preferred?.id, preferred?.started])
   useEffect(() => {
-    if (watching !== null && !watched) setWatching(null) // the person left
-    else if (watched && watched.unseen > 0) remote?.onSeen(watched.id)
-  }, [watching, watched?.unseen, watched?.lines.length])
+    if (lastOutput) setDrawer((current) => current === 'tasks' ? current : 'console')
+  }, [lastOutput?.id])
+  useEffect(() => {
+    if (!lastError && !state.input) return
+    setDrawer('console')
+    setWatching(null)
+  }, [lastError?.id, state.input?.id])
+  useEffect(() => {
+    if (watching !== null && !selectedRun) setWatching(null)
+    if (consoleOpen && watched && watched.unseen > 0) remote?.onSeen(watched.id)
+  }, [watching, selectedRun?.id, consoleOpen, watched?.id, watched?.unseen, watched?.lines.length])
 
   // The canvas element is replaced with every new worker (it can be handed over only once): mount the current one.
   useEffect(() => {
@@ -258,6 +300,29 @@ export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace,
 
   return (
     <section class={mw?.armed ? 'world-panel armed' : 'world-panel'} aria-label={t('a11y.world')}>
+      <div class="world-mode">
+        <span class="mode-label" aria-hidden="true">{t('mode.label')}</span>
+        <div class="segmented mode-switch" role="group" aria-label={t('mode.label')}>
+          <button type="button" aria-pressed={mode.view === 'program'} title={t('mode.programHint')} onClick={() => mode.onChange('program')}>
+            {t('mode.program')}
+          </button>
+          <button
+            type="button"
+            aria-pressed={mode.view === 'miniworlds'}
+            disabled={!mode.supported}
+            title={t(mode.supported ? 'mode.miniworldsHint' : 'mode.needsFull')}
+            onClick={() => mode.onChange('miniworlds')}
+          >
+            {t('mode.miniworlds')}
+          </button>
+        </div>
+        {mode.view === 'miniworlds' && (
+          <label class="inline small">
+            <input type="checkbox" checked={mode.autoReload} onChange={(e) => mode.onAutoReload(e.currentTarget.checked)} />
+            <span>{t('miniworlds.autoReload')}</span>
+          </label>
+        )}
+      </div>
       <div class="world-head">
         <div class="world-status" role="status">
           {bootText ?? t(`run.state.${state.phase === 'booting' ? 'idle' : state.phase}` as const)}
@@ -289,7 +354,11 @@ export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace,
         )}
         <Menu label="⤢" title={t('world.view')} items={placeItems} align="right" />
       </div>
-      <div class="world-stage" ref={stage}>
+      <div
+        class={popup ? 'world-stage popped' : 'world-stage'}
+        ref={stage}
+        style={{ '--ar': state.canvasSize.width / state.canvasSize.height }}
+      >
         <div class="world-wrap" hidden={popup !== null}>
           <div ref={slot} />
           {state.phase === 'booting' && docked && <BootPlaceholder step={state.bootStep} />}
@@ -326,46 +395,57 @@ export function WorldPanel({ runner, onJump, onReport, miniworlds, tasks, trace,
       )}
       {mw?.selected && <Inspector actor={mw.selected} inspection={mw.inspection} onClose={() => void controller?.select(null)} />}
       {trace && <TracePanel trace={trace} running={state.phase === 'running'} onJump={onJump} />}
-      {tasks && tasks.items.length > 0 && (
-        <details class="tasks" open={tasks.ideas ? undefined : true}>
-          <summary>{t(tasks.ideas ? 'tasks.ideas' : 'tasks.title', { done: tasks.items.filter((_, i) => tasks.done[i]).length, total: tasks.items.length })}</summary>
-          <ol>
-            {tasks.items.map((text, i) => (
-              <li key={i}>
-                <label>
-                  <input type="checkbox" checked={!!tasks.done[i]} aria-label={t('tasks.itemDone', { n: i + 1 })} onChange={() => tasks.onToggle(i)} />
-                  <span> {text}</span>
-                  {tasks.hasCheck?.(i) && (
-                    <span class="auto-check" title={t('tasks.auto')} aria-label={t('tasks.auto')}>
-                      {' '}
-                      ✦
-                    </span>
-                  )}
-                </label>
-                <TaskTip tips={tasks.tips?.(i) ?? []} n={i + 1} />
-              </li>
-            ))}
-          </ol>
-        </details>
-      )}
-      {remote && remote.runs.length > 0 && (
-        <div class="console-sources" role="tablist" aria-label={t('collab.console.sources')}>
-          <button type="button" role="tab" aria-selected={watched === undefined} onClick={() => setWatching(null)}>
-            {t('collab.console.mine')}
-          </button>
-          {remote.runs.map((run) => (
-            <button key={run.id} type="button" role="tab" aria-selected={watched?.id === run.id} onClick={() => setWatching(run.id)}>
-              <span class="collab-dot" style={{ background: run.color }} aria-hidden="true" /> {run.name}
-              {run.running ? <span class="console-live" title={t('collab.console.running')}> ●</span> : run.unseen > 0 && watched?.id !== run.id ? ' •' : ''}
+      <div class="world-drawer">
+        <Console
+          lines={watched?.lines ?? state.lines}
+          onClear={() => watched ? remote?.onClear(watched.id) : runner.clearConsole()}
+          onJump={onJump}
+          waiting={visible ? state.input : null}
+          onAnswer={(text) => runner.answerInput(text)}
+          onReport={watched ? undefined : onReport}
+          disclosure={{ open: consoleOpen, toggle: () => setDrawer(consoleOpen ? 'closed' : 'console') }}
+          beforeToggle={hasTasks && tasks && (
+            <button type="button" class="tasks-toggle" aria-expanded={tasksOpen} aria-controls={tasksId} disabled={!!state.input} onClick={() => setDrawer(tasksOpen ? 'closed' : 'tasks')}>
+              <span aria-hidden="true">{tasksOpen ? '▾' : '▸'}</span>{' '}
+              {t(tasks.ideas ? 'tasks.ideas' : 'tasks.title', { done: tasks.items.filter((_, i) => tasks.done[i]).length, total: tasks.items.length })}
             </button>
-          ))}
-        </div>
-      )}
-      {watched ? (
-        <Console lines={watched.lines} onClear={() => remote?.onClear(watched.id)} onJump={onJump} />
-      ) : (
-        <Console lines={state.lines} onClear={() => runner.clearConsole()} onJump={onJump} waiting={state.input} onAnswer={(text) => runner.answerInput(text)} onReport={onReport} />
-      )}
+          )}
+          sources={remote && remote.runs.length > 0 && (
+            <div class="console-sources" role="tablist" aria-label={t('collab.console.sources')}>
+              <button type="button" role="tab" aria-selected={watched === undefined} onClick={() => setWatching(null)}>
+                {t('collab.console.mine')}
+              </button>
+              {remote.runs.map((run) => (
+                <button key={run.id} type="button" role="tab" aria-selected={watched?.id === run.id} disabled={!!state.input} onClick={() => setWatching(run.id)}>
+                  <span class="collab-dot" style={{ background: run.color }} aria-hidden="true" /> {run.name}
+                  {run.running ? <span class="console-live" title={t('collab.console.running')}> ●</span> : run.unseen > 0 && watched?.id !== run.id ? ' •' : ''}
+                </button>
+              ))}
+            </div>
+          )}
+        />
+        {hasTasks && tasks && (
+          <div class="tasks" id={tasksId} hidden={!tasksOpen}>
+            <ol>
+              {tasks.items.map((text, i) => (
+                <li key={i}>
+                  <label>
+                    <input type="checkbox" checked={!!tasks.done[i]} aria-label={t('tasks.itemDone', { n: i + 1 })} onChange={() => tasks.onToggle(i)} />
+                    <span> {text}</span>
+                    {tasks.hasCheck?.(i) && (
+                      <span class="auto-check" title={t('tasks.auto')} aria-label={t('tasks.auto')}>
+                        {' '}
+                        ✦
+                      </span>
+                    )}
+                  </label>
+                  <TaskTip tips={tasks.tips?.(i) ?? []} n={i + 1} />
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+      </div>
     </section>
   )
 }

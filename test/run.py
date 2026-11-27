@@ -5,6 +5,7 @@ and Python with Playwright. Usage:  python test/run.py [chromium|firefox]
 """
 import re, sys, time
 from playwright.sync_api import sync_playwright
+from support import world_point
 FILES_FIRST = "localStorage.setItem('miniworlds-editor.prefs', JSON.stringify({sidebar: 'files'})); localStorage.setItem('miniworlds-editor.welcomed', '1')"  # the sidebar opens with the class diagram by default
 
 URL = "http://localhost:4173/"
@@ -137,9 +138,8 @@ with sync_playwright() as p:
     set_main(page, WORLD)
     run(page)
     check("print output reaches the console", eventually(lambda: "setup done" in console(page), 20000), console(page))
-    canvas = page.locator(".world-canvas")
-    canvas.click(position={"x": 50, "y": 60})
-    check("mouse click arrives with canvas coordinates (+-1px)", eventually(lambda: re.search(r"click: \((49|50), (59|60)\)", console(page)) is not None, 8000), console(page)[-200:])
+    page.mouse.click(*world_point(page, 50, 60))
+    check("mouse click arrives with canvas coordinates (+-1px)", eventually(lambda: re.search(r"click: \((49|50|51), (59|60|61)\)", console(page)) is not None, 8000), console(page)[-200:])
     page.keyboard.press("a")
     check("key press arrives", eventually(lambda: "keys: ['a']" in console(page), 8000), console(page)[-200:])
     page.keyboard.press("ArrowLeft")
