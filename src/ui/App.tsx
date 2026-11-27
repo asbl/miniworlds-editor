@@ -110,6 +110,8 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
   const [overlay, setOverlay] = useState<'welcome' | 'import' | null>(null)
   /** The project made for a first visit; replaced when the visitor picks a template or imports a program. */
   const firstProject = useRef<string | null>(null)
+  /** That project while the code dialog of a first visit is up (welcome card or `?project-code=1`): removed once a code is accepted. */
+  const codeStarter = useRef<string | null>(null)
   /** The reminder that the project lives only on this device. */
   const storageWarned = useRef(false)
   const [backupNote, setBackupNote] = useState<'hint' | 'full' | null>(null)
@@ -420,6 +422,8 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
       if (legacyFailed) await infoDialog(t('dialog.error'), t('share.legacyFailed'))
       else if (launch) await openLaunch(launch).catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
       if (backend && new URLSearchParams(location.search).get('project-code') === '1') {
+        codeStarter.current = firstProject.current // a first visit by this link: as with the tile on the welcome card
+        firstProject.current = null
         closeOverlay(); setBackendDialog('claim')
         const url = new URL(location.href); url.searchParams.delete('project-code'); history.replaceState(null, '', url.pathname + url.search + url.hash)
       }
@@ -605,7 +609,17 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
           <span aria-hidden="true">⚙</span> {t('prefs.button')}
         </button>
       </header>
-      {backend && <BackendPanel idleMinutes={config.autoSignOutMinutes} dialog={backendDialog} onDialogChange={setBackendDialog} manager={backend} connection={backendConnection} flush={() => flush.current?.() ?? Promise.resolve()} onOpen={show} onLogout={async () => {
+      {backend && <BackendPanel idleMinutes={config.autoSignOutMinutes} dialog={backendDialog} onDialogChange={(next) => {
+        if (!next) codeStarter.current = null // closed without a code: the project is the visitor's from now on
+        setBackendDialog(next)
+      }} onClaimed={async () => {
+        // before the server project shows, so that the untouched starter is not offered to be copied into it
+        const unused = codeStarter.current
+        codeStarter.current = null
+        if (!unused) return
+        await store.remove(unused).catch(() => {})
+        setProjects(await store.list())
+      }} manager={backend} connection={backendConnection} flush={() => flush.current?.() ?? Promise.resolve()} onOpen={show} onLogout={async () => {
         flush.current = null
         setBackendConnection(null)
         const rest = await store.list()
@@ -725,6 +739,12 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
             closeOverlay()
           }}
           onTemplate={(id) => void guarded(async () => showMade(await createTemplateProject(store, id, await newestVersion())))()}
+          onCode={backend ? () => {
+            codeStarter.current = firstProject.current
+            firstProject.current = null // the code dialog may be cancelled: then the visitor works in this project
+            closeOverlay()
+            setBackendDialog('claim')
+          } : undefined}
         />
       )}
       {overlay === 'import' && <ImportGuide actions={importActions} onClose={closeOverlay} />}

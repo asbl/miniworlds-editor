@@ -32,8 +32,10 @@ with sync_playwright() as p:
     check("the card offers an own world, the three templates and an import", "Eigene Welt" in text and "Krabbe" in text and "Münzen" in text and "Pong" in text and "importieren" in text, text[:300])
     check("the editor behind it is already there (and the project exists)", "Projekt: Mein Projekt" in topbar(page), topbar(page))
 
+    check("without a server there is no teacher code to start with", page.locator(".welcome-code").count() == 0)
+
     # --- 2. the import hints inside the card
-    page.click("dialog.welcome .welcome-import button")
+    page.click("dialog.welcome .welcome-import")
     ways = page.inner_text("dialog.welcome .import-ways")
     check("the import dialog offers folder, ZIP and Python files", all(w in ways for w in ("Ordner", "ZIP-Datei", "Python-Dateien")), ways[:300])
     check("they say nothing gets overwritten", "überschrieben" in ways)

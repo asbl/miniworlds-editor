@@ -5,6 +5,9 @@ export const welcomeDe = {
   'welcome.empty': 'Eigene Welt',
   'welcome.empty.text': 'Eine blaue Figur bewegt sich und lässt sich mit den Pfeiltasten drehen.',
   'welcome.import': 'Projekt importieren …',
+  'welcome.import.text': 'Bringe dein Programm mit: Ordner, ZIP- oder Python-Dateien.',
+  'welcome.code': 'Mit Lehrercode starten',
+  'welcome.code.text': 'Gib den Code von deiner Lehrkraft oder deinen eigenen Projektcode ein.',
   'welcome.reopen': 'Erste Schritte …',
   // ---- import hints ----
   'import.title': 'Projekt importieren',
