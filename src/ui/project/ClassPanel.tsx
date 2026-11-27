@@ -29,6 +29,7 @@ export function useClassPanelView() {
 interface Props {
   view: ReturnType<typeof useClassPanelView>
   fs: Fs
+  editable: boolean
   session: Session | null
   entries: FileEntry[]
   kind: ProjectKind
@@ -48,7 +49,7 @@ interface Props {
 }
 
 /** The class diagram of the project with its tools: show a class, add a new one or a subclass, choose an image. */
-export function ClassPanel({ view, fs, session, entries, kind, classModel, gf, metaApi, cursor, stale, fired, refresh, onNewClass, onRenameClass, onReact }: Props) {
+export function ClassPanel({ view, fs, editable, session, entries, kind, classModel, gf, metaApi, cursor, stale, fired, refresh, onNewClass, onRenameClass, onReact }: Props) {
   const { details, setDetails, picked: pickedClass, setPicked: setPickedClass } = view
   const [imageFor, setImageFor] = useState<string | null>(null)
   const [costumesFor, setCostumesFor] = useState<string | null>(null)
@@ -155,6 +156,7 @@ export function ClassPanel({ view, fs, session, entries, kind, classModel, gf, m
     if (items.length > 1) openContextMenu(event.clientX, event.clientY, items)
   }
 
+  const selectedClass = editable ? classModel.model?.classes.find((c) => c.name === pickedClass) : undefined
   const toolbarClass = toolbarFor ? classModel.model?.classes.find((x) => x.name === toolbarFor) : undefined
   const costumeClass = costumesFor ? classModel.model?.classes.find((x) => x.name === costumesFor) : undefined
   const imageClass = imageFor ? classModel.model?.classes.find((x) => x.name === imageFor) : undefined
@@ -170,6 +172,17 @@ export function ClassPanel({ view, fs, session, entries, kind, classModel, gf, m
           {t('uml.newClass')}
         </button>
       </div>
+      {selectedClass && (selectedClass.kind === 'actor' || selectedClass.kind === 'world') && (
+        <div class="class-quick-actions" role="group" aria-label={selectedClass.name}>
+          <strong>{selectedClass.name}</strong>
+          <button type="button" onClick={() => onReact(selectedClass)}>{t('uml.actions.react')}</button>
+          {selectedClass.kind === 'actor' ? (
+            <button type="button" onClick={() => setCostumesFor(selectedClass.name)}>{t('uml.actions.costumes')}</button>
+          ) : (
+            <button type="button" onClick={() => setImageFor(selectedClass.name)}>{t('uml.menu.background')}</button>
+          )}
+        </div>
+      )}
       {classModel.status !== 'ready' && <p class="muted small uml-note">{t(`uml.${classModel.status}` as const)}</p>}
       {classModel.model && classModel.model.errors.length > 0 && (
         <p class="uml-note small error-text">{t('uml.syntaxFiles', { files: classModel.model.errors.map((e) => e.file).join(', ') })}</p>

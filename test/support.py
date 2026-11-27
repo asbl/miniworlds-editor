@@ -66,6 +66,14 @@ def set_main(page, code):
     page.keyboard.insert_text(code)
 
 
+def world_point(page, x, y):
+    """Convert program coordinates into browser coordinates after the preview has scaled."""
+    return page.locator(".world-canvas").evaluate("""(canvas, [x, y]) => {
+        const { left, top, width, height } = canvas.getBoundingClientRect()
+        return [left + (x + 0.5) * width / canvas.width, top + (y + 0.5) * height / canvas.height]
+    }""", [x, y])
+
+
 def console(page):
     return page.inner_text(".console-lines")
 

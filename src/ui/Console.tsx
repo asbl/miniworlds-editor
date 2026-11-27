@@ -1,3 +1,4 @@
+import type { ComponentChildren } from 'preact'
 import { useEffect, useRef, useState, useId } from 'preact/hooks'
 import { t, useLang } from '../i18n'
 import { openContextMenu } from './ContextMenu'
@@ -12,6 +13,9 @@ export function Console({
   waiting,
   onAnswer,
   onReport,
+  disclosure,
+  beforeToggle,
+  sources,
 }: {
   lines: readonly ConsoleLine[]
   onClear: () => void
@@ -21,16 +25,20 @@ export function Console({
   onAnswer?: (text: string) => void
   /** Copy a report for the teacher (versions, program, console). */
   onReport?: () => void
+  disclosure?: { open: boolean; toggle: () => void }
+  beforeToggle?: ComponentChildren
+  sources?: ComponentChildren
 }) {
   useLang()
   const logId = useId()
   const [expanded, setExpanded] = useState(() => !!waiting || lines.some((line) => line.kind !== 'system'))
-  const lastOutput = [...lines].reverse().find((line) => line.kind !== 'system')
+  const lastOutput = disclosure ? undefined : lines.findLast((line) => line.kind !== 'system')
   useEffect(() => {
+    if (disclosure) return
     if (lastOutput || waiting) setExpanded(true)
     else setExpanded(false)
-  }, [lastOutput?.id, waiting?.id])
-  const open = expanded || !!waiting
+  }, [!!disclosure, lastOutput?.id, waiting?.id])
+  const open = !!waiting || (disclosure?.open ?? expanded)
   const box = useRef<HTMLDivElement>(null)
   const stick = useRef(true)
   const field = useRef<HTMLInputElement>(null)
@@ -45,9 +53,10 @@ export function Console({
   }, [waiting?.id, open])
 
   return (
-    <section class={open ? 'console' : 'console collapsed'} aria-label={t('console.title')}>
+    <section class={open ? 'console' : 'console collapsed'} aria-label={beforeToggle ? undefined : t('console.title')}>
       <div class="console-head">
-        <button type="button" class="console-toggle" aria-expanded={open} aria-controls={logId} disabled={!!waiting} onClick={() => setExpanded(!open)}>
+        {beforeToggle}
+        <button type="button" class="console-toggle" aria-expanded={open} aria-controls={logId} disabled={!!waiting} onClick={disclosure?.toggle ?? (() => setExpanded(!open))}>
           <span aria-hidden="true">{open ? '▾' : '▸'}</span> {t('console.title')}
         </button>
         <span class="console-actions">
@@ -58,6 +67,7 @@ export function Console({
           }}>⋯</button>}
         </span>
       </div>
+      {open && sources}
       <div
         class="console-lines"
         id={logId}

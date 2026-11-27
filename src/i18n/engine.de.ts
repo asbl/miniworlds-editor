@@ -32,6 +32,8 @@ export const engineDe = {
   'api.noEditor': 'Öffne zuerst eine Python-Datei, in die der Aufruf soll.',
 
   // ---- event assistant (src/events) ----
+  'uml.actions.react': 'Ereignis hinzufügen …',
+  'uml.actions.costumes': 'Kostüm ändern …',
   'uml.menu.react': 'Reagieren auf …',
   'eventgroup.key': 'Taste',
   'eventgroup.mouse': 'Maus',

@@ -33,6 +33,8 @@ export const engineEn: Record<keyof typeof engineDe, string> = {
   'api.noEditor': 'Open a Python file first, to put the call into.',
 
   // ---- event assistant (src/events) ----
+  'uml.actions.react': 'Add event …',
+  'uml.actions.costumes': 'Change costume …',
   'uml.menu.react': 'React to …',
   'eventgroup.key': 'Key',
   'eventgroup.mouse': 'Mouse',

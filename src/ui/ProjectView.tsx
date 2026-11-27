@@ -309,10 +309,6 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
         canRun={session !== null}
         onRun={() => void runProgram()}
         view={view}
-        onView={(v) => void switchView(v)}
-        miniworldsSupported={miniworldsSupported}
-        autoReload={autoReload}
-        onAutoReload={setAutoReload}
         settings={settings}
         versions={versions}
         catalogStatus={catalogStatus}
@@ -355,6 +351,7 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
             <ClassPanel
               view={classView}
               fs={fs}
+              editable={!!session && !workspace.readOnly && !collabInfo?.locked}
               session={session}
               entries={entries}
               kind={kind}
@@ -393,8 +390,10 @@ export function ProjectView({ workspace, projectName, runner, catalog, language,
         {showSplitters && <Splitter panel="world" value={panels.current('world')} onResize={(px) => panels.resize('world', px)} onReset={() => panels.reset('world')} />}
         <WorldPanel
           name={projectName}
+          visible={!narrow || pane === 'world'}
           runner={runner}
           trace={trace}
+          mode={{ view, supported: miniworldsSupported, onChange: (v) => void switchView(v), autoReload, onAutoReload: setAutoReload }}
           remote={collab ? { ...remoteConsoles, onSeen: (id) => collab.markRunSeen(id), onClear: (id) => collab.clearRun(id) } : undefined}
           onReport={() => void copyReport()}
           onTryExperiment={!embedded && miniworldsSupported && view === 'program' ? () => void switchView('miniworlds') : undefined}

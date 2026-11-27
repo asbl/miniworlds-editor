@@ -115,6 +115,7 @@ with sync_playwright() as p:
     page.wait_for_timeout(2500)  # past the auto-reload delay
     check("the world was not restarted", console(page).count("Programm gestartet") == 1, console(page)[-200:])
     check("the world kept running", frame(page) > before, f"{before} -> {frame(page)}")
+    box = canvas.bounding_box()  # output opened the drawer and resized the preview
     page.mouse.click(box["x"] + 20, box["y"] + 20)
     page.keyboard.press("a")
     check("the new number is live", eventually(lambda: "a gedrückt 7" in console(page), 10000), console(page)[-300:])
@@ -167,7 +168,8 @@ with sync_playwright() as p:
         page.locator(".context-menu button", has_text=item).click()
 
     # --- 4. the event assistant
-    menu("Figur", "Reagieren auf")
+    page.locator(".uml-box", has=page.locator(".uml-name", has_text="Figur")).locator(".uml-head").click()
+    page.get_by_role("group", name="Figur", exact=True).get_by_role("button", name="Ereignis hinzufügen").click()
     page.get_by_label("Taste: Beim Drücken einer Taste (einmal)").check()
     page.locator("dialog[open]").get_by_role("button", name="Weiter", exact=True).click()
     page.locator("dialog select").select_option("left")
@@ -219,9 +221,7 @@ with sync_playwright() as p:
     page.locator(".api-class select").select_option("Circle")
     page.locator(".api-tools input[type=search]").fill("turn_left")
     check("the search narrows the list", eventually(lambda: 1 <= page.locator(".api-row").count() <= 3, 5000), str(page.locator(".api-label").all_inner_texts()))
-    page.locator(".cm-content").click()
-    page.keyboard.press("Control+End")
-    page.keyboard.press("ArrowUp")
+    page.locator(".cm-line").filter(has_text=re.compile(r"^\s*pass$")).first.click()
     page.locator(".api-row", has_text="turn_left").first.click()
     check("a click inserts the call", eventually(lambda: "self.turn_left(" in page.locator(".cm-content").inner_text(), 5000))
 

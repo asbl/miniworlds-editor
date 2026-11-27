@@ -39,9 +39,10 @@ with sync_playwright() as p:
     check("python boots again", wait_ready(page))
 
     set_main(page, ASK)
+    check("console starts closed", page.locator(".console-lines").is_hidden())
     page.click(".toolbar .run")
     field = page.locator(".console-input input")
-    check("the console asks for a line", eventually(lambda: field.count() == 1, 60000))
+    check("the console asks for a line", eventually(lambda: field.is_visible(), 60000))
     check("the prompt labels the field", "Name:" in page.locator(".console-input label").inner_text())
     check("the field has the focus", eventually(lambda: page.evaluate("document.activeElement?.closest('.console-input') !== null"), 5000))
     answer(page, "Ada")

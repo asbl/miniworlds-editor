@@ -7,7 +7,7 @@ import os, re, sys
 from playwright.sync_api import sync_playwright
 
 sys.path.insert(0, os.path.dirname(__file__))
-from support import FILES_FIRST, check, console, eventually, failures, set_main, wait_ready
+from support import FILES_FIRST, check, console, eventually, failures, set_main, wait_ready, world_point
 
 BROWSER = sys.argv[1] if len(sys.argv) > 1 else "chromium"
 URL = sys.argv[2] if len(sys.argv) > 2 else "http://localhost:4173/"
@@ -53,10 +53,9 @@ with sync_playwright() as p:
     check("no guide layer by default", page.locator(".guides-layer").count() == 0)
     view_menu(page, "Koordinaten und Raster")
     check("the grid layer appears", page.locator(".guides-layer").count() == 1)
-    box = page.locator(".world-canvas").bounding_box()
     def hover():
-        page.mouse.move(box["x"] + 100, box["y"] + 40)
-        page.mouse.move(box["x"] + 120, box["y"] + 60)
+        page.mouse.move(*world_point(page, 100, 40))
+        page.mouse.move(*world_point(page, 120, 60))
         return re.search(r"x 1[12]\d, y [56]\d", page.inner_text(".world-head")) is not None
 
     check("mouse position in world pixels is shown", eventually(hover, 5000), page.inner_text(".world-head"))
@@ -74,7 +73,7 @@ with sync_playwright() as p:
 
     # --- 3. the inspector follows a selected actor, also while it runs
     check("nothing selected: no inspector", page.locator(".inspector").count() == 0)
-    page.mouse.click(box["x"] + 200, box["y"] + 150)
+    page.mouse.click(*world_point(page, 200, 150))
     check("clicking an actor opens the inspector", eventually(lambda: page.locator(".inspector").count() == 1 and "Figur" in page.locator(".inspector").inner_text(), 5000))
     check("the actor's own attribute is listed", eventually(lambda: re.search(r"zaehler\s*3", page.locator(".inspector").inner_text()) is not None, 5000), page.locator(".inspector").inner_text())
 
@@ -125,35 +124,36 @@ with sync_playwright() as p:
     d.get_by_label("Krabbe frisst", exact=False).check()
     d.get_by_role("button", name="Anlegen").click()
     page.wait_for_selector("dialog[open]", state="detached")
-    check("task panel starts at 0", eventually(lambda: "Aufgaben (0/5)" in page.locator(".tasks").inner_text(), 10000))
+    check("task panel starts at 0", eventually(lambda: "Aufgaben (0/5)" in page.locator(".tasks-toggle").inner_text(), 10000))
     check("tasks with a check are marked", page.locator(".tasks .auto-check").count() >= 3)
     check("python is ready", wait_ready(page))
     page.get_by_role("button", name="Experimentieren", exact=True).click()
     page.click(".toolbar .run")
     check("template world is ready", eventually(lambda: "Schritt 0" in info(page), 60000), info(page))
-    box = page.locator(".world-canvas").bounding_box()
     for n, (cls, x) in enumerate((("Krabbe", 100), ("Wurm", 300)), start=1):
         page.locator(".mw-class-buttons button", has_text=cls).click()
         page.wait_for_selector(".mw-armed")
-        page.mouse.click(box["x"] + x, box["y"] + 150)
+        page.mouse.click(*world_point(page, x, 150))
         check(f"{cls} is placed", eventually(lambda: f"{n} Figuren" in info(page), 5000), info(page))
     for _ in range(3):
         page.get_by_role("button", name="Schritt", exact=True).click()
         page.wait_for_timeout(300)
-    check("placing both and stepping ticks the first task", eventually(lambda: "Aufgaben (1/5)" in page.locator(".tasks").inner_text(), 8000), page.locator(".tasks").inner_text())
+    check("placing both and stepping ticks the first task", eventually(lambda: "Aufgaben (1/5)" in page.locator(".tasks-toggle").inner_text(), 8000), page.locator(".tasks-toggle").inner_text())
+    if page.locator(".tasks").is_hidden():
+        page.locator(".tasks-toggle").click()
     page.locator(".tasks input[type=checkbox]").first.uncheck()
     page.get_by_role("button", name="Schritt", exact=True).click()
     page.wait_for_timeout(1200)
-    check("a task the pupil un-ticked is not ticked again", "Aufgaben (0/5)" in page.locator(".tasks").inner_text(), page.locator(".tasks").inner_text())
+    check("a task the pupil un-ticked is not ticked again", "Aufgaben (0/5)" in page.locator(".tasks-toggle").inner_text(), page.locator(".tasks-toggle").inner_text())
     page.locator(".tree .row-main", has_text="Krabbe.py").click()
     page.click(".cm-content")
     page.keyboard.press("Control+End")
     page.keyboard.insert_text("\n# schneller\n")
-    check("changing the crab's code ticks the speed task", eventually(lambda: "Aufgaben (1/5)" in page.locator(".tasks").inner_text(), 8000), page.locator(".tasks").inner_text())
+    check("changing the crab's code ticks the speed task", eventually(lambda: "Aufgaben (1/5)" in page.locator(".tasks-toggle").inner_text(), 8000), page.locator(".tasks-toggle").inner_text())
     page.wait_for_timeout(700)
     page.reload()
     page.wait_for_selector(".cm-content")
-    check("the automatic tick survives a reload", eventually(lambda: "Aufgaben (1/5)" in page.locator(".tasks").inner_text(), 10000))
+    check("the automatic tick survives a reload", eventually(lambda: "Aufgaben (1/5)" in page.locator(".tasks-toggle").inner_text(), 10000))
 
     # --- 6. picture library, background, drawing tool, provenance
     def class_menu(name, item):
