@@ -18,7 +18,22 @@ Der Server betreibt den Editor als nginx-Container hinter dem nginx des Hosts (T
 eigenen Benutzer; `html/` gehört diesem Benutzer. Maßgeblich ist die Compose-Datei auf dem Server; `deploy/` enthält die Vorlagen
 (`nginx.conf` unterscheidet sich dort nur im Port).
 
-**Update einspielen** (Tests, Build, Größenprüfung, Selbst-Hosting, Upload; der Container muss nicht neu starten):
+**Update einspielen über GitHub** (von jedem Rechner, ohne SSH-Zugang): auf GitHub unter *Actions → Deploy → Run workflow*
+(Branch `main`) oder `gh workflow run deploy.yml`. Der Workflow testet, baut, prüft die Verträglichkeit mit dem Klassen-Backend,
+schickt die fertige Seite an den Server und vergleicht danach die veröffentlichte Revision. Die vorherige Seite bleibt auf dem
+Server als `html.previous/` liegen, `release.json` nennt den Stand. `nginx.conf` und Compose-Datei ändert der Workflow nicht.
+
+Einrichtung (einmalig):
+
+- Server: `deploy/server/receive-editor.py` nach `/usr/local/lib/miniworlds-deploy/` kopieren (root, 755). Ein eigener Benutzer ohne
+  weitere Rechte bekommt den öffentlichen Schlüssel mit festem Befehl in `authorized_keys`:
+  `restrict,command="sudo -n -H -u <container-benutzer> /usr/local/lib/miniworlds-deploy/receive-editor.py <projektordner>/editor" ssh-ed25519 …`
+  und eine sudo-Regel für genau diesen Befehl. Bei `AllowUsers` in der SSH-Konfiguration den Benutzer ergänzen.
+- GitHub: Environment `production` (nur Branch `main`) mit den Secrets `DEPLOY_SSH_KEY`, `DEPLOY_USER`, `DEPLOY_HOST`, `DEPLOY_PORT`,
+  `DEPLOY_KNOWN_HOSTS` (Hostschlüssel wie in `known_hosts`) und `EDITOR_CONFIG` (vollständige `config.json`).
+  Nach Änderungen an der lokalen Konfiguration: `gh secret set EDITOR_CONFIG --env production < deploy/config.local.json`.
+
+**Von Hand per SSH** (Tests, Build, Größenprüfung, Selbst-Hosting, Upload; der Container muss nicht neu starten):
 
 ```bash
 DEPLOY_TARGET=<user>@<server>:<projektordner>/editor DEPLOY_SSH_PORT=<port> \
