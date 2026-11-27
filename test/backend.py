@@ -54,6 +54,7 @@ with tempfile.TemporaryDirectory(prefix='miniworlds-editor-backend-') as tempora
             csrf = request('/api/auth/claim', {'invite_code': invite['code'], 'email': 'teacher@example.test', 'password': 'teacher-password'})['csrf']
             teacher = {'X-CSRF-Token': csrf}
             source = request('/api/teacher/projects', {'count': 1}, headers=teacher)['projects'][0]
+            empty = request('/api/teacher/projects', {'count': 1}, headers=teacher)['projects'][0]
             token = request('/api/claim', {'code': source['code']})['token']
             auth = {'Authorization': f'Bearer {token}'}
             original = 'print("backend loaded")\n'
@@ -72,6 +73,39 @@ with tempfile.TemporaryDirectory(prefix='miniworlds-editor-backend-') as tempora
                 check('standalone deployment hides backend features', page.locator('.backend-panel').count() == 0)
                 context.close()
                 (dist / 'config.json').write_text(json.dumps({'backendUrl': API, 'lowMemory': True, 'embedOrigins':[API]}))
+                # a first visit: start with the code from the welcome card
+                context = browser.new_context(locale='de-DE', viewport={'width': 1440, 'height': 1000})
+                page = context.new_page()
+                page.goto(URL); page.wait_for_selector('dialog.welcome[open]')
+                page.keyboard.press('Shift+Tab')
+                check('focus on a welcome tile is drawn outside its border', page.evaluate("() => document.activeElement.matches('.welcome-way') && getComputedStyle(document.activeElement).outlineOffset === '2px'"))
+                page.click('.welcome-code')
+                page.locator('.backend-dialog [name=code]').fill(empty['code'])
+                page.locator('.backend-dialog').get_by_role('button', name='Weiter', exact=True).click()
+                check('the welcome card opens a project by code', eventually(lambda: 'Server-Projekt' in page.inner_text('.topbar')))
+                page.wait_for_timeout(1500)  # the offer to copy a local project would come right after the project opened
+                check('the untouched starter project is not offered for an empty server project', page.locator('dialog[open]').count() == 0)
+                page.locator('.topbar .menu-button').filter(has_text='Projekt:').click()
+                check('the untouched starter project is gone', 'Mein Projekt' not in page.inner_text('.menu-items'))
+                context.close()
+                linked = request('/api/teacher/projects', {'count': 1}, headers=teacher)['projects'][0]
+                context = browser.new_context(locale='de-DE', viewport={'width': 1440, 'height': 1000})
+                page = context.new_page()
+                page.goto(URL + '?project-code=1')
+                page.locator('.backend-dialog [name=code]').fill(linked['code'])
+                page.locator('.backend-dialog').get_by_role('button', name='Weiter', exact=True).click()
+                check('a first visit by the code link opens the project', eventually(lambda: 'Server-Projekt' in page.inner_text('.topbar')))
+                page.wait_for_timeout(1500)
+                check('the code link does not offer the untouched starter project either', page.locator('dialog[open]').count() == 0)
+                context.close()
+                context = browser.new_context(locale='de-DE', viewport={'width': 1440, 'height': 1000})
+                page = context.new_page()
+                page.goto(URL); page.wait_for_selector('dialog.welcome[open]')
+                page.click('.welcome-code')
+                page.locator('.backend-dialog').get_by_role('button', name='Abbrechen', exact=True).click()
+                page.locator('.topbar .menu-button').filter(has_text='Projekt:').click()
+                check('cancelling the code dialog keeps the starter project', 'Mein Projekt' in page.inner_text('.menu-items'))
+                context.close()
                 context = browser.new_context(locale='de-DE', viewport={'width': 1440, 'height': 1000})
                 context.add_init_script(FILES_FIRST)
                 page = context.new_page()

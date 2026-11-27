@@ -84,15 +84,32 @@ export interface WelcomeProps {
   onTemplate(id: string): void
   /** Keep the empty starter project. */
   onStart(): void
+  /** Open the project behind a teacher's code; missing where no server is set up. */
+  onCode?: () => void
 }
 
 /** The one-time card for a visitor who has never used the editor: what to click first, and how to bring a program along. */
-export function Welcome({ actions, onTemplate, onStart }: WelcomeProps) {
+export function Welcome({ actions, onTemplate, onStart, onCode }: WelcomeProps) {
   const lang = useLang()
   const [importing, setImporting] = useState(false)
   return (
     <Modal label={t('welcome.title')} onClose={onStart}>
       <h2>{t('welcome.title')}</h2>
+      <div class="welcome-ways">
+        {onCode && (
+          <button type="button" class="welcome-way welcome-code" onClick={onCode}>
+            <span class="welcome-icon" aria-hidden="true">🔑</span>
+            <strong>{t('welcome.code')}</strong>
+            <span>{t('welcome.code.text')}</span>
+          </button>
+        )}
+        <button type="button" class="welcome-way welcome-import" aria-expanded={importing} onClick={() => setImporting((v) => !v)}>
+          <span class="welcome-icon" aria-hidden="true">📂</span>
+          <strong>{t('welcome.import')}</strong>
+          <span>{t('welcome.import.text')}</span>
+        </button>
+      </div>
+      {importing && <ImportWays actions={actions} />}
       <div class="welcome-choices">
         <button type="button" class="welcome-card primary-card" onClick={onStart} autofocus>
           <strong>{t('welcome.empty')}</strong>
@@ -109,13 +126,6 @@ export function Welcome({ actions, onTemplate, onStart }: WelcomeProps) {
           )
         })}
       </div>
-      <div class="welcome-import">
-        <button type="button" class="link-button" aria-expanded={importing} onClick={() => setImporting((v) => !v)}>
-          {importing ? '▾' : '▸'} {t('welcome.import')}
-        </button>
-        {importing && <ImportWays actions={actions} />}
-      </div>
-
     </Modal>
   )
 }

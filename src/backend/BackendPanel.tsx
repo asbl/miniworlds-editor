@@ -11,13 +11,15 @@ interface Props {
   dialog: 'claim' | 'password' | null
   onDialogChange: (dialog: 'claim' | 'password' | null) => void
   manager: BackendProjects
+  /** A code was accepted; runs before the dialog closes and the project opens. */
+  onClaimed: () => Promise<void>
   connection: BackendConnection | null
   flush: () => Promise<void>
   onOpen: (name: string) => Promise<void>
   onLogout: () => Promise<void>
 }
 
-export function BackendPanel({ idleMinutes, dialog, onDialogChange: setDialog, manager, connection, flush, onOpen, onLogout }: Props) {
+export function BackendPanel({ idleMinutes, dialog, onDialogChange: setDialog, onClaimed, manager, connection, flush, onOpen, onLogout }: Props) {
   const lang = useLang()
   const tr = (de: string, en: string) => lang === 'de' ? de : en
   const [remoteProjects, setRemoteProjects] = useState<{id:number;title:string;read_only:boolean}[]>([])
@@ -225,7 +227,7 @@ export function BackendPanel({ idleMinutes, dialog, onDialogChange: setDialog, m
           await flush()
           if (dialog === 'claim') {
             const result = await manager.claim(String(values.get('code')), String(values.get('password') ?? ''))
-            setDialog(null); await onOpen(result.name)
+            await onClaimed(); setDialog(null); await onOpen(result.name)
           } else if (connection) {
             const password = String(values.get('password'))
             if (password !== values.get('repeat')) throw new Error(tr('Die Passwörter stimmen nicht überein.', 'Passwords do not match.'))

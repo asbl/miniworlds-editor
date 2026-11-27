@@ -509,19 +509,26 @@ input[type=text], input[type=search], select {
 .dialog.welcome { width: min(680px, calc(100vw - 24px)); max-height: calc(100vh - 24px); }
 .welcome-body { padding: 18px 20px; overflow: auto; max-height: calc(100vh - 26px); }
 .welcome-body h2 { font-size: 20px; margin: 0 0 8px; }
+.welcome-ways { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px; margin: 12px 0; }
+.welcome-way { display: grid; grid-template-columns: auto 1fr; align-content: center; gap: 2px 12px; padding: 14px; text-align: left; border: 2px solid var(--accent); border-radius: 8px; background: var(--notice-bg); color: var(--notice-fg); }
+.welcome-way strong { font-size: 16px; }
+.welcome-way span { font-size: 13px; }
+.welcome-way .welcome-icon { grid-row: span 2; align-self: center; font-size: 26px; }
+.welcome-way:focus-visible { outline-offset: 2px; } /* inside, it would hide on the accent border */
+.welcome-way[aria-expanded=true] { box-shadow: inset 0 0 0 2px var(--accent); }
 .welcome-choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin: 12px 0; }
 .welcome-card { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 12px; text-align: left; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); }
 .welcome-card strong { font-size: 15px; }
 .welcome-card small { color: var(--accent); }
 .welcome-card span { color: var(--muted); font-size: 13px; }
 .welcome-card.primary-card { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
-.welcome-import { margin: 8px 0; }
 .link-button { border: 0; background: none; color: var(--accent); padding: 4px 0; text-align: left; }
 .import-ways { margin: 6px 0 8px; }
 .drop-zone { display: grid; place-items: center; min-height: 64px; margin: 8px 0; padding: 8px; text-align: center; color: var(--muted); border: 2px dashed var(--border); border-radius: 8px; }
 .drop-zone.over { border-color: var(--accent); color: var(--fg); background: var(--selected); }
 .import-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .import-list li { display: grid; grid-template-columns: 1fr; align-items: center; gap: 4px 10px; }
+.import-list button { border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; background: var(--panel); }
 .small { font-size: 12px; }
 .backup-button { border: 1px solid var(--border); padding: 4px 10px; border-radius: 4px; }
 @media (max-width: 560px) { .backup-button { padding: 4px 6px; } }
@@ -691,7 +698,7 @@ input[type=text], input[type=search], select {
 .menu-items button.highlighted:not(:disabled):is(:hover, :focus-visible) { background: color-mix(in srgb, var(--accent) 18%, var(--bg)); }
 
 .settings-button { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--border); background: var(--bg); white-space: nowrap; }
-.settings-button:hover:not(:disabled), .welcome-card:hover:not(:disabled) {
+.settings-button:hover:not(:disabled), .welcome-card:hover:not(:disabled), .welcome-way:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent) 12%, var(--panel));
   border-color: var(--accent);
 }
