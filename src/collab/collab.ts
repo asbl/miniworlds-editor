@@ -226,6 +226,7 @@ export class Collab {
     if (!(await this.provider.whenSynced(timeoutMs))) return null
     const fs = serialized(plain)
     const roomWasEmpty = this.room.isEmpty()
+    this.room.normalize()
     await this.room.writeInto(fs)
     const local = (await fs.list()).filter((e) => e.kind === 'file' && !this.room.has(e.path))
     if (!this.readOnly) {
@@ -431,6 +432,7 @@ export class Collab {
     return {
       text: (path) => this.room.text(path)?.toString(),
       extensions: (path) => {
+        this.room.normalize(path) // may have arrived since joining, from an older version of the editor
         const text = this.room.text(path)
         // the shared text is the truth; its own undo only takes back one's own typing, so it comes before the ordinary history keys
         return text ? [yCollab(text, this.awareness), Prec.highest(keymap.of(yUndoManagerKeymap))] : null

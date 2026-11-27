@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest'
+import * as Y from 'yjs'
 import { createRelay } from '../../deploy/collab/relay.mjs'
 import { MemoryFs, type Fs } from '../workspace'
 import { Collab, isSyncedFs } from './collab'
@@ -104,6 +105,35 @@ describe('working together', () => {
     await fsA.remove('classes')
     expect(await until(async () => !(await innerB.exists('classes/Knight.py')))).toBe(true)
     expect(changes.some((c) => c.includes('classes/Knight.py'))).toBe(true)
+  })
+
+  it('shares text with \\n only, so that editor positions are the positions in the shared text', async () => {
+    const { url } = await start()
+    const a = person('room-crlf', url, 'A')
+    const b = person('room-crlf', url, 'B')
+    const fsA = (await a.join(await filled({ 'main.py': 'import x\r\nplayer.move()\r\nplayer.turn()\r\n' }))) as Fs
+    const fsB = (await b.join(new MemoryFs())) as Fs
+    expect(await until(() => b.room.has('main.py'))).toBe(true)
+    expect(b.room.text('main.py')?.toString()).toBe('import x\nplayer.move()\nplayer.turn()\n')
+    await fsA.write('main.py', 'a = 1\r\nb = 2\r\n')
+    expect(await until(async () => (await fsB.read('main.py')) === 'a = 1\nb = 2\n')).toBe(true)
+  })
+
+  it('repairs the line ends of a room that already has \\r, before an editor is bound', async () => {
+    const { url, relay } = await start()
+    const a = person('room-oldr', url, 'A')
+    await a.join(new MemoryFs())
+    // what an older version of the editor put into the room
+    a.room.files.set('main.py', new Y.Text('one\r\ntwo\rthree\r\n'))
+    expect(await until(() => (relay.rooms.get('room-oldr')?.log.length ?? 0) > 0)).toBe(true)
+    const b = person('room-oldr', url, 'B')
+    const innerB = new MemoryFs()
+    await b.join(innerB)
+    expect(await innerB.read('main.py')).toBe('one\ntwo\nthree\n')
+    expect(await until(() => a.room.text('main.py')?.toString() === 'one\ntwo\nthree\n')).toBe(true)
+    a.room.files.set('late.py', new Y.Text('x\r\ny\r\n'))
+    a.editorSource().extensions('late.py')
+    expect(a.editorSource().text('late.py')).toBe('x\ny\n')
   })
 
   it('does not let a late autosave undo what somebody else typed', async () => {

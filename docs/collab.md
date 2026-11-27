@@ -38,6 +38,10 @@ Wer den Link kennt, kann **mitlesen und mitschreiben** (Nur-Lesen-Link: nur mitl
 
 Yjs (CRDT) im Browser (wird erst beim ersten Öffnen von „Multiplayer“ nachgeladen, ein eigener Baustein von etwa 100 KB); Text­dateien als `Y.Text`, Bilder und Sonstiges als Bytes (`src/collab/`). Der Editor-Dateizugriff läuft durch `Collab.join()`: Änderungen der anderen werden in das normale Projekt-Dateisystem geschrieben, das Automatische Speichern bleibt wie es ist. Als Verbindung dient ein kleiner **WebSocket-Relay** (`deploy/collab/relay.mjs`, nur die Bibliothek `ws`), der einen Raum einen Tag nach dem Weggang der letzten Person vergisst. Nichts wird auf Platte geschrieben.
 
+## Zeilenenden
+
+Gemeinsamer Text enthält nur `\n`. Der Editor zählt `\r\n` als ein Zeichen, `Y.Text` als zwei; mit `\r` im Raum landet deshalb jede Eingabe an der falschen Stelle. Dateien werden beim Übernehmen in den Raum umgewandelt (`CollabRoom.set`), ältere Räume beim Beitritt und vor dem Anbinden des Editors (`CollabRoom.normalize`).
+
 ## Verschlüsselung (Ende zu Ende)
 
 Der Relay **kann das Projekt nicht lesen**. Jede Nachricht (Änderungen, Cursor, Programmausgabe) wird im Browser mit AES-GCM verschlüsselt; der Schlüssel steht nur im Einladungslink hinter dem `#` (der nie an einen Server geschickt wird) und wird mit dem Raumnamen verknüpft. Der Relay hält pro Raum nur ein **Protokoll verschlüsselter Änderungen** (wer neu kommt, bekommt es und spielt es ab), leitet kurzlebige Nachrichten (Cursor, Ausgabe) weiter und verwirft alles nach 24 h ohne Teilnehmer. Damit das Protokoll nicht endlos wächst, ersetzt einer der Schreibenden den alten Teil ab und zu durch den aktuellen (verschlüsselten) Stand (nach 300 Änderungen oder 1 MB).
