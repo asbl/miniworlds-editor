@@ -120,11 +120,12 @@ describe('working together', () => {
   })
 
   it('repairs the line ends of a room that already has \\r, before an editor is bound', async () => {
-    const { url } = await start()
+    const { url, relay } = await start()
     const a = person('room-oldr', url, 'A')
     await a.join(new MemoryFs())
     // what an older version of the editor put into the room
     a.room.files.set('main.py', new Y.Text('one\r\ntwo\rthree\r\n'))
+    expect(await until(() => (relay.rooms.get('room-oldr')?.log.length ?? 0) > 0)).toBe(true)
     const b = person('room-oldr', url, 'B')
     const innerB = new MemoryFs()
     await b.join(innerB)
