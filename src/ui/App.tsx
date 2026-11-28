@@ -27,6 +27,7 @@ import { FIRST_REMINDER_MS, loadBackupRecord, saveBackupRecord, shouldRemind, st
 import { hasSeenWelcome, markWelcomeSeen } from './welcome/firstRun'
 import { ImportGuide, Welcome, type ImportActions } from './welcome/Welcome'
 import { ProjectView } from './ProjectView'
+import { ltiAssertion, withoutLti } from '../backend/lti'
 import { BackendProjects, type BackendConnection } from '../backend/projects'
 import { BackendPanel } from '../backend/BackendPanel'
 import type { Collab } from '../collab/collab'
@@ -421,7 +422,23 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
       if (joinCode) await joinRoom(joinCode).catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
       if (legacyFailed) await infoDialog(t('dialog.error'), t('share.legacyFailed'))
       else if (launch) await openLaunch(launch).catch((error) => infoDialog(t('dialog.error'), error instanceof Error ? error.message : String(error)))
-      if (backend && new URLSearchParams(location.search).get('project-code') === '1') {
+      const assertion = backend ? ltiAssertion(location.hash) : null
+      if (backend && assertion) {
+        // from Moodle: the assertion replaces the code dialog, and leaves the address at once
+        codeStarter.current = firstProject.current
+        firstProject.current = null
+        history.replaceState(null, '', location.pathname + location.search + withoutLti(location.hash))
+        closeOverlay()
+        try {
+          const result = await backend.claimExternal(assertion)
+          await starterClaimed()
+          setBackendDialog(null)
+          await show(result.name)
+        } catch {
+          setBackendDialog('claim') // expired or refused: the visitor enters their own code
+        }
+      }
+      if (backend && !assertion && new URLSearchParams(location.search).get('project-code') === '1') {
         codeStarter.current = firstProject.current // a first visit by this link: as with the tile on the welcome card
         firstProject.current = null
         closeOverlay(); setBackendDialog('claim')
@@ -430,6 +447,15 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
     })()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store])
+
+  /** After a code or an assertion was accepted: the untouched starter project of a first visit goes away. */
+  async function starterClaimed() {
+    const unused = codeStarter.current
+    codeStarter.current = null
+    if (!unused) return
+    await store.remove(unused).catch(() => {})
+    setProjects(await store.list())
+  }
 
   /** A new project from an import or a template: show it, and let it replace the untouched project of a first visit. */
   async function showMade(made: string | null) {
@@ -612,14 +638,7 @@ export function App({ store, config = DEFAULT_CONFIG, runner: injected, catalog:
       {backend && <BackendPanel idleMinutes={config.autoSignOutMinutes} dialog={backendDialog} onDialogChange={(next) => {
         if (!next) codeStarter.current = null // closed without a code: the project is the visitor's from now on
         setBackendDialog(next)
-      }} onClaimed={async () => {
-        // before the server project shows, so that the untouched starter is not offered to be copied into it
-        const unused = codeStarter.current
-        codeStarter.current = null
-        if (!unused) return
-        await store.remove(unused).catch(() => {})
-        setProjects(await store.list())
-      }} manager={backend} connection={backendConnection} flush={() => flush.current?.() ?? Promise.resolve()} onOpen={show} onLogout={async () => {
+      }} onClaimed={starterClaimed} manager={backend} connection={backendConnection} flush={() => flush.current?.() ?? Promise.resolve()} onOpen={show} onLogout={async () => {
         flush.current = null
         setBackendConnection(null)
         const rest = await store.list()

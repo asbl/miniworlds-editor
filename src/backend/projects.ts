@@ -31,6 +31,12 @@ export class BackendProjects {
     const result = await client.json<{ token: string; project_id: number; personal_code: string | null }>('/api/claim', 'POST', { code, password })
     return this.bindToken(result)
   }
+  /** Instead of a code: a short-lived assertion from the LTI service (`docs/lti.md`). Same answer as `/claim`. */
+  async claimExternal(assertion: string): Promise<{ name: string; personalCode: string | null }> {
+    const client = new BackendClient(this.base)
+    const result = await client.json<{ token: string; project_id: number; personal_code: string | null }>('/api/play/lti-bind', 'POST', { assertion })
+    return this.bindToken(result)
+  }
   async openProject(connection: BackendConnection, id: number) {
     const result = await connection.client.json<{token:string;project_id:number}>(`/api/play/projects/${id}/open`, 'POST', {})
     return this.bindToken(result)
